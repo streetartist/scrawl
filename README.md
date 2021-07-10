@@ -14,5 +14,39 @@ Scrawl是一个游戏引擎，允许您使用Scratch的方式编写游戏。（�
 
 ## 示例
 ```python
+from scrawl import Scene, Sprite, Game
 
+class Cat(Sprite):
+    def __init__(self):
+        self.image = "cat.png"
+    
+    def main(self):
+        while True:
+            self.move(10)
+            yield 1000
+            self.clone()
+    
+    def event(self):
+        self.say("hello")
+
+    def clones(self):
+        self.turn_right(10)
+
+class Background(Scene):
+    def __init__(self):
+        self.image = "bg.png"
+
+    def main(self):
+        while True:
+            yield 500
+            self.broadcast("event")
+
+class Main(Game):
+    def __init__(self):
+        self.scene = Background()
+        self.sprite = [
+            Cat(),
+        ]
+
+Main().run(engine="pygame")
 ```
