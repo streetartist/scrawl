@@ -11,7 +11,7 @@ setup(
  long_description=README,
  long_description_content_type='text/markdown',
  install_requires=INSTALL_PACKAGES,
- version='0.2.5',
+ version='0.0.1',
  url='http://github.com/streetartist/scrawl',
  author='Streetartist',
  author_email='15252635839@163.com',
