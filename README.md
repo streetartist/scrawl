@@ -12,6 +12,8 @@ Scrawl是一个游戏引擎，允许您使用Scratch的方式编写游戏。（�
 
 完全不用担心“While True”的问题，只需要自然的编程就可以
 
+搭配强大的游戏IDE Mint Editor,极大简化游戏编写
+
 ## 示例
 ```python
 from scrawl import Scene, Sprite, Game
