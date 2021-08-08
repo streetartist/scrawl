@@ -1,25 +1,14 @@
-import sys
-import pygame
+import heat2d
 
-class Scene:
-    pass
+engine = heat2d.Engine()
 
-class Sprite:
-    pass
+@engine.add
+class Main(heat2d.Stage):
 
-class Game:
-    def run(self):
-        pygame.init()
-        self.screen = pygame.display.set_mode(size)
-        pygame.display.set_caption(self.title)
+    def created(self):
+        print("Main stage is initialized!")
 
-        while True:
-            for event in pygame.event.get():
-                if event.type == pygame.QUIT:
-                    sys.exit()
+    def update(self):
+        
 
-            yield_list = {}
-            for sprite in sprites:
-                yield_return = sprite.main()
-                if yield_return in yield_list:
-                    yield_list[yield_return].append(sprite.main)
+engine.run()
