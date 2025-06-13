@@ -1,4 +1,1 @@
-wasabi2d
-pgzero
-arcade
-heat2d
+pygame
