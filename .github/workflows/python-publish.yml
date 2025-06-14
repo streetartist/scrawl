@@ -18,6 +18,10 @@ jobs:
       uses: actions/setup-python@v1
       with:
         python-version: 3.x
+
+    - name: Clean build artifacts
+      run: rm -rf dist build
+    
     - name: Install pypa/build
       run: >-
         python -m
