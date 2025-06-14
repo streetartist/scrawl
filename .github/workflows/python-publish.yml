@@ -1,32 +1,38 @@
-# .github/workflows/python-publish.yml
-# from https://www.webkt.com/article/9475
- 
-name: Publish Python Package
- 
+# This workflow will upload a Python Package using Twine when a release is published
+# For more information see: https://packaging.python.org/guides/publishing-package-distribution-releases-using-github-actions-ci-cd-workflows/
+
+name: Upload Release to PyPi
+
 on:
   release:
     types: [published]
- 
+
 jobs:
-  build:
+  deploy:
+
     runs-on: ubuntu-latest
- 
+
     steps:
-      - uses: actions/checkout@v3
-      - name: Set up Python 3.x
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.x'
- 
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install setuptools wheel twine
- 
-      - name: Build package
-        run: python setup.py sdist bdist_wheel
- 
-      - name: Publish package to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
-        with:
-          password: ${{ secrets.PYPI_API_TOKEN }}
+    - uses: actions/checkout@master
+    - name: Set up Python 3.x
+      uses: actions/setup-python@v1
+      with:
+        python-version: 3.x
+    - name: Install pypa/build
+      run: >-
+        python -m
+        pip install
+        build
+        --user
+    - name: Build a binary wheel and a source tarball
+      run: >-
+        python -m
+        build
+        --sdist
+        --wheel
+        --outdir dist/
+        .
+    - name: Publish distribution 📦 to PyPI
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
