@@ -74,6 +74,8 @@ game.set_scene(MyScene())
 game.run()
 ```
 
+https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
+
 ## 核心概念
 
 ### 1. 游戏主循环 (`Game` 类)
