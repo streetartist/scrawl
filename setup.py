@@ -11,10 +11,10 @@ setup(
  long_description=README,
  long_description_content_type='text/markdown',
  install_requires=INSTALL_PACKAGES,
- version='0.0.1',
+ version='0.4.2',
  url='http://github.com/streetartist/scrawl',
  author='Streetartist',
- author_email='15252635839@163.com',
+ author_email='207148178@qq.com',
  keywords=['game', 'engine'],
  tests_require=[
  'pytest',
