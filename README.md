@@ -88,14 +88,6 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 - 管理精灵和粒子系统
 - 处理全局事件和广播消息
 
-#### 关键技术：
-```python
-@handle_broadcast("event_name")
-@as_main
-self.broadcast("event_name")
-self.add_task(coroutine_function())
-```
-
 ### 3. 精灵 (`Sprite` 和 `PhysicsSprite` 类)
 - 基础游戏实体
 - 支持位置、方向、大小等属性
