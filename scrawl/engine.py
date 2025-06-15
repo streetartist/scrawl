@@ -36,6 +36,8 @@ class Game:
                  width: int = 800,
                  height: int = 600,
                  title: str = "Scratch-like Game",
+                 font_path: str = "Simhei.ttf",
+                 font_size: int = 20,
                  fullscreen: bool = False):
         pygame.init()
         self.width = width
@@ -54,7 +56,36 @@ class Game:
         self.running = False
         self.tasks = deque()
         self.current_time = 0
-        self.font = pygame.font.SysFont(None, 24)
+        
+        # 创建中文字体 - 主要字体
+        try:
+            self.font = pygame.font.Font(font_path, font_size)
+        except:
+            # 无法加载指定字体时尝试使用系统默认字体
+            print(f"警告: 无法加载字体 {font_path}, 将尝试使用系统字体")
+            try:
+                # 尝试常见中文字体
+                fallback_fonts = ["simhei.ttf", "simsun.ttc", "DroidSansFallbackFull.ttf", 
+                                 "msyh.ttc", "WenQuanYiMicroHei.ttf"]
+                loaded = False
+                for f in fallback_fonts:
+                    try:
+                        self.font = pygame.font.Font(f, font_size)
+                        loaded = True
+                        break
+                    except:
+                        continue
+
+                if not loaded:
+                    self.font = pygame.font.SysFont(None, font_size)
+                    print("警告: 无法找到适合的中文字体, 使用系统默认字体")
+            except:
+                self.font = pygame.font.SysFont(None, font_size)
+                print("警告: 字体初始化失败, 使用系统默认字体")
+
+        # 创建调试字体 - 小一
+        # self.debug_font = pygame.font.SysFont(None, debug_font_size)
+        
         self.debug_info = []
         self.fps = 60
         self.background_color = (0, 0, 0)
@@ -324,7 +355,12 @@ class Sprite:
         self.delete = False
         self.scene: Scene = None
         self.game: Game = None
-        self.image: pygame.Surface = None
+
+        # 图片管理相关属性
+        self.costumes: Dict[str, pygame.Surface] = {}  # 存储所有造型的字典
+        self.current_costume: str = None  # 当前使用的造型名称
+        self._default_image: pygame.Surface = None  # 默认图像
+
         self.color = (255, 100, 100)
         self.speech: str = None
         self.speech_timer = 0
@@ -333,12 +369,72 @@ class Sprite:
         self.pen_size = 2
         self.pen_path = []
         self.collision_radius = None
-
         self.main_tasks = []  # 存储所有标记为main的任务
         self.clones_tasks = []  # 存储所有标记为克隆任务的方法
         self.broadcast_handlers = {}  # 存储广播事件处理函数
+        self.is_clones = False  # 标记是否为克隆体
 
-        self.is_clones = False
+    # 新增的图片管理方法
+    def add_costume(self, name: str, image: pygame.Surface):
+        """添加一个造型"""
+        self.costumes[name] = image
+        if not self._default_image:  # 如果没有默认图像，设为第一个添加的图像
+            self._default_image = image
+
+        # 添加：如果没有设置当前造型，设为第一个添加的造型
+        if self.current_costume is None:
+            self.current_costume = name
+
+    def next_costume(self):
+        """切换到下一个造型"""
+        keys = list(self.costumes.keys())
+        if len(keys) < 2:
+            return
+
+        current_index = keys.index(self.current_costume)
+        next_index = (current_index + 1) % len(keys)
+        self.switch_costume(keys[next_index])
+
+    def switch_costume(self, name: str):
+        """切换到指定名称的造型"""
+        if name in self.costumes:
+            self.current_costume = name
+            self._update_collision_radius()
+
+    def set_image(self, image: pygame.Surface):
+        """设置当前使用的单个图像（向后兼容）"""
+        self._default_image = image
+        self._update_collision_radius()
+
+    @property
+    def image(self) -> pygame.Surface:
+        """获取当前使用的图像"""
+        # 优先返回当前造型的图像
+        if self.current_costume and self.current_costume in self.costumes:
+            return self.costumes[self.current_costume]
+
+        # 如果没有造型，返回默认图像
+        return self._default_image
+
+    def _update_collision_radius(self):
+        """根据当前图像更新碰撞半径"""
+        image_to_use = None
+
+        # 首先尝试获取当前造型
+        if self.current_costume and self.current_costume in self.costumes:
+            image_to_use = self.costumes[self.current_costume]
+        # 如果当前造型不存在，尝试获取默认图像
+        elif self._default_image:
+            image_to_use = self._default_image
+        # 如果都没有，使用默认的圆形大小
+        else:
+            self.collision_radius = 20 * self.size
+            return
+
+        # 更新基于图像的碰撞半径
+        if self.image:
+            w, h = self.image.get_size()
+            self.collision_radius = min(w, h) // 2
 
     def main(self):
         pass
@@ -350,12 +446,8 @@ class Sprite:
         self.scene = scene
         self.game = scene.game
 
-        if self.collision_radius is None:
-            if self.image:
-                w, h = self.image.get_size()
-                self.collision_radius = min(w, h) // 2
-            else:
-                self.collision_radius = 20 * self.size
+        # 更新碰撞半径
+        self._update_collision_radius()
 
         if not self.game:
             return
@@ -399,7 +491,6 @@ class Sprite:
             # 原有的克隆函数处理
             if hasattr(self, 'clones') and callable(self.clones):
                 self.game.add_task(self.clones())
-            
 
     def handle_event(self, event: pygame.event.Event):
         pass
@@ -414,6 +505,20 @@ class Sprite:
             self.speech_timer -= self.game.clock.get_time()
             if self.speech_timer <= 0:
                 self.speech = None
+
+    def broadcast(self, event_name: str):
+        """广播事件，使所有精灵和场景都能响应"""
+        #! 说不定要添加Game的广播方法
+        if self.scene:
+            self.scene.broadcast(event_name)
+
+    def set_size(self, size: float):
+        self.size = size
+        self._update_collision_radius()
+
+    def change_size(self, change_factor: float):
+        self.size *= change_factor
+        self._update_collision_radius()
 
     def move(self, steps: float):
         """移动精灵，无物理效果"""
@@ -498,10 +603,16 @@ class Sprite:
             clone.direction = self.direction
             clone.size = self.size
             clone.color = self.color
+
+            # 确保克隆体复制所有造型
+            clone.costumes = self.costumes.copy()  # 复制造型字典
+            clone.current_costume = self.current_costume  # 保持当前造型
+
+            # 复制图像属性
+            clone._default_image = self._default_image
             clone.collision_radius = self.collision_radius
-            
+
             clone.is_clones = True
-            
             self.scene.add_sprite(clone)
             self.game.log_debug(f"Cloned sprite: {self.name}")
 
@@ -533,23 +644,32 @@ class Sprite:
         """绘制精灵"""
         if not self.game or not self.visible:
             return
-
         # 绘制画笔轨迹
         if self.pen_down and len(self.pen_path) >= 2:
             pygame.draw.lines(surface, self.pen_color, False, self.pen_path,
                               self.pen_size)
-
         # 绘制精灵主体
-        if self.image:
-            rotated_image = pygame.transform.rotate(self.image,
+        costume = self.image
+        if costume:
+            # 缩放图像
+            if self.size != 1.0:
+                orig_size = costume.get_size()
+                new_size = (int(orig_size[0] * self.size),
+                            int(orig_size[1] * self.size))
+                scaled_costume = pygame.transform.scale(costume, new_size)
+            else:
+                scaled_costume = costume
+
+            # 旋转图像
+            rotated_image = pygame.transform.rotate(scaled_costume,
                                                     self.direction - 90)
             rect = rotated_image.get_rect(center=self.pos)
             surface.blit(rotated_image, rect)
         else:
+            # 没有图像时绘制圆形
             radius = int(self.collision_radius * self.size)
             pygame.draw.circle(surface, self.color,
                                (int(self.pos.x), int(self.pos.y)), radius)
-
             end_x = self.pos.x + radius * math.cos(math.radians(
                 self.direction))
             end_y = self.pos.y - radius * math.sin(math.radians(
@@ -579,6 +699,25 @@ class Sprite:
             pygame.draw.polygon(surface, (200, 200, 100), points, 2)
 
             surface.blit(text, (bubble_rect.x + 10, bubble_rect.y + 7))
+
+
+
+class Cat(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.name = "Cat"
+        
+        self.add_costume(
+            "costume1", 
+            pygame.image.load("cat1.svg").convert_alpha()
+        )
+        self.add_costume(
+            "costume2", 
+            pygame.image.load("cat2.svg").convert_alpha()
+        )
+        
+    def walk(self):
+        self.next_costume()
 
 
 class Particle:
