@@ -21,7 +21,7 @@ Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者�
 示例1：
 
 ```python
-from scrawl5 import Game, Scene, Sprite, Cat, as_main
+from scrawl import Game, Scene, Sprite, Cat, as_main
 
 # 创建游戏实例
 game = Game()
