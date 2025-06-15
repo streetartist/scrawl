@@ -1,5 +1,7 @@
 # Scrawl - Scratch-Like Python Game Engine
 
+<img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
+
 Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者提供类似 Scratch 的直觉式编程体验，同时保留 Python 的功能优势。
 
 ## 主要特性
