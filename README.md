@@ -16,6 +16,44 @@ Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者�
 
 以下代码展示了 Scrawl 的基本使用：
 
+示例1：
+
+```python
+from scrawl5 import Game, Scene, Sprite, Cat, as_main
+
+# 创建游戏实例
+game = Game()
+
+class MyCat(Cat):
+    def __init__(self):
+        super().__init__()
+
+    @as_main
+    def main1(self):
+        while True:
+            self.walk()
+            yield 500
+            
+
+# 定义场景
+class MyScene(Scene):
+
+    def __init__(self):
+        super().__init__()
+
+        # 添加精灵
+        cat = MyCat()
+        self.add_sprite(cat)
+
+
+# 运行游戏
+game.set_scene(MyScene())
+game.run()
+```
+![屏幕录制 2025-06-15 090207](https://github.com/user-attachments/assets/2842db4a-147a-466e-ad69-4d74c24ba4b4)
+
+示例2
+
 ```python
 from scrawl import *
 import time
