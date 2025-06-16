@@ -7,6 +7,21 @@ from collections import deque
 from typing import Tuple, List, Callable, Any, Dict
 
 
+def on_key(key: int, mode: str = "pressed"):
+    """将函数标记为按键事件处理函数
+    mode: 
+        "pressed" - 按键按下瞬间触发（默认）
+        "held" - 按键按住状态持续触发
+        "released" - 按键释放时触发
+    """
+
+    def decorator(func):
+        func._key_event = (key, mode)
+        return func
+
+    return decorator
+
+
 # 添加装饰器定义
 def as_main(func):
     """将函数标记为main函数，类似于原始的main方法"""
@@ -25,6 +40,26 @@ def handle_broadcast(event_name: str):
 
     def decorator(func):
         func._broadcast_event = event_name
+        return func
+
+    return decorator
+
+
+def handle_edge_collision(edge: str = "any"):
+    """将函数标记为碰到舞台边缘事件处理函数"""
+
+    def decorator(func):
+        func._edge_collision = edge
+        return func
+
+    return decorator
+
+
+def handle_sprite_collision(target: [type, str]):
+    """将函数标记为碰到指定类型或名称的精灵类事件处理函数"""
+
+    def decorator(func):
+        func._sprite_collision = target
         return func
 
     return decorator
@@ -56,7 +91,7 @@ class Game:
         self.running = False
         self.tasks = deque()
         self.current_time = 0
-        
+
         # 创建中文字体 - 主要字体
         try:
             self.font = pygame.font.Font(font_path, font_size)
@@ -65,8 +100,10 @@ class Game:
             print(f"警告: 无法加载字体 {font_path}, 将尝试使用系统字体")
             try:
                 # 尝试常见中文字体
-                fallback_fonts = ["simhei.ttf", "simsun.ttc", "DroidSansFallbackFull.ttf", 
-                                 "msyh.ttc", "WenQuanYiMicroHei.ttf"]
+                fallback_fonts = [
+                    "simhei.ttf", "simsun.ttc", "DroidSansFallbackFull.ttf",
+                    "msyh.ttc", "WenQuanYiMicroHei.ttf"
+                ]
                 loaded = False
                 for f in fallback_fonts:
                     try:
@@ -85,13 +122,31 @@ class Game:
 
         # 创建调试字体 - 小一
         # self.debug_font = pygame.font.SysFont(None, debug_font_size)
-        
+
         self.debug_info = []
         self.fps = 60
         self.background_color = (0, 0, 0)
         self.key_bindings = {}  # 全局按键绑定
 
-    def run(self, fps: int = 60):
+        self.key_state = {}  # 当前按键状态 {key: (is_pressed, last_time)}
+        self.key_events = []  # 存储全局按键处理函数
+
+        self.debug = False
+
+    def setup_key_listeners(self, obj):
+        """设置对象（场景或精灵）的按键监听器"""
+        for name in dir(obj):
+            method = getattr(obj, name)
+            if callable(method) and hasattr(method, '_key_event'):
+                key, mode = getattr(method, '_key_event')
+                self.key_events.append((obj, method, key, mode))
+                self.log_debug(
+                    f"注册按键事件: {key} -> {obj.__class__.__name__}.{method.__name__} ({mode})"
+                )
+
+    def run(self, fps: int = 60, debug: bool = False):
+        self.debug = debug
+        
         if not self.scene:
             print("No scene set!")
             return
@@ -104,6 +159,9 @@ class Game:
 
         while self.running:
             self.current_time = pygame.time.get_ticks()
+
+            # 更新按键状态
+            self.update_key_state()
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -122,6 +180,9 @@ class Game:
                     self.scene.handle_event(event)
                     for sprite in self.scene.sprites:
                         sprite.handle_event(event)
+
+            # 处理按键事件
+            self.process_key_events()
 
             self.process_tasks()
 
@@ -144,6 +205,56 @@ class Game:
     def set_background(self, color: Tuple[int, int, int]):
         self.background_color = color
 
+    def update_key_state(self):
+        """更新按键状态"""
+        current_keys = pygame.key.get_pressed()
+        # 保存上一帧的状态
+        self.prev_key_state = dict(self.key_state) if hasattr(
+            self, 'prev_key_state') else {}
+
+        for key in range(len(current_keys)):
+            is_pressed = current_keys[key]
+            # 第一次记录该键或状态发生变化
+            if key not in self.key_state or self.key_state[key][
+                    0] != is_pressed:
+                self.key_state[key] = (is_pressed, self.current_time)
+
+    def process_key_events(self):
+        """处理所有注册的按键事件"""
+        # 确保 prev_key_state 存在
+        if not hasattr(self, 'prev_key_state'):
+            self.prev_key_state = {}
+
+        for obj, method, key, mode in self.key_events:
+            # 确保按键存在于状态字典
+            if key not in self.key_state:
+                continue
+            is_pressed, start_time = self.key_state[key]
+            valid_trigger = False
+            # 获取上一帧的状态（如果存在）
+            was_pressed, _ = self.prev_key_state.get(key, (not is_pressed, 0))
+            # "pressed"模式：按键在本帧刚被按下（上一帧未按下）
+            if mode == "pressed":
+                if is_pressed and not was_pressed:
+                    valid_trigger = True
+            # "released"模式：按键在本帧刚被释放（上一帧按下）
+            elif mode == "released":
+                if not is_pressed and was_pressed:
+                    valid_trigger = True
+            # "held"模式：按键被按住超过1帧（当前帧和上一帧都按下）
+            elif mode == "held":
+                if is_pressed and was_pressed:
+                    # 添加一定的延迟确保不是刚按下的瞬间
+                    time_diff = self.current_time - start_time
+                    if time_diff > float(1000 / self.fps):
+                        valid_trigger = True
+            if valid_trigger:
+                try:
+                    self.add_task(method)
+                    print("triggered key event.")
+                except Exception as e:
+                    self.log_debug(f"按键事件错误: {e}")
+
     def bind_key(self, key: int, callback: Callable):
         """绑定全局按键"""
         self.key_bindings[key] = callback
@@ -163,9 +274,9 @@ class Game:
         scene.setup()
         self.log_debug(f"Switched to scene: {scene.name}")
 
-    def add_task(self, generator, delay=0):
+    def add_task(self, function, delay=0):
         self.tasks.append({
-            'generator': generator,
+            'generator': function(),
             'next_run': self.current_time + delay
         })
 
@@ -193,9 +304,13 @@ class Game:
         self.tasks = new_tasks
 
     def log_debug(self, info: str):
-        self.debug_info.append(info)
+        if self.debug:
+            self.debug_info.append(info)
 
     def draw_debug_info(self):
+        if not self.debug:  # 调试模式关闭时直接返回，不绘制
+            return
+
         for i, info in enumerate(self.debug_info):
             text = self.font.render(info, True, (255, 255, 0))
             self.screen.blit(text, (10, 10 + i * 25))
@@ -253,14 +368,18 @@ class Scene:
         # 添加所有main任务到游戏队列
         for task in self.main_tasks:
             if hasattr(task, '__call__'):
-                self.game.add_task(task())
+                self.game.add_task(task)
 
         # 原有的main函数处理
         if hasattr(self, 'main') and callable(self.main):
-            self.game.add_task(self.main())
+            self.game.add_task(self.main)
 
         for sprite in self.sprites:
             sprite.setup(self)
+
+        # 收集按键事件监听器
+        if self.game:
+            self.game.setup_key_listeners(self)
 
     def add_sprite(self, sprite):
         self.sprites.append(sprite)
@@ -374,6 +493,12 @@ class Sprite:
         self.broadcast_handlers = {}  # 存储广播事件处理函数
         self.is_clones = False  # 标记是否为克隆体
 
+        self.collision_mask = None  # 存储用于碰撞检测的mask
+        self.edge_handlers = {}  # 存储碰到舞台边缘的事件处理函数
+        self.sprite_collision_handlers = []  # 存储碰到其他精灵的事件处理函数
+        self._last_edge = None  # 记录上次碰撞的边缘
+        self._collided_sprites = set()  # 记录当前碰撞的精灵ID
+
     # 新增的图片管理方法
     def add_costume(self, name: str, image: pygame.Surface):
         """添加一个造型"""
@@ -436,6 +561,28 @@ class Sprite:
             w, h = self.image.get_size()
             self.collision_radius = min(w, h) // 2
 
+    def _create_mask(self):
+        """如果当前图像有alpha通道，创建碰撞mask"""
+        image = self.image
+        if image is not None and image.get_flags() & pygame.SRCALPHA:
+            # 创建带缩放和旋转的mask
+            if self.size != 1.0:
+                orig_size = image.get_size()
+                new_size = (int(orig_size[0] * self.size),
+                            int(orig_size[1] * self.size))
+                scaled_img = pygame.transform.scale(image, new_size)
+            else:
+                scaled_img = image
+
+            if self.direction != 0:
+                rotated_img = pygame.transform.rotate(scaled_img,
+                                                      self.direction - 90)
+                self.collision_mask = pygame.mask.from_surface(rotated_img)
+            else:
+                self.collision_mask = pygame.mask.from_surface(scaled_img)
+        else:
+            self.collision_mask = None
+
     def main(self):
         pass
 
@@ -477,20 +624,37 @@ class Sprite:
             # 添加所有main任务到游戏队列
             for task in self.main_tasks:
                 if hasattr(task, '__call__'):
-                    self.game.add_task(task())
+                    self.game.add_task(task)
 
             # 原有的main函数处理
             if hasattr(self, 'main') and callable(self.main):
-                self.game.add_task(self.main())
+                self.game.add_task(self.main)
         else:
             # 添加所有克隆任务到游戏队列
             for task in self.clones_tasks:
                 if hasattr(task, '__call__'):
-                    self.game.add_task(task())
+                    self.game.add_task(task)
 
             # 原有的克隆函数处理
             if hasattr(self, 'clones') and callable(self.clones):
-                self.game.add_task(self.clones())
+                self.game.add_task(self.clones)
+
+        # 收集所有标记为@handle_edge_collision的函数
+        for name in dir(self):
+            method = getattr(self, name)
+            if callable(method) and hasattr(method, '_edge_collision'):
+                edge = getattr(method, '_edge_collision')
+                self.edge_handlers[edge] = method
+
+        # 收集所有标记为@handle_sprite_collision的函数
+        for name in dir(self):
+            method = getattr(self, name)
+            if callable(method) and hasattr(method, '_sprite_collision'):
+                self.sprite_collision_handlers.append(method)
+
+        # 收集按键事件监听器
+        if self.scene and self.scene.game:
+            self.scene.game.setup_key_listeners(self)
 
     def handle_event(self, event: pygame.event.Event):
         pass
@@ -506,11 +670,141 @@ class Sprite:
             if self.speech_timer <= 0:
                 self.speech = None
 
+        # 检测舞台边缘碰撞
+        if self.collision_radius:
+            current_edge = None
+
+            # 计算精灵边界
+            x, y = self.pos.x, self.pos.y
+            radius = self.collision_radius * self.size
+
+            if x - radius <= 0:
+                current_edge = "left"
+            elif x + radius >= self.game.width:
+                current_edge = "right"
+            elif y - radius <= 0:
+                current_edge = "top"
+            elif y + radius >= self.game.height:
+                current_edge = "bottom"
+
+            if current_edge and current_edge != self._last_edge:
+                self._on_edge_collision(current_edge)
+                self._last_edge = current_edge
+            elif not current_edge:
+                self._last_edge = None
+
+        # 检测精灵碰撞
+        if hasattr(self, "scene") and self.scene and self.scene.sprites:
+            current_frame_collisions = set()
+
+            for other in self.scene.sprites:
+                if other is self or not other.visible:
+                    continue
+
+                if self.collides_with(other):
+                    current_frame_collisions.add(id(other))
+
+                    # 只在新的碰撞发生时触发
+                    if id(other) not in self._collided_sprites:
+                        self._on_sprite_collision(other)
+
+            self._collided_sprites = current_frame_collisions
+
     def broadcast(self, event_name: str):
         """广播事件，使所有精灵和场景都能响应"""
         #! 说不定要添加Game的广播方法
         if self.scene:
             self.scene.broadcast(event_name)
+
+    def collides_with(self, other: "Sprite") -> bool:
+        """检查两个精灵是否碰撞"""
+        if not self.visible or not other.visible:
+            return False
+
+        # 优先使用mask碰撞检测（如果两者都有mask）
+        if self.collision_mask and other.collision_mask:
+            # 计算两个精灵的位置差
+            offset_x = int(other.pos.x - self.pos.x)
+            offset_y = int(other.pos.y - self.pos.y)
+
+            # 检查mask是否有重叠
+            return self.collision_mask.overlap(
+                other.collision_mask, (offset_x, offset_y)) is not None
+
+        # 如果没有mask，使用圆形碰撞检测作为后备
+        # 计算两个精灵之间的距离
+        dx = self.pos.x - other.pos.x
+        dy = self.pos.y - other.pos.y
+        distance = math.sqrt(dx * dx + dy * dy)  # 使用欧几里得距离公式
+
+        # 获取半径
+        my_radius = self.collision_radius * self.size
+        other_radius = other.collision_radius * other.size
+
+        # 检查是否碰撞
+        return distance < (my_radius + other_radius)
+
+    def _on_edge_collision(self, edge: str):
+        """触发碰到舞台边缘事件"""
+        # 在游戏日志中记录
+        if self.game:
+            self.game.log_debug(
+                f"Edge collision: {self.name} hit {edge} border")
+
+        # 调用标记为@handle_edge_collision的函数
+        for edge_name, handler in self.edge_handlers.items():
+            if edge_name == edge or edge_name == "any":
+                # 如果需要传递参数
+                if "edge" in handler.__code__.co_varnames:
+                    # 直接调用处理函数并传递参数
+                    try:
+                        result = handler(edge)
+                        if hasattr(result, '__next__'):  # 如果返回生成器
+                            self.scene.game.add_task(result)
+                    except TypeError:
+                        # 如果函数不接受参数，尝试无参数调用
+                        result = handler()
+                        if hasattr(result, '__next__'):
+                            self.scene.game.add_task(result)
+                else:
+                    # 直接调用处理函数
+                    try:
+                        result = handler()
+                        if hasattr(result, '__next__'):  # 如果返回生成器
+                            self.scene.game.add_task(result)
+                    except TypeError:
+                        pass
+
+    def _on_sprite_collision(self, other: "Sprite"):
+        """触发碰到其他精灵事件"""
+        for handler in self.sprite_collision_handlers:
+            expected_target = getattr(handler, '_sprite_collision', None)
+            # 检测逻辑分为三种情况：
+            if expected_target is None:  # 无参数装饰器，匹配所有精灵
+                valid = True
+            elif isinstance(expected_target, type):  # 按类型匹配
+                valid = isinstance(other, expected_target)
+            elif isinstance(expected_target, str):  # 按名称匹配
+                valid = other.name == expected_target
+            else:
+                continue
+            if valid:
+                if "other" in handler.__code__.co_varnames:
+                    try:
+                        result = handler(other)
+                        if hasattr(result, '__next__'):
+                            self.scene.game.add_task(result)
+                    except TypeError:
+                        result = handler()
+                        if hasattr(result, '__next__'):
+                            self.scene.game.add_task(result)
+                else:
+                    try:
+                        result = handler()
+                        if hasattr(result, '__next__'):
+                            self.scene.game.add_task(result)
+                    except TypeError:
+                        pass
 
     def set_size(self, size: float):
         self.size = size
@@ -531,7 +825,8 @@ class Sprite:
         self.pos.x += dx
         self.pos.y += dy
 
-        # 确保不出边界
+        # 确保不出边界 已废弃
+        '''
         radius = self.collision_radius
         if radius > 0:
             self.pos.x = max(radius, min(self.game.width - radius, self.pos.x))
@@ -540,6 +835,7 @@ class Sprite:
 
         if self.pen_down:
             self.pen_path.append((int(self.pos.x), int(self.pos.y)))
+        '''
 
     def turn_right(self, degrees: float):
         self.direction = (self.direction - degrees) % 360
@@ -552,8 +848,9 @@ class Sprite:
 
     def point_towards(self, x: float, y: float):
         dx = x - self.pos.x
-        dy = y - self.pos.y
-        self.direction = (90 - math.degrees(math.atan2(dy, dx))) % 360
+        dy = self.pos.y - y  # 转换屏幕dy到数学坐标系
+        angle_rad = math.atan2(dy, dx)  # 使用正确的dx和dy计算角度
+        self.direction = math.degrees(angle_rad) % 360
 
     def goto(self, x: float, y: float):
         self.pos.x = x
@@ -593,28 +890,39 @@ class Sprite:
             w, h = self.image.get_size()
             self.collision_radius = min(w, h) * self.size // 2
 
-    def clone(self):
-        """克隆精灵"""
-        if not self.game or not self.scene:
+    def clone(self, other_sprite: 'Sprite' = None):
+        """克隆精灵（支持克隆自己或其他精灵）
+
+        Args:
+            other_sprite: 要克隆的目标精灵（默认None表示克隆自己）
+        """
+        if not self.scene or not self.game:
             return
-        if len(self.scene.sprites) < 500:
-            clone = self.__class__()
-            clone.pos = pygame.Vector2(self.pos)
-            clone.direction = self.direction
-            clone.size = self.size
-            clone.color = self.color
 
-            # 确保克隆体复制所有造型
-            clone.costumes = self.costumes.copy()  # 复制造型字典
-            clone.current_costume = self.current_costume  # 保持当前造型
+        target = other_sprite if other_sprite else self
 
-            # 复制图像属性
-            clone._default_image = self._default_image
-            clone.collision_radius = self.collision_radius
+        # 限制克隆数量
+        if len(self.scene.sprites) >= 500:
+            return
 
-            clone.is_clones = True
-            self.scene.add_sprite(clone)
-            self.game.log_debug(f"Cloned sprite: {self.name}")
+        # 克隆操作（支持克隆任意精灵）
+        clone = target.__class__()
+
+        # 复制基本属性
+        clone.pos = pygame.Vector2(target.pos)
+        clone.direction = target.direction
+        clone.size = target.size
+        clone.color = target.color
+        clone.costumes = target.costumes.copy()
+        clone.current_costume = target.current_costume
+        clone._default_image = target._default_image
+        clone.collision_radius = target.collision_radius
+
+        clone.is_clones = True
+
+        # 添加到当前场景
+        self.scene.add_sprite(clone)
+        self.game.log_debug(f"Cloned sprite: {target.name}")
 
     def delete_self(self):
         self.delete = True
@@ -639,6 +947,105 @@ class Sprite:
 
     def clear_pen(self):
         self.pen_path = []
+
+    def face_towards(self, target: Any):
+        """让精灵面向特定目标。
+
+        参数:
+            target: 可以是以下类型之一:
+                - pygame.Vector2: 面向特定坐标
+                - tuple (x, y): 面向特定坐标
+                - Sprite: 面向另一个精灵
+                - "mouse": 面向鼠标位置
+                - "edge": 面向最近的舞台边缘
+                - str: 面向场景中name属性相符的精灵（用户保证唯一）
+        """
+        # 处理字符串参数（精灵名称）
+        if isinstance(target, str):
+            # 在当前场景中查找名称相符的精灵
+            matching_sprites = [
+                sprite for sprite in self.scene.sprites
+                if sprite.name == target
+            ]
+
+            if not matching_sprites:
+                # 如果没有找到匹配的精灵
+                if self.game:
+                    self.game.log_debug(
+                        f"No sprite named '{target}' found to face towards")
+                return
+
+            # 用户保证只有一个匹配项，所以取第一个
+            target_sprite = matching_sprites[0]
+            self.point_towards(target_sprite.pos.x, target_sprite.pos.y)
+            return
+
+        # 处理坐标点
+        if isinstance(target, pygame.Vector2):
+            self.point_towards(target.x, target.y)
+        elif isinstance(target, tuple) and len(target) == 2:
+            x, y = target
+            self.point_towards(x, y)
+
+        # 处理其他精灵
+        elif isinstance(target, Sprite):
+            self.point_towards(target.pos.x, target.pos.y)
+
+        # 处理特殊关键字
+        elif target == "mouse":
+            mouse_x, mouse_y = pygame.mouse.get_pos()
+            self.point_towards(mouse_x, mouse_y)
+
+        elif target == "edge":
+            # 计算到各边缘的距离
+            distances = {
+                "left": self.pos.x,
+                "right": self.game.width - self.pos.x,
+                "top": self.pos.y,
+                "bottom": self.game.height - self.pos.y,
+            }
+
+            # 找到最近的边缘
+            closest_edge = min(distances, key=distances.get)
+
+            # 指向最近边缘的中心位置
+            if closest_edge == "left":
+                self.point_towards(0, self.pos.y)
+            elif closest_edge == "right":
+                self.point_towards(self.game.width, self.pos.y)
+            elif closest_edge == "top":
+                self.point_towards(self.pos.x, 0)
+            elif closest_edge == "bottom":
+                self.point_towards(self.pos.x, self.game.height)
+
+    def face_random_direction(self):
+        """让精灵指向随机方向"""
+        self.direction = random.randint(0, 359)
+
+    def face_horizontal(self, degrees: float = 0):
+        """水平面向特定方向
+        参数:
+            degrees: 
+                0 - 右方
+                180 - 左方
+                90 - 上 (默认Scratch方向，y轴向下)
+                270 - 下
+        """
+        self.point_in_direction(degrees)
+
+    def face_vertical(self, degrees: float = 90):
+        """垂直面向特定方向
+        参数:
+            degrees: 
+                90 - 上 (默认方向)
+                270 - 下
+        """
+        self.point_in_direction(degrees)
+
+    def face_away_from(self, target: Any):
+        """背向特定目标"""
+        self.face_towards(target)
+        self.point_in_direction((self.direction + 180) % 360)
 
     def draw(self, surface: pygame.Surface):
         """绘制精灵"""
@@ -700,22 +1107,17 @@ class Sprite:
 
             surface.blit(text, (bubble_rect.x + 10, bubble_rect.y + 7))
 
-
-
 class Cat(Sprite):
+
     def __init__(self):
         super().__init__()
         self.name = "Cat"
-        
-        self.add_costume(
-            "costume1", 
-            pygame.image.load("cat1.svg").convert_alpha()
-        )
-        self.add_costume(
-            "costume2", 
-            pygame.image.load("cat2.svg").convert_alpha()
-        )
-        
+
+        self.add_costume("costume1",
+                         pygame.image.load("cat1.svg").convert_alpha())
+        self.add_costume("costume2",
+                         pygame.image.load("cat2.svg").convert_alpha())
+
     def walk(self):
         self.next_costume()
 
