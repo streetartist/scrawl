@@ -102,7 +102,8 @@ class MyScene(Scene):
         ball = Ball()
         self.add_sprite(ball)
 
-    def main(self):
+    @as_main
+    def main1(self):
         while True:
             # 添加粒子系统
             explosion = ParticleSystem(400, 300)
