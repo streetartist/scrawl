@@ -2,6 +2,8 @@
 
 [中文](README_zh.md) | English
 
+中文文档请点击 中文 ，Scrawl 交流QQ群：1001578435
+
 <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
 
 Scrawl is a Scratch-like game engine based on Pygame, designed to provide developers with an intuitive programming experience similar to Scratch, while retaining the power of Python.
