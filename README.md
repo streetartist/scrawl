@@ -133,9 +133,6 @@ class Witch(Sprite):
         self.fireball.direction = self.direction
         self.clone(self.fireball)
 
-    def main(self):
-        print("witch main")
-
 
 # 定义场景
 class MyScene(Scene):
@@ -243,7 +240,8 @@ class MyScene(Scene):
         ball = Ball()
         self.add_sprite(ball)
 
-    def main(self):
+    @as_main
+    def main1(self):
         while True:
             # Add particle system
             explosion = ParticleSystem(400, 300)
