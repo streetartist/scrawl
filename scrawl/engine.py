@@ -5,14 +5,15 @@ import math
 import random
 from collections import deque
 from typing import Tuple, List, Callable, Any, Dict
+import os
 
 
-# 导入包所在路径
-from . import PACKAGE_DIR
+# 获取当前包目录的绝对路径
+PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def get_resource_path(resource):
     # 组合包内其他文件的路径
-    data_path = os.path.join(PACKAGE_PATH, resource)
+    data_path = os.path.join(PACKAGE_DIR, resource)
     return data_path
 
 
