@@ -141,7 +141,7 @@ class Game:
 
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
-        
+
         if not self.scene:
             print("No scene set!")
             return
@@ -154,7 +154,7 @@ class Game:
 
         while self.running:
             self.current_time = pygame.time.get_ticks()
-            
+
             # 保存上一帧的按键状态
             prev_key_down_events = dict(self.key_down_events)
 
@@ -166,14 +166,14 @@ class Game:
                 if event.type == pygame.KEYDOWN:
                     # 记录按键按下的时间
                     self.key_down_events[event.key] = self.current_time
-                    
+
                     # 先检查全局按键绑定
                     if event.key in self.key_bindings:
                         self.key_bindings[event.key]()
                     # 再检查场景按键绑定
                     elif self.scene and event.key in self.scene.key_bindings:
                         self.scene.key_bindings[event.key]()
-                        
+
                     # 处理按键按下事件
                     self.process_key_event(event.key, "pressed")
 
@@ -184,13 +184,13 @@ class Game:
                     # 从按键状态中移除
                     if event.key in self.key_down_events:
                         del self.key_down_events[event.key]
-                        
+
                 # 将事件传递给场景和精灵
                 if self.scene:
                     self.scene.handle_event(event)
                     for sprite in self.scene.sprites:
                         sprite.handle_event(event)
-            
+
             # 处理按住状态的事件
             self.process_held_keys(prev_key_down_events)
 
@@ -220,7 +220,7 @@ class Game:
                     self.add_task(method)
                 except Exception as e:
                     self.log_debug(f"按键事件错误: {e}")
-    
+
     def process_held_keys(self, prev_key_down_events: dict):
         """处理按住状态的事件"""
         for key, press_time in list(self.key_down_events.items()):
@@ -257,6 +257,17 @@ class Game:
             'generator': function(),
             'next_run': self.current_time + delay
         })
+
+    def setup_key_listeners(self, obj):
+        """设置对象（场景或精灵）的按键监听器"""
+        for name in dir(obj):
+            method = getattr(obj, name)
+            if callable(method) and hasattr(method, '_key_event'):
+                key, mode = getattr(method, '_key_event')
+                self.key_events.append((obj, method, key, mode))
+                self.log_debug(
+                    f"注册按键事件: {key} -> {obj.__class__.__name__}.{method.__name__} ({mode})"
+                )
 
     def process_tasks(self):
         if not self.tasks:
@@ -642,16 +653,16 @@ class Sprite:
 
         # 检查是否有边缘碰撞处理函数
         self.needs_edge_collision = bool(self.edge_handlers)
-        
+
         # 检查是否有精灵碰撞处理函数
         self.needs_sprite_collision = bool(self.sprite_collision_handlers)
-        
+
         # 收集需要检测的精灵名称
         for handler in self.sprite_collision_handlers:
             target = getattr(handler, '_sprite_collision', None)
             if isinstance(target, str):
                 self.collision_targets.add(target)
-        
+
         # 更新碰撞检测标志
         self._update_collision_flags()
 
@@ -677,11 +688,11 @@ class Sprite:
         # 检测舞台边缘碰撞（如果精灵需要）
         if self.needs_edge_collision and self.collision_radius:
             current_edge = None
-            
+
             # 计算精灵边界
             x, y = self.pos.x, self.pos.y
             radius = self.collision_radius * self.size
-            
+
             if x - radius <= 0:
                 current_edge = "left"
             elif x + radius >= self.game.width:
@@ -690,37 +701,37 @@ class Sprite:
                 current_edge = "top"
             elif y + radius >= self.game.height:
                 current_edge = "bottom"
-            
+
             # 只在边缘发生变化时触发碰撞事件
             if current_edge and current_edge != self._last_edge:
                 self._on_edge_collision(current_edge)
                 self._last_edge = current_edge
             elif not current_edge:
                 self._last_edge = None
-        
+
         # 检测精灵碰撞（如果精灵需要）
         if self.needs_sprite_collision and self.scene and self.scene.sprites:
             current_frame_collisions = set()
-            
+
             # 遍历场景中的所有精灵
             for other in self.scene.sprites:
                 # 跳过自己和不可见的精灵
                 if other is self or not other.visible:
                     continue
-                
+
                 # 如果设置了目标名称，只检测匹配的精灵
                 if self.collision_targets and other.name not in self.collision_targets:
                     continue
-                
+
                 # 检查碰撞
                 if self.collides_with(other):
                     # 记录当前碰撞
                     current_frame_collisions.add(id(other))
-                    
+
                     # 如果是新的碰撞（上一帧未发生），触发碰撞事件
                     if id(other) not in self._collided_sprites:
                         self._on_sprite_collision(other)
-            
+
             # 更新碰撞记录
             self._collided_sprites = current_frame_collisions
 
@@ -820,15 +831,15 @@ class Sprite:
                             self.scene.game.add_task(result)
                     except TypeError:
                         pass
-    
+
     def _update_collision_flags(self):
         """更新碰撞检测标志"""
         # 检查是否有边缘碰撞处理函数
         self.needs_edge_collision = bool(self.edge_handlers)
-        
+
         # 检查是否有精灵碰撞处理函数
         self.needs_sprite_collision = bool(self.sprite_collision_handlers)
-        
+
         # 收集需要检测的精灵名称
         for handler in self.sprite_collision_handlers:
             target = getattr(handler, '_sprite_collision', None)
