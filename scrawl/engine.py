@@ -130,29 +130,14 @@ class Game:
                 self.font = pygame.font.SysFont(None, font_size)
                 print("警告: 字体初始化失败, 使用系统默认字体")
 
-        # 创建调试字体 - 小一
-        # self.debug_font = pygame.font.SysFont(None, debug_font_size)
-
         self.debug_info = []
         self.fps = 60
         self.background_color = (0, 0, 0)
         self.key_bindings = {}  # 全局按键绑定
 
-        self.key_state = {}  # 当前按键状态 {key: (is_pressed, last_time)}
         self.key_events = []  # 存储全局按键处理函数
-
+        self.key_down_events = {}  # 存储按键按下的时间 {key: timestamp}
         self.debug = False
-
-    def setup_key_listeners(self, obj):
-        """设置对象（场景或精灵）的按键监听器"""
-        for name in dir(obj):
-            method = getattr(obj, name)
-            if callable(method) and hasattr(method, '_key_event'):
-                key, mode = getattr(method, '_key_event')
-                self.key_events.append((obj, method, key, mode))
-                self.log_debug(
-                    f"注册按键事件: {key} -> {obj.__class__.__name__}.{method.__name__} ({mode})"
-                )
 
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
@@ -169,30 +154,45 @@ class Game:
 
         while self.running:
             self.current_time = pygame.time.get_ticks()
-
-            # 更新按键状态
-            self.update_key_state()
+            
+            # 保存上一帧的按键状态
+            prev_key_down_events = dict(self.key_down_events)
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
 
+                # 处理按键按下事件
                 if event.type == pygame.KEYDOWN:
+                    # 记录按键按下的时间
+                    self.key_down_events[event.key] = self.current_time
+                    
                     # 先检查全局按键绑定
                     if event.key in self.key_bindings:
                         self.key_bindings[event.key]()
                     # 再检查场景按键绑定
                     elif self.scene and event.key in self.scene.key_bindings:
                         self.scene.key_bindings[event.key]()
+                        
+                    # 处理按键按下事件
+                    self.process_key_event(event.key, "pressed")
 
+                # 处理按键释放事件
+                if event.type == pygame.KEYUP:
+                    # 处理按键释放事件
+                    self.process_key_event(event.key, "released")
+                    # 从按键状态中移除
+                    if event.key in self.key_down_events:
+                        del self.key_down_events[event.key]
+                        
                 # 将事件传递给场景和精灵
                 if self.scene:
                     self.scene.handle_event(event)
                     for sprite in self.scene.sprites:
                         sprite.handle_event(event)
-
-            # 处理按键事件
-            self.process_key_events()
+            
+            # 处理按住状态的事件
+            self.process_held_keys(prev_key_down_events)
 
             self.process_tasks()
 
@@ -212,58 +212,26 @@ class Game:
         pygame.quit()
         sys.exit()
 
-    def set_background(self, color: Tuple[int, int, int]):
-        self.background_color = color
-
-    def update_key_state(self):
-        """更新按键状态"""
-        current_keys = pygame.key.get_pressed()
-        # 保存上一帧的状态
-        self.prev_key_state = dict(self.key_state) if hasattr(
-            self, 'prev_key_state') else {}
-
-        for key in range(len(current_keys)):
-            is_pressed = current_keys[key]
-            # 第一次记录该键或状态发生变化
-            if key not in self.key_state or self.key_state[key][
-                    0] != is_pressed:
-                self.key_state[key] = (is_pressed, self.current_time)
-
-    def process_key_events(self):
-        """处理所有注册的按键事件"""
-        # 确保 prev_key_state 存在
-        if not hasattr(self, 'prev_key_state'):
-            self.prev_key_state = {}
-
-        for obj, method, key, mode in self.key_events:
-            # 确保按键存在于状态字典
-            if key not in self.key_state:
-                continue
-            is_pressed, start_time = self.key_state[key]
-            valid_trigger = False
-            # 获取上一帧的状态（如果存在）
-            was_pressed, _ = self.prev_key_state.get(key, (not is_pressed, 0))
-            # "pressed"模式：按键在本帧刚被按下（上一帧未按下）
-            if mode == "pressed":
-                if is_pressed and not was_pressed:
-                    valid_trigger = True
-            # "released"模式：按键在本帧刚被释放（上一帧按下）
-            elif mode == "released":
-                if not is_pressed and was_pressed:
-                    valid_trigger = True
-            # "held"模式：按键被按住超过1帧（当前帧和上一帧都按下）
-            elif mode == "held":
-                if is_pressed and was_pressed:
-                    # 添加一定的延迟确保不是刚按下的瞬间
-                    time_diff = self.current_time - start_time
-                    if time_diff > float(1000 / self.fps):
-                        valid_trigger = True
-            if valid_trigger:
+    def process_key_event(self, key: int, mode: str):
+        """处理单个按键事件"""
+        for obj, method, event_key, event_mode in self.key_events:
+            if key == event_key and mode == event_mode:
                 try:
                     self.add_task(method)
-                    print("triggered key event.")
                 except Exception as e:
                     self.log_debug(f"按键事件错误: {e}")
+    
+    def process_held_keys(self, prev_key_down_events: dict):
+        """处理按住状态的事件"""
+        for key, press_time in list(self.key_down_events.items()):
+            # 检查按键是否被按住超过一帧
+            if self.current_time - press_time > 1000 / self.fps:
+                # 确保按键在上一帧也存在（不是刚按下的）
+                if key in prev_key_down_events:
+                    self.process_key_event(key, "held")
+
+    def set_background(self, color: Tuple[int, int, int]):
+        self.background_color = color
 
     def bind_key(self, key: int, callback: Callable):
         """绑定全局按键"""
