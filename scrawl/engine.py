@@ -736,10 +736,8 @@ class Sprite:
             
             # 遍历场景中的所有精灵
             for other in self.scene.sprites:
-                # 跳过自己、不可见的精灵和不需要碰撞检测的精灵
-                if (other is self or 
-                    not other.visible or 
-                    (hasattr(other, "needs_sprite_collision") and not other.needs_sprite_collision)):
+                # 跳过自己和不可见的精灵
+                if other is self or not other.visible:
                     continue
                 
                 # 如果设置了目标名称，只检测匹配的精灵
