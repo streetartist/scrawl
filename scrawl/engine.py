@@ -7,6 +7,15 @@ from collections import deque
 from typing import Tuple, List, Callable, Any, Dict
 
 
+# 导入包所在路径
+from . import PACKAGE_DIR
+
+def get_resource_path(resource):
+    # 组合包内其他文件的路径
+    data_path = os.path.join(PACKAGE_PATH, resource)
+    return data_path
+
+
 def on_key(key: int, mode: str = "pressed"):
     """将函数标记为按键事件处理函数
     mode: 
@@ -1114,9 +1123,9 @@ class Cat(Sprite):
         self.name = "Cat"
 
         self.add_costume("costume1",
-                         pygame.image.load("cat1.svg").convert_alpha())
+                         pygame.image.load(get_resource_path("cat1.svg")).convert_alpha())
         self.add_costume("costume2",
-                         pygame.image.load("cat2.svg").convert_alpha())
+                         pygame.image.load(get_resource_path("cat2.svg")).convert_alpha())
 
     def walk(self):
         self.next_costume()
