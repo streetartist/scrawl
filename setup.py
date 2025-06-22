@@ -11,7 +11,7 @@ setup(
  long_description=README,
  long_description_content_type='text/markdown',
  install_requires=INSTALL_PACKAGES,
- version='0.6.3',
+ version='0.6.4',
  url='http://github.com/streetartist/scrawl',
  author='Streetartist',
  author_email='207148178@qq.com',
@@ -21,5 +21,6 @@ setup(
  'pytest-cov',
  'pytest-sugar'
  ],
- python_requires='>=3'
+ python_requires='>=3',
+ include_package_data=True
 )
