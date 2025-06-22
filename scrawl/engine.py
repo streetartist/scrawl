@@ -150,7 +150,7 @@ class Game:
         self.running = True
 
         self.scene.game = self
-        self.scene.setup()
+        # self.scene.setup()
 
         while self.running:
             self.current_time = pygame.time.get_ticks()
@@ -400,19 +400,19 @@ class Scene:
         for sprite in self.sprites:
             if event_name in sprite.broadcast_handlers:
                 for handler in sprite.broadcast_handlers[event_name]:
-                    self.game.add_task(handler())
+                    self.game.add_task(handler)
 
         # 其次调用名为"on_{event_name}"的函数
         on_event_name = f"on_{event_name}"
         for sprite in self.sprites:
             if hasattr(sprite, on_event_name) and callable(
                     getattr(sprite, on_event_name)):
-                self.game.add_task(getattr(sprite, on_event_name)())
+                self.game.add_task(getattr(sprite, on_event_name))
 
         # 场景自身的事件处理
         if hasattr(self, on_event_name) and callable(
                 getattr(self, on_event_name)):
-            self.game.add_task(getattr(self, on_event_name)())
+            self.game.add_task(getattr(self, on_event_name))
 
     def handle_event(self, event: pygame.event.Event):
         """处理场景特定的事件"""
