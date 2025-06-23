@@ -2,7 +2,7 @@
 
 [中文](README_zh.md) | English
 
-For Chinese documentation, click **中文**. Scrawl QQ Group: **1001578435**
+For Chinese documentation, click **中文**. Scrawl QQ 交流群: **1001578435**
 
 <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
 
