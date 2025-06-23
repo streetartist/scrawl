@@ -318,7 +318,7 @@ game = Game(
     width=800, 
     height=600, 
     title="游戏标题",
-    font_path="字体路径.ttf",
+    font_path="字体.ttf",
     font_size=20,
     fullscreen=False
 )
@@ -431,7 +431,7 @@ self.next_costume()  # 切换至下一个造型
 ```
 
 ### 使用字体
-游戏调试信息的字体设置：
+游戏的字体设置：
 ```python
 game = Game(
     font_path="Simhei.ttf",  # 支持中文字体
