@@ -322,6 +322,7 @@ game = Game(
     font_size=20,
     fullscreen=False
 )
+game.set_scene(MyScene()) # 设置场景
 game.run(fps=60, debug=True)
 ```
 
@@ -333,14 +334,10 @@ class MyScene(Scene):
         super().__init__()
         # 添加精灵
         self.add_sprite(MySprite())
-        
-    def setup(self):
-        # 场景初始化逻辑
-        pass
-        
-    def update(self):
-        # 每帧更新逻辑
-        pass
+    
+    @as_main    
+    def main1():
+        pass # 场景主函数
 # 设置场景
 game.set_scene(MyScene())
 ```
@@ -356,10 +353,14 @@ class MySprite(Sprite):
         self.direction = 90  # 0=右，90=上
         self.size = 1.0
         self.visible = True
-        
-    def update(self):
-        # 精灵每帧更新逻辑
-        self.move(5)
+
+    @as_main   
+    def main1(self):
+        while True:
+            # 精灵主函数
+            self.move(5)
+            yield 2000 # 延时2000ms
+
 ```
 ---
 ## 事件处理
