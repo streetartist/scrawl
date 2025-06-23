@@ -1,40 +1,40 @@
-# Scrawl - A Scratch-like Python Game Engine
+# Scrawl - 类 Scratch 的 Python 游戏引擎
 
 [中文](README_zh.md) | English
 
-For Chinese documentation, click **中文**. Scrawl QQ 交流群: **1001578435**
+中文文档请点击 **中文**，Scrawl 交流QQ群：**1001578435**
 
 <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
 
-Scrawl is a Scratch-like game engine based on Pygame, designed to provide developers with an intuitive programming experience similar to Scratch, while leveraging Python's powerful capabilities.
+Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者提供类似 Scratch 的直观编程体验，同时借力 Python 的强大功能。
 
-## Best Demo
+## 最佳 Demo
 
-Witch Game: https://github.com/streetartist/scrawl_demo_witch
+女巫游戏：https://github.com/streetartist/scrawl_demo_witch
 
-## Core Features
+## 核心特性
 
--   🧩 **Scratch-like Development Paradigm**: Use decorators to mark main coroutines, clone coroutines, and event handler coroutines
--   🎮 **Built-in Game Object System**: Ready-to-use sprites, scenes, particle systems, and more
--   ⚙️ **Physics Engine Integration**: Supports physical properties like velocity, gravity, elasticity, etc.
--   📻 **Broadcast Messaging System**: Component communication mechanism
--   🔧 **Debugging Tools**: Real-time display of FPS, sprite count, and other debug information
--   🎨 **Drawing Tools**: Supports pen drawing
--   🚀 **Coroutine Task System**: Coroutine mechanism supports intuitive `while True` loops
+-   🧩 **类 Scratch 的开发范式**：使用装饰器标记主协程、克隆协程和事件处理协程
+-   🎮 **内置游戏对象系统**：开箱即用的精灵（Sprite）、场景（Scene）、粒子系统等
+-   ⚙️ **物理引擎集成**：支持速度、重力、弹性等物理属性
+-   📻 **广播消息系统**：组件间通信机制
+-   🔧 **调试工具**：实时显示 FPS、精灵数量等调试信息
+-   🎨 **绘图工具**：支持画笔绘制
+-   🚀 **协程任务系统**：协程机制支持直观的 `while True` 循环
 
-## Quick Start
+## 快速入门
 
-The following code demonstrates the basic usage of Scrawl:
+以下代码演示了 Scrawl 的基本用法：
 
-**Example 1:**
+**示例 1：**
 
 ```python
 from scrawl import *
 import pygame
 
-# svg files from https://scratch.mit.edu/projects/239626199/editor/
+# svg 文件来自 https://scratch.mit.edu/projects/239626199/editor/
 
-# Create game instance
+# 创建游戏实例
 game = Game()
 
 class Bat(Sprite):
@@ -67,7 +67,7 @@ class Bat(Sprite):
     def main1(self):
         while True:
             yield 3000
-            # Add bat
+            # 添加蝙蝠
             self.clone()
 
     @handle_edge_collision()
@@ -121,7 +121,7 @@ class Witch(Sprite):
         self.fireball.direction = self.direction
         self.clone(self.fireball)
 
-# Define scene
+# 定义场景
 class MyScene(Scene):
     def __init__(self):
         super().__init__()
@@ -130,21 +130,21 @@ class MyScene(Scene):
         witch = Witch()
         self.add_sprite(witch)
 
-# Run game
+# 运行游戏
 game.set_scene(MyScene())
 game.run(fps=60)
 ```
 
-*The video appears slow due to VNC recording. Runs quite smoothly when sprite count is below 200.*
+*视频看起来有点慢是因为通过 VNC 录制。当精灵数量少于 200 时，运行相当流畅。*
 
 https://github.com/user-attachments/assets/7398ac8f-689e-4088-9d78-414272c99438
 
-**Example 2:**
+**示例 2：**
 
 ```python
 from scrawl import Game, Scene, Sprite, Cat, as_main
 
-# Create game instance
+# 创建游戏实例
 game = Game()
 
 class MyCat(Cat):
@@ -157,28 +157,28 @@ class MyCat(Cat):
             self.walk()
             yield 500
 
-# Define scene
+# 定义场景
 class MyScene(Scene):
     def __init__(self):
         super().__init__()
-        # Add sprite
+        # 添加精灵
         cat = MyCat()
         self.add_sprite(cat)
 
-# Run game
+# 运行游戏
 game.set_scene(MyScene())
 game.run()
 ```
 
 ![Screen Capture 2025-06-15 090207](https://github.com/user-attachments/assets/2842db4a-147a-466e-ad69-4d74c24ba4b4)
 
-**Example 3:**
+**示例 3：**
 
 ```python
 from scrawl import *
 import time
 
-# Create game instance
+# 创建游戏实例
 game = Game()
 
 class Ball(Sprite):
@@ -205,255 +205,256 @@ class Ball(Sprite):
     def event1(self):
         self.say("hello")
 
-# Define scene
+# 定义场景
 class MyScene(Scene):
     def __init__(self):
         super().__init__()
-        # Add sprite
+        # 添加精灵
         ball = Ball()
         self.add_sprite(ball)
 
     @as_main
     def main1(self):
         while True:
-            # Add particle system
+            # 添加粒子系统
             explosion = ParticleSystem(400, 300)
-            self.add_particles(explosion)  # Add particle system to scene
+            self.add_particles(explosion)  # 将粒子系统添加到场景
             self.broadcast("event")
             yield 3000
 
-# Run game
+# 运行游戏
 game.set_scene(MyScene())
 game.run()
 ```
 
 https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 
-## Core Concepts
+## 核心概念
 
-### 1. Game Main Loop (`Game` Class)
--   Handles event loop
--   Manages scene switching
--   Controls frame rate and debug information
+### 1. 游戏主循环 (`Game` 类)
+-   处理事件循环
+-   管理场景切换
+-   控制帧率和调试信息
 
-### 2. Scene (`Scene` Class)
--   Serves as game container
--   Manages sprites and particle systems
--   Handles global events and broadcast messages
+### 2. 场景 (`Scene` 类)
+-   作为游戏容器
+-   管理精灵和粒子系统
+-   处理全局事件和广播消息
 
-### 3. Sprite (`Sprite` and `PhysicsSprite` Classes)
--   Basic game entities
--   Support properties like position, direction, size
--   Physics sprites support velocity, gravity, and other physical properties
+### 3. 精灵 (`Sprite` 和 `PhysicsSprite` 类)
+-   基本的游戏实体
+-   支持位置、方向、大小等属性
+-   物理精灵支持速度、重力等物理特性
 
-#### Common Methods:
+#### 常用方法:
 -   `move()`, `goto()`, `turn_left()`, `turn_right()`
 -   `say()`, `clone()`, `delete_self()`
--   `apply_impulse()`, `set_gravity()` (for physics sprites)
+-   `apply_impulse()`, `set_gravity()` (用于物理精灵)
 
-### 4. Event System
--   **Broadcast Mechanism**: Component communication
--   **Key Binding**: Global and scene-level bindings
--   **Sprite Events**: Supports collision detection
+### 4. 事件系统
+-   **广播机制**：组件间通信
+-   **按键绑定**：全局和场景级别的绑定
+-   **精灵事件**：支持碰撞检测
 
-## Documentation Index
+## 文档索引
 
-1.  **Core Class Reference**
-    -   Game - Game Controller
-    -   Scene - Game Scene
-    -   Sprite - Base Sprite Class
-    -   PhysicsSprite - Physics Sprite Class
-2.  **Decorator System**
-    -   `@as_main` - Marks main behavior coroutine
-    -   `@as_clones` - Marks clone behavior
-    -   `@handle_broadcast` - Broadcast handler
-3.  **Advanced Features**
-    -   Particle Systems
-    -   Drawing Tools
-    -   Collision Detection
-    -   Physics System
+1.  **核心类参考**
+    -   Game - 游戏控制器
+    -   Scene - 游戏场景
+    -   Sprite - 基础精灵类
+    -   PhysicsSprite - 物理精灵类
+2.  **装饰器系统**
+    -   `@as_main` - 标记主行为协程
+    -   `@as_clones` - 标记克隆行为
+    -   `@handle_broadcast` - 广播处理程序
+3.  **高级特性**
+    -   粒子系统
+    -   绘图工具
+    -   碰撞检测
+    -   物理系统
 
-## Installation
+## 安装
 
 ```bash
 pip install scrawl-engine
 ```
 
-## Development Documentation (Tentative Version)
+## 开发文档（试行版）
 
-# Scrawl Library Usage Documentation
 
-## Table of Contents
+# Scrawl 库使用文档
 
-- Core Concepts
-  - Game Class
-  - Scene Class
-  - Sprite Class
-- Event Handling
-  - Key Events
-  - Collision Detection
-  - Broadcast Events
-- Sprite Cloning
-  - Creating Clones
-  - Clone Behavior
-- Resource Management
-  - Adding Images
-  - Using Fonts
-- Advanced Features
-  - Physics Sprites
-  - Particle Systems
-  - Pen Effects
-- Debugging Tools
-  - Debug Mode
-  - Performance Monitoring
+## 目录
 
+- 核心概念
+  - Game 类
+  - Scene 类
+  - Sprite 类
+- 事件处理
+  - 按键事件
+  - 碰撞检测
+  - 广播事件
+- 精灵克隆
+  - 创建克隆
+  - 克隆体行为
+- 资源管理
+  - 添加图片
+  - 使用字体
+- 高级功能
+  - 物理精灵
+  - 粒子系统
+  - 画笔效果
+- 调试工具
+  - 调试模式
+  - 性能监控
 ---
 
-## Core Concepts
-### Game Class
-Main game controller responsible for initialization and running game loop:
+## 核心概念
+### Game 类
+游戏主控制器，负责初始化和运行游戏循环：
 ```python
 game = Game(
     width=800, 
     height=600, 
-    title="Game Title",
-    font_path="font.ttf",
+    title="游戏标题",
+    font_path="字体.ttf",
     font_size=20,
     fullscreen=False
 )
-game.set_scene(MyScene()) # Set scene
+game.set_scene(MyScene()) # 设置场景
 game.run(fps=60, debug=True)
 ```
 
-### Scene Class
-Game scene container for managing sprites and particle systems:
+### Scene 类
+游戏场景，容器用于管理精灵和粒子系统：
 ```python
 class MyScene(Scene):
     def __init__(self):
         super().__init__()
-        # Add sprite
+        # 添加精灵
         self.add_sprite(MySprite())
     
     @as_main    
     def main1():
-        pass # Scene main function
-# Set scene
+        pass # 场景主函数
+# 设置场景
 game.set_scene(MyScene())
 ```
 
-### Sprite Class
-Basic elements in the game with properties like position, direction, size:
+### Sprite 类
+游戏中的基本元素，具有位置、方向、大小等属性：
 ```python
 class MySprite(Sprite):
     def __init__(self):
         super().__init__()
-        self.name = "Sprite Name"
+        self.name = "精灵名称"
         self.pos = pygame.Vector2(100, 100)
-        self.direction = 90  # 0=right, 90=up
+        self.direction = 90  # 0=右，90=上
         self.size = 1.0
         self.visible = True
 
     @as_main   
     def main1(self):
         while True:
-            # Sprite main function
+            # 精灵主函数
             self.move(5)
-            yield 2000 # Delay 2000ms
+            yield 2000 # 延时2000ms
+
 ```
 ---
-## Event Handling
-### Key Events
-Handle key events using decorators:
+## 事件处理
+### 按键事件
+使用装饰器处理按键事件：
 ```python
-@on_key(pygame.K_SPACE, "pressed")  # Triggered on press
+@on_key(pygame.K_SPACE, "pressed")  # 按下瞬间触发
 def space_pressed(self):
-    print("Space pressed")
-@on_key(pygame.K_LEFT, "held")  # Continuously triggered while held
+    print("空格键按下")
+@on_key(pygame.K_LEFT, "held")  # 按住状态持续触发
 def left_held(self):
     self.turn_left(2)
 ```
 
-### Collision Detection
-Handle collisions between sprites and with boundaries:
+### 碰撞检测
+精灵间碰撞和边界碰撞处理：
 ```python
-# Edge collision detection
-@handle_edge_collision("left")  # Collide with left edge
+# 边缘碰撞检测
+@handle_edge_collision("left")  # 碰撞左边
 def hit_left(self):
-    self.say("Hit left wall")
-# Sprite collision detection
-@handle_sprite_collision("Enemy")  # Collide with sprite named "Enemy"
+    self.say("碰到左边墙")
+# 精灵碰撞检测
+@handle_sprite_collision("Enemy")  # 与指定名称精灵碰撞
 def hit_enemy(self, other):
     self.delete_self()
 ```
 
-### Broadcast Events
-Communication mechanism between sprites and scenes:
+### 广播事件
+精灵和场景间的通信机制：
 ```python
-# Broadcast event
+# 广播事件
 self.broadcast("gameover")
-# Handle broadcast event
+# 处理广播事件
 @handle_broadcast("gameover")
 def on_gameover(self):
     self.visible = True
 ```
 ---
-## Sprite Cloning
-### Creating Clones
-Clone existing sprites:
+## 精灵克隆
+### 创建克隆
+克隆现有精灵：
 ```python
-# Clone self
+# 克隆自身
 self.clone()
-# Clone other sprite
+# 克隆其他精灵
 self.clone(other_sprite)
 ```
 
-### Clone Behavior
-Define logic specific to clones:
+### 克隆体行为
+定义克隆体特有逻辑：
 ```python
 class Bat(Sprite):
-    @as_clones  # Mark as clone task
+    @as_clones  # 标记为克隆体任务
     def clones_behavior(self):
         self.visible = True
         while True:
             self.move(5)
-            yield 200  # Move every 200ms
+            yield 200  # 每200毫秒移动一次
 ```
 ---
-## Resource Management
-### Adding Images
-Add multiple costumes for sprites:
+## 资源管理
+### 添加图片
+为精灵添加多个造型：
 ```python
 self.add_costume("costume1", pygame.image.load("cat1.svg"))
 self.add_costume("costume2", pygame.image.load("cat2.svg"))
-self.switch_costume("costume1")  # Switch costume
-self.next_costume()  # Switch to next costume
+self.switch_costume("costume1")  # 切换造型
+self.next_costume()  # 切换至下一个造型
 ```
 
-### Using Fonts
-Game font settings:
+### 使用字体
+游戏的字体设置：
 ```python
 game = Game(
-    font_path="Simhei.ttf",  # Supports Chinese fonts
+    font_path="Simhei.ttf",  # 支持中文字体
     font_size=20
 )
 ```
 ---
-## Advanced Features
-### Physics Sprites
-Sprites with physical properties (velocity, gravity, friction):
+## 高级功能
+### 物理精灵
+具有物理特性的精灵（速度、重力、摩擦等）：
 ```python
 class PhysicsBall(PhysicsSprite):
     def __init__(self):
         super().__init__()
         self.velocity = pygame.Vector2(0, 5)
         self.gravity = pygame.Vector2(0, 0.2)
-        self.elasticity = 0.8  # Elasticity coefficient
+        self.elasticity = 0.8  # 弹性系数
 ```
 
-### Particle Systems
-Create particle effects:
+### 粒子系统
+创建粒子效果：
 ```python
-# Create particle system at specified position
+# 在指定位置创建粒子系统
 self.scene.add_particles(
     ParticleSystem(
         x=100, 
@@ -464,38 +465,39 @@ self.scene.add_particles(
 )
 ```
 
-### Pen Effects
-Implement drawing functionality:
+### 画笔效果
+实现绘图功能：
 ```python
-# Enable pen
+# 启用画笔
 self.pen_down = True
 self.pen_color = (255, 0, 0)
 self.pen_size = 3
-# Automatically record path when moving
+# 移动时自动记录路径
 self.move(100)
-# Clear pen trails
+# 清除画笔轨迹
 self.clear_pen()
 ```
 ---
-## Debugging Tools
-### Debug Mode
-Enable debug information display:
+## 调试工具
+### 调试模式
+启用调试信息显示：
 ```python
-game.run(debug=True)  # Enable debug mode
-# Log debug information
-game.log_debug("Sprite created")
+game.run(debug=True)  # 开启调试模式
+# 记录调试信息
+game.log_debug("精灵已创建")
 ```
 
-### Performance Monitoring
-Key performance metrics displayed on screen:
-1. Real-time FPS
-2. Number of sprites in scene
-3. Current scene name
-4. Custom debug information
+### 性能监控
+屏幕显示的关键性能指标：
+1. 实时FPS
+2. 场景中精灵数量
+3. 当前场景名称
+4. 自定义调试信息
 
-## Contribution Guidelines
 
-Welcome to submit issues and pull requests via GitHub:
+## 贡献指南
+
+欢迎通过 GitHub 提交 issues 和 pull requests：
 https://github.com/streetartist/scrawl
 
 ---
