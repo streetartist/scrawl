@@ -280,9 +280,234 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 pip install scrawl-engine
 ```
 
-## 开发文档
+## 开发文档（试行版）
 
-即将推出...
+
+Scrawl 库使用文档
+
+目录
+
+1. "核心概念" (#核心概念)
+   - "Game 类" (#game-类)
+   - "Scene 类" (#scene-类)
+   - "Sprite 类" (#sprite-类)
+2. "事件处理" (#事件处理)
+   - "按键事件" (#按键事件)
+   - "碰撞检测" (#碰撞检测)
+   - "广播事件" (#广播事件)
+3. "精灵克隆" (#精灵克隆)
+   - "创建克隆" (#创建克隆)
+   - "克隆体行为" (#克隆体行为)
+4. "资源管理" (#资源管理)
+   - "添加图片" (#添加图片)
+   - "使用字体" (#使用字体)
+5. "高级功能" (#高级功能)
+   - "物理精灵" (#物理精灵)
+   - "粒子系统" (#粒子系统)
+   - "画笔效果" (#画笔效果)
+6. "调试工具" (#调试工具)
+   - "调试模式" (#调试模式)
+   - "性能监控" (#性能监控)
+
+核心概念
+
+Game 类
+
+游戏主控制器，负责初始化和运行游戏循环：
+
+game = Game(
+    width=800, 
+    height=600, 
+    title="游戏标题",
+    font_path="字体路径.ttf",
+    font_size=20,
+    fullscreen=False
+)
+game.run(fps=60, debug=True)
+
+Scene 类
+
+游戏场景，容器用于管理精灵和粒子系统：
+
+class MyScene(Scene):
+    def __init__(self):
+        super().__init__()
+        # 添加精灵
+        self.add_sprite(MySprite())
+        
+    def setup(self):
+        # 场景初始化逻辑
+        pass
+        
+    def update(self):
+        # 每帧更新逻辑
+        pass
+
+# 设置场景
+game.set_scene(MyScene())
+
+Sprite 类
+
+游戏中的基本元素，具有位置、方向、大小等属性：
+
+class MySprite(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.name = "精灵名称"
+        self.pos = pygame.Vector2(100, 100)
+        self.direction = 90  # 0=右，90=上
+        self.size = 1.0
+        self.visible = True
+        
+    def update(self):
+        # 精灵每帧更新逻辑
+        self.move(5)
+
+事件处理
+
+按键事件
+
+使用装饰器处理按键事件：
+
+@on_key(pygame.K_SPACE, "pressed")  # 按下瞬间触发
+def space_pressed(self):
+    print("空格键按下")
+
+@on_key(pygame.K_LEFT, "held")  # 按住状态持续触发
+def left_held(self):
+    self.turn_left(2)
+
+碰撞检测
+
+精灵间碰撞和边界碰撞处理：
+
+# 边缘碰撞检测
+@handle_edge_collision("left")  # 碰撞左边
+def hit_left(self):
+    self.say("碰到左边墙")
+
+# 精灵碰撞检测
+@handle_sprite_collision("Enemy")  # 与指定名称精灵碰撞
+def hit_enemy(self, other):
+    self.delete_self()
+
+广播事件
+
+精灵和场景间的通信机制：
+
+# 广播事件
+self.broadcast("gameover")
+
+# 处理广播事件
+@handle_broadcast("gameover")
+def on_gameover(self):
+    self.visible = True
+
+精灵克隆
+
+创建克隆
+
+克隆现有精灵：
+
+# 克隆自身
+self.clone()
+
+# 克隆其他精灵
+self.clone(other_sprite)
+
+克隆体行为
+
+定义克隆体特有逻辑：
+
+class Bat(Sprite):
+    @as_clones  # 标记为克隆体任务
+    def clones_behavior(self):
+        self.visible = True
+        while True:
+            self.move(5)
+            yield 200  # 每200毫秒移动一次
+
+资源管理
+
+添加图片
+
+为精灵添加多个造型：
+
+self.add_costume("costume1", pygame.image.load("cat1.svg"))
+self.add_costume("costume2", pygame.image.load("cat2.svg"))
+self.switch_costume("costume1")  # 切换造型
+self.next_costume()  # 切换至下一个造型
+
+使用字体
+
+游戏调试信息的字体设置：
+
+game = Game(
+    font_path="Simhei.ttf",  # 支持中文字体
+    font_size=20
+)
+
+高级功能
+
+物理精灵
+
+具有物理特性的精灵（速度、重力、摩擦等）：
+
+class PhysicsBall(PhysicsSprite):
+    def __init__(self):
+        super().__init__()
+        self.velocity = pygame.Vector2(0, 5)
+        self.gravity = pygame.Vector2(0, 0.2)
+        self.elasticity = 0.8  # 弹性系数
+
+粒子系统
+
+创建粒子效果：
+
+# 在指定位置创建粒子系统
+self.scene.add_particles(
+    ParticleSystem(
+        x=100, 
+        y=100, 
+        count=50,
+        life_range=(500, 1500)
+    )
+)
+
+画笔效果
+
+实现绘图功能：
+
+# 启用画笔
+self.pen_down = True
+self.pen_color = (255, 0, 0)
+self.pen_size = 3
+
+# 移动时自动记录路径
+self.move(100)
+
+# 清除画笔轨迹
+self.clear_pen()
+
+调试工具
+
+调试模式
+
+启用调试信息显示：
+
+game.run(debug=True)  # 开启调试模式
+
+# 记录调试信息
+game.log_debug("精灵已创建")
+
+性能监控
+
+屏幕显示的关键性能指标：
+
+1. 实时FPS
+2. 场景中精灵数量
+3. 当前场景名称
+4. 自定义调试信息
 
 ## 贡献指南
 
