@@ -69,7 +69,9 @@ def handle_sprite_collision(target: [type, str]):
     """将函数标记为碰到指定类型或名称的精灵类事件处理函数"""
 
     def decorator(func):
-        func._sprite_collision = target
+        if not hasattr(func, '_sprite_collisions'):
+            func._sprite_collisions = [] # 修改目的：支持标记检查多个碰撞
+        func._sprite_collisions.append(target)
         return func
 
     return decorator
@@ -643,8 +645,10 @@ class Sprite:
         # 收集所有标记为@handle_sprite_collision的函数
         for name in dir(self):
             method = getattr(self, name)
-            if callable(method) and hasattr(method, '_sprite_collision'):
-                self.sprite_collision_handlers.append(method)
+            if callable(method) and hasattr(method, '_sprite_collisions'):
+                # 处理多个碰撞目标
+                for target in method._sprite_collisions:
+                    self.sprite_collision_handlers.append((method, target))
 
         # 收集按键事件监听器
         if self.scene and self.scene.game:
@@ -655,7 +659,7 @@ class Sprite:
         self.needs_edge_collision = bool(self.edge_handlers)
 
         # 检查是否有精灵碰撞处理函数
-        self.needs_sprite_collision = bool(self.sprite_collision_handlers)
+        self.needs_sprite_collision = bool(self.sprite_collision_handlers) # 避免大量无用的检测，优化性能 待测试: Scratch的碰到...?功能 collide_with()
 
         # 收集需要检测的精灵名称
         for handler in self.sprite_collision_handlers:
