@@ -807,8 +807,7 @@ class Sprite:
 
     def _on_sprite_collision(self, other: "Sprite"):
         """触发碰到其他精灵事件"""
-        for handler in self.sprite_collision_handlers:
-            expected_target = getattr(handler, '_sprite_collision', None)
+        for handler, expected_target in self.sprite_collision_handlers:
             # 检测逻辑分为三种情况：
             if expected_target is None:  # 无参数装饰器，匹配所有精灵
                 valid = True
@@ -818,6 +817,7 @@ class Sprite:
                 valid = other.name == expected_target
             else:
                 continue
+                
             if valid:
                 if "other" in handler.__code__.co_varnames:
                     try:
