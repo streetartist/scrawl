@@ -518,6 +518,9 @@ class Sprite:
         self.needs_edge_collision = False
         self.needs_sprite_collision = False
         self.collision_targets = set()  # 存储需要检测的精灵名称
+        
+        self.is_moving_left = False
+        self.is_moving_right = False # 左右移动状态变量
 
     # 新增的图片管理方法
     def add_costume(self, name: str, image: pygame.Surface):
@@ -925,6 +928,30 @@ class Sprite:
         dy = self.pos.y - y  # 转换屏幕dy到数学坐标系
         angle_rad = math.atan2(dy, dx)  # 使用正确的dx和dy计算角度
         self.direction = math.degrees(angle_rad) % 360
+
+    def move_right(self):
+        self.is_moving_right == True
+        
+        for i in range(10):
+            if self.is_moving_left == True:
+                break
+            else:
+                self.pos.x = self.pos.x - 8 * 0.5 ** i
+                yield 35
+
+        self.is_moving_right == False
+
+    def move_right(self):
+        self.is_moving_left == True
+        
+        for i in range(10):
+            if self.is_moving_right == True:
+                break
+            else:
+                self.pos.x = self.pos.x - 8 * 0.5 ** i
+                yield 35
+
+        self.is_moving_left == False
 
     def goto(self, x: float, y: float):
         self.pos.x = x
