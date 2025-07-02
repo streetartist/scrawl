@@ -471,6 +471,12 @@ class Scene:
         for system in self.particle_systems:
             system.draw(surface)
 
+    def received_broadcast(self, event_name: str) -> bool:
+        """精灵检查是否收到广播的辅助方法"""
+        if self.game:
+            return self.game.received_broadcast(event_name)
+        return False
+
 
 class Sprite:
 
@@ -763,6 +769,12 @@ class Sprite:
         #! 说不定要添加Game的广播方法
         if self.scene:
             self.scene.broadcast(event_name)
+
+    def received_broadcast(self, event_name: str) -> bool:
+        """场景检查是否收到广播的辅助方法"""
+        if self.game:
+            return self.game.received_broadcast(event_name)
+        return False
 
     def collides_with(self, other: "Sprite") -> bool:
         """检查两个精灵是否碰撞"""
