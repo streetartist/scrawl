@@ -141,6 +141,9 @@ class Game:
         self.key_down_events = {}  # 存储按键按下的时间 {key: timestamp}
         self.debug = False
 
+        self.broadcast_history = {}  # 存储广播触发状态
+        self.current_frame_broadcasts = set()  # 当前帧触发的广播
+
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
 
@@ -155,6 +158,9 @@ class Game:
         # self.scene.setup()
 
         while self.running:
+            # 在每帧开始时清除广播状态
+            self.current_frame_broadcasts.clear()
+
             self.current_time = pygame.time.get_ticks()
 
             # 保存上一帧的按键状态
@@ -297,6 +303,15 @@ class Game:
     def log_debug(self, info: str):
         if self.debug:
             self.debug_info.append(info)
+    
+    def mark_broadcast(self, event_name: str):
+        """标记广播已被触发"""
+        self.current_frame_broadcasts.add(event_name)
+        self.broadcast_history[event_name] = self.current_time
+    
+    def received_broadcast(self, event_name: str) -> bool:
+        """检查是否收到指定广播"""
+        return event_name in self.current_frame_broadcasts
 
     def draw_debug_info(self):
         if not self.debug:  # 调试模式关闭时直接返回，不绘制
@@ -395,6 +410,9 @@ class Scene:
     def broadcast(self, event_name: str):
         if not self.game:
             return
+        
+        # 标记广播已被触发
+        self.game.mark_broadcast(event_name)
 
         self.game.log_debug(f"Broadcasting event: {event_name}")
 
