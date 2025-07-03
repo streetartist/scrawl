@@ -6,6 +6,140 @@ import random
 from collections import deque
 from typing import Tuple, List, Callable, Any, Dict
 import os
+import requests
+import threading
+import time
+
+
+class CloudVariable:
+    def __init__(self, game, project_id, api_key, var_name, default_value=""):
+        # 使用你的 Vercel 部署 URL
+        self.server_url = "https://your-project.vercel.app/api" 
+        self.project_id = project_id
+        self.api_key = api_key
+        self.var_name = var_name
+        self.value = default_value
+        self.last_updated = 0
+        self.local_changes = []
+        self.syncing = False
+        self.error_count = 0
+        
+        # 初始同步
+        self.sync()
+        
+        # 启动后台同步线程
+        threading.Thread(target=self._sync_thread, daemon=True).start()
+    
+    def set_value(self, value):
+        """设置变量值（立即更新本地，异步更新云端）"""
+        self.value = str(value)
+        self.local_changes.append((time.time(), self.value))
+        
+        # 如果当前没有同步任务，立即触发同步
+        if not self.syncing and not self.local_changes:
+            threading.Thread(target=self.sync).start()
+    
+    def get_value(self):
+        """获取当前变量值"""
+        return self.value
+    
+    def _push_value(self, value):
+        """推送值到云端（处理连接池特性）"""
+        try:
+            # 使用重试机制处理连接池限制
+            for attempt in range(3):
+                try:
+                    response = requests.post(
+                        f"{self.server_url}/{self.project_id}/set",
+                        json={'var_name': self.var_name, 'var_value': value},
+                        headers={'X-API-Key': self.api_key},
+                        timeout=8  # 增加超时时间
+                    )
+                    
+                    if response.status_code == 200:
+                        self.last_updated = time.time()
+                        self.local_changes = []  # 清除已同步的更改
+                        self.error_count = 0
+                        return True
+                    elif response.status_code == 429:  # 速率限制
+                        time.sleep(1)  # 短暂等待后重试
+                    else:
+                        break  # 其他错误不重试
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                    time.sleep(0.5 * attempt)  # 指数退避
+        except Exception as e:
+            self.game.log_debug(f"Cloud push error: {str(e)}")
+            self.error_count += 1
+        
+        return False
+    
+    def sync(self):
+        """同步变量值（处理连接池特性）"""
+        if self.syncing:
+            return
+            
+        self.syncing = True
+        
+        try:
+            # 使用重试机制处理连接池限制
+            for attempt in range(3):
+                try:
+                    response = requests.get(
+                        f"{self.server_url}/{self.project_id}/get",
+                        params={'var_name': self.var_name},
+                        headers={'X-API-Key': self.api_key},
+                        timeout=8  # 增加超时时间
+                    )
+                    
+                    if response.status_code == 200:
+                        data = response.json()
+                        cloud_value = data['var_value']
+                        cloud_updated = float(data['last_updated'])
+                        
+                        # 如果云端有更新
+                        if cloud_updated > self.last_updated:
+                            self.value = cloud_value
+                            self.last_updated = cloud_updated
+                            self.local_changes = []  # 丢弃本地未同步的更改
+                            self.error_count = 0
+                        # 如果本地有未同步的更改
+                        elif self.local_changes:
+                            # 应用最新的本地更改
+                            _, latest_value = self.local_changes[-1]
+                            self._push_value(latest_value)
+                        
+                        self.error_count = 0
+                        break  # 成功获取数据
+                    elif response.status_code == 429:  # 速率限制
+                        time.sleep(1)  # 短暂等待后重试
+                    else:
+                        break  # 其他错误不重试
+                except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+                    time.sleep(0.5 * attempt)  # 指数退避
+        except Exception as e:
+            self.game.log_debug(f"Cloud sync error: {str(e)}")
+            self.error_count += 1
+        finally:
+            self.syncing = False
+    
+    def _sync_thread(self):
+        """后台同步线程（优化连接池使用）"""
+        while True:
+            # 根据错误计数调整同步间隔
+            if self.error_count > 10:
+                interval = 60  # 错误较多时延长同步间隔
+            elif self.error_count > 5:
+                interval = 30
+            elif self.error_count > 0:
+                interval = 15
+            else:
+                interval = 8  # 正常情况每8秒同步一次
+                
+            time.sleep(interval)
+            
+            # 如果有本地更改或需要同步
+            if self.local_changes or time.time() - self.last_updated > interval:
+                self.sync()
 
 
 # 获取当前包目录的绝对路径
@@ -152,6 +286,50 @@ class Game:
         self.music_volume = 0.5  # 背景音乐音量 (0.0-1.0)
         self.sound_volume = 0.7  # 音效音量 (0.0-1.0)
         self.music_looping = False  # 背景音乐是否循环
+
+        self.cloud_project_id = None
+        self.cloud_api_key = None
+
+    def register_cloud_project(self, project_name):
+        """注册新的云项目"""
+        try:
+            response = requests.post(
+                f"{self.cloud_server_url}/api/register",
+                json={'project_name': project_name},
+                timeout=5
+            )
+            
+            if response.status_code == 201:
+                data = response.json()
+                self.cloud_project_id = data['project_id']
+                self.cloud_api_key = data['api_key']
+                self.log_debug(f"Registered cloud project: {project_name}")
+                return True
+        except Exception as e:
+            self.log_debug(f"Cloud registration failed: {str(e)}")
+        
+        return False
+    
+    def create_cloud_variable(self, var_name, default_value=""):
+        """创建云变量"""
+        if not self.cloud_project_id or not self.cloud_api_key:
+            self.log_debug("Cannot create cloud variable without registered project")
+            return None
+        
+        if var_name in self.cloud_vars:
+            return self.cloud_vars[var_name]
+            
+        var = CloudVariable(
+            self, 
+            self.cloud_project_id, 
+            self.cloud_api_key, 
+            var_name, 
+            default_value
+        )
+        
+        self.cloud_vars[var_name] = var
+        return var
+
 
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
