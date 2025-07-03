@@ -1016,6 +1016,7 @@ class Sprite:
             target_x: 目标位置的x坐标
             target_y: 目标位置的y坐标
             duration: 移动所需时间（毫秒）
+            easing: 缓动函数类型 ("linear", "ease_in", "ease_out", "ease_in_out")
         """
         if not self.game:
             return
