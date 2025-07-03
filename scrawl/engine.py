@@ -519,8 +519,12 @@ class Sprite:
         self.needs_sprite_collision = False
         self.collision_targets = set()  # 存储需要检测的精灵名称
         
+        # 左右上下glide移动状态变量
         self.is_moving_left = False
-        self.is_moving_right = False # 左右移动状态变量
+        self.is_moving_right = False
+        self.is_moving_up = False
+        self.is_moving_down = False
+
 
     # 新增的图片管理方法
     def add_costume(self, name: str, image: pygame.Surface):
@@ -909,10 +913,85 @@ class Sprite:
             self.pos.x = max(radius, min(self.game.width - radius, self.pos.x))
             self.pos.y = max(radius, min(self.game.height - radius,
                                          self.pos.y))
-
+        '''
         if self.pen_down:
             self.pen_path.append((int(self.pos.x), int(self.pos.y)))
-        '''
+    
+    def move_left(self, distance: float, prevent_boundary: bool = True):
+        """向左移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            prevent_boundary: 是否阻止移出边界（默认为True）
+        """
+        new_x = self.pos.x - distance
+        
+        if prevent_boundary and self.game:
+            radius = self.collision_radius * self.size
+            new_x = max(radius, new_x)  # 确保不超出左边界
+        
+        self.pos.x = new_x
+        
+        # 记录画笔轨迹
+        if self.pen_down:
+            self.pen_path.append((int(self.pos.x), int(self.pos.y)))
+
+    def move_right(self, distance: float, prevent_boundary: bool = True):
+        """向右移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            prevent_boundary: 是否阻止移出边界（默认为True）
+        """
+        new_x = self.pos.x + distance
+        
+        if prevent_boundary and self.game:
+            radius = self.collision_radius * self.size
+            new_x = min(self.game.width - radius, new_x)  # 确保不超出右边界
+        
+        self.pos.x = new_x
+        
+        # 记录画笔轨迹
+        if self.pen_down:
+            self.pen_path.append((int(self.pos.x), int(self.pos.y)))
+
+    def move_up(self, distance: float, prevent_boundary: bool = True):
+        """向上移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            prevent_boundary: 是否阻止移出边界（默认为True）
+        """
+        new_y = self.pos.y - distance
+        
+        if prevent_boundary and self.game:
+            radius = self.collision_radius * self.size
+            new_y = max(radius, new_y)  # 确保不超出上边界
+        
+        self.pos.y = new_y
+        
+        # 记录画笔轨迹
+        if self.pen_down:
+            self.pen_path.append((int(self.pos.x), int(self.pos.y)))
+
+    def move_down(self, distance: float, prevent_boundary: bool = True):
+        """向下移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            prevent_boundary: 是否阻止移出边界（默认为True）
+        """
+        new_y = self.pos.y + distance
+        
+        if prevent_boundary and self.game:
+            radius = self.collision_radius * self.size
+            new_y = min(self.game.height - radius, new_y)  # 确保不超出下边界
+        
+        self.pos.y = new_y
+        
+        # 记录画笔轨迹
+        if self.pen_down:
+            self.pen_path.append((int(self.pos.x), int(self.pos.y)))
 
     def turn_right(self, degrees: float):
         self.direction = (self.direction - degrees) % 360
@@ -968,6 +1047,87 @@ class Sprite:
         self.pos.x = target_x
         self.pos.y = target_y
     
+    
+    def glide_left(self, distance: float, duration: float = 1000, 
+                   easing: str = "linear"):
+        """向左平滑移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            duration: 移动所需时间（毫秒）
+            easing: 缓动函数类型
+        """
+        if self.is_moving_right == True:
+            return
+        
+        self.is_moving_left = True
+
+        target_x = self.pos.x - distance
+        target_y = self.pos.y
+
+        yield from self.glide_to(target_x, target_y, duration, easing)
+        
+        self.is_moving_left = False
+
+    def glide_right(self, distance: float, duration: float = 1000, 
+                    easing: str = "linear"):
+        """向右平滑移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            duration: 移动所需时间（毫秒）
+            easing: 缓动函数类型
+        """
+        if self.is_moving_left == True:
+            return
+        
+        self.is_moving_right = True
+
+        target_x = self.pos.x + distance
+        target_y = self.pos.y
+        yield from self.glide_to(target_x, target_y, duration, easing)
+
+        self.is_moving_right = False
+
+    def glide_up(self, distance: float, duration: float = 1000, 
+                 easing: str = "linear"):
+        """向上平滑移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            duration: 移动所需时间（毫秒）
+            easing: 缓动函数类型
+        """
+        if self.is_moving_down == True:
+            return
+        
+        self.is_moving_up = True
+
+        target_x = self.pos.x
+        target_y = self.pos.y - distance
+        yield from self.glide_to(target_x, target_y, duration, easing)
+        
+        self.is_moving_up = False
+
+    def glide_down(self, distance: float, duration: float = 1000, 
+                   easing: str = "linear"):
+        """向下平滑移动指定距离
+        
+        Args:
+            distance: 移动距离（像素）
+            duration: 移动所需时间（毫秒）
+            easing: 缓动函数类型
+        """
+        if self.is_moving_up == True:
+            return
+        
+        self.is_moving_down = True
+
+        target_x = self.pos.x
+        target_y = self.pos.y + distance
+        yield from self.glide_to(target_x, target_y, duration, easing)
+        
+        self.is_moving_down = False
 
     def goto(self, x: float, y: float):
         self.pos.x = x
