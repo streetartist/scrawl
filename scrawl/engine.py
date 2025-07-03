@@ -13,157 +13,259 @@ import threading
 import uuid
 import json
 import traceback
+from requests.exceptions import ConnectionError, Timeout, RequestException
 
 # 配置信息 - 替换为您的实际值
 SERVER_URL = "https://scrawl.weber.edu.deal/api"  # 您的 Vercel 部署 URL
 
-
 class CloudVariableClient:
-    def __init__(self, server_url=SERVER_URL, project_id=None, api_key=None):
+    def __init__(self, server_url=SERVER_URL, project_id=None, api_key=None, 
+                 max_retries=5, retry_delay=1.0, backoff_factor=1.5):
+        """
+        初始化云变量客户端
+        
+        参数:
+        - server_url: 服务器URL
+        - project_id: 项目ID (可选)
+        - api_key: API密钥 (可选)
+        - max_retries: 最大重试次数 (默认5)
+        - retry_delay: 初始重试延迟(秒) (默认1.0)
+        - backoff_factor: 重试延迟增长因子 (默认1.5)
+        """
         self.server_url = server_url
         self.project_id = project_id
         self.api_key = api_key
         self.variables = {}
+        self.lock = threading.Lock()
+        self.init_event = threading.Event()
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
+        self.backoff_factor = backoff_factor
         
+        # 启动初始化线程
+        init_thread = threading.Thread(target=self._initialize, args=(project_id, api_key))
+        init_thread.daemon = True
+        init_thread.start()
+    
+    def _initialize(self, project_id, api_key):
+        """在后台线程中执行初始化"""
         # 如果没有提供项目ID，自动注册新项目
         if not project_id or not api_key:
-            self.register_project()
+            self._register_project_in_thread()
+        else:
+            # 如果提供了凭证，直接标记为已初始化
+            with self.lock:
+                self.project_id = project_id
+                self.api_key = api_key
+            self.init_event.set()
     
-    def register_project(self, project_name="TestProject"):
-        """注册新项目"""
+    def _retry_request(self, method, url, **kwargs):
+        """
+        带重试机制的请求方法
+        
+        参数:
+        - method: HTTP方法 ('get', 'post', 等)
+        - url: 请求URL
+        - **kwargs: 其他requests参数
+        
+        返回:
+        - 响应对象 (成功时)
+        - None (失败时)
+        """
+        delay = self.retry_delay
+        for attempt in range(self.max_retries + 1):  # +1 包括第一次尝试
+            try:
+                response = requests.request(method, url, **kwargs)
+                if response.status_code in [200, 201]:
+                    return response
+                elif response.status_code >= 500:
+                    # 服务器错误，应该重试
+                    print(f"⚠️ 服务器错误 (状态码 {response.status_code})，尝试 {attempt+1}/{self.max_retries}")
+                else:
+                    # 客户端错误，不需要重试
+                    print(f"❌ 请求失败 (状态码 {response.status_code})，不重试")
+                    return response
+            except (ConnectionError, Timeout) as e:
+                print(f"⚠️ 网络错误: {str(e)}，尝试 {attempt+1}/{self.max_retries}")
+            except RequestException as e:
+                print(f"⚠️ 请求异常: {str(e)}，尝试 {attempt+1}/{self.max_retries}")
+            
+            # 如果不是最后一次尝试，等待后重试
+            if attempt < self.max_retries:
+                time.sleep(delay)
+                delay *= self.backoff_factor  # 指数退避
+        
+        print(f"❌ 所有 {self.max_retries} 次尝试均失败")
+        return None
+    
+    def _register_project_in_thread(self, project_name="TestProject"):
+        """在后台线程中注册新项目"""
         url = f"{self.server_url}/register"
         payload = {"project_name": project_name}
         
         try:
-            print(f"📤 注册项目: {project_name}")
-            response = requests.post(url, json=payload, timeout=10)
+            print(f"📤 [线程-注册] 注册项目: {project_name}")
+            response = self._retry_request('post', url, json=payload, timeout=10)
             
-            if response.status_code == 201:
+            if response and response.status_code == 201:
                 data = response.json()
-                self.project_id = data['project_id']
-                self.api_key = data['api_key']
-                print(f"✅ 项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
-                return True
+                with self.lock:
+                    self.project_id = data['project_id']
+                    self.api_key = data['api_key']
+                print(f"✅ [线程-注册] 项目注册成功! ID: {self.project_id}")
+                self.init_event.set()
             else:
-                print(f"❌ 项目注册失败: {response.status_code}")
-                print(f"响应内容: {response.text}")
-                print(f"请求URL: {url}")
-                print(f"请求负载: {payload}")
-                return False
+                print(f"❌ [线程-注册] 项目注册失败")
+                if response:
+                    print(f"状态码: {response.status_code}, 响应内容: {response.text}")
         except Exception as e:
-            print(f"❌ 注册请求异常: {str(e)}")
+            print(f"❌ [线程-注册] 注册请求异常: {str(e)}")
             traceback.print_exc()
-            return False
+    
+    def _wait_for_initialization(self):
+        """等待初始化完成"""
+        if not self.init_event.is_set():
+            print("⏳ 等待初始化完成...")
+            self.init_event.wait()
+            print("✅ 初始化完成，继续操作")
     
     def set_variable(self, var_name, var_value):
-        """设置变量值"""
-        if not self.project_id or not self.api_key:
-            print("❌ 未设置项目ID或API密钥")
-            return False
-        
-        url = f"{self.server_url}/{self.project_id}/set"
-        headers = {"X-API-Key": self.api_key}
-        payload = {"var_name": var_name, "var_value": var_value}
-        
-        try:
-            print(f"📤 设置变量: {var_name} = {var_value}")
-            response = requests.post(url, json=payload, headers=headers, timeout=5)
+        """在后台线程中设置变量值"""
+        def _set():
+            self._wait_for_initialization()
             
-            if response.status_code == 200:
-                print(f"✅ 设置变量成功: {var_name} = {var_value}")
-                self.variables[var_name] = var_value
-                return True
-            else:
-                print(f"❌ 设置变量失败: {response.status_code}")
-                print(f"响应内容: {response.text}")
-                print(f"请求URL: {url}")
-                print(f"请求头: {headers}")
-                print(f"请求负载: {payload}")
-                return False
-        except Exception as e:
-            print(f"❌ 设置变量异常: {str(e)}")
-            traceback.print_exc()
-            return False
+            url = f"{self.server_url}/{self.project_id}/set"
+            headers = {"X-API-Key": self.api_key}
+            payload = {"var_name": var_name, "var_value": var_value}
+            
+            try:
+                print(f"📤 [线程-设置] 设置变量: {var_name} = {var_value}")
+                response = self._retry_request('post', url, json=payload, headers=headers, timeout=5)
+                
+                if response and response.status_code == 200:
+                    print(f"✅ [线程-设置] 设置成功: {var_name} = {var_value}")
+                    with self.lock:
+                        self.variables[var_name] = var_value
+                else:
+                    print(f"❌ [线程-设置] 设置失败")
+                    if response:
+                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
+            except Exception as e:
+                print(f"❌ [线程-设置] 设置异常: {str(e)}")
+                traceback.print_exc()
+        
+        thread = threading.Thread(target=_set)
+        thread.daemon = True
+        thread.start()
+        return thread
     
-    def get_variable(self, var_name):
-        """获取变量值"""
-        if not self.project_id or not self.api_key:
-            print("❌ 未设置项目ID或API密钥")
-            return None
-        
-        url = f"{self.server_url}/{self.project_id}/get"
-        headers = {"X-API-Key": self.api_key}
-        params = {"var_name": var_name}
-        
-        try:
-            print(f"📥 获取变量: {var_name}")
-            response = requests.get(url, params=params, headers=headers, timeout=5)
+    def get_variable(self, var_name, callback=None):
+        """在后台线程中获取变量值，结果通过回调返回"""
+        def _get():
+            self._wait_for_initialization()
             
-            if response.status_code == 200:
-                data = response.json()
-                value = data['var_value']
-                print(f"✅ 获取变量成功: {var_name} = {value}")
-                self.variables[var_name] = value
-                return value
-            else:
-                print(f"❌ 获取变量失败: {response.status_code}")
-                print(f"响应内容: {response.text}")
-                print(f"请求URL: {url}")
-                print(f"请求头: {headers}")
-                print(f"请求参数: {params}")
-                return None
-        except Exception as e:
-            print(f"❌ 获取变量异常: {str(e)}")
-            traceback.print_exc()
-            return None
+            url = f"{self.server_url}/{self.project_id}/get"
+            headers = {"X-API-Key": self.api_key}
+            params = {"var_name": var_name}
+            
+            try:
+                print(f"📥 [线程-获取] 获取变量: {var_name}")
+                response = self._retry_request('get', url, params=params, headers=headers, timeout=5)
+                
+                if response and response.status_code == 200:
+                    data = response.json()
+                    value = data['var_value']
+                    print(f"✅ [线程-获取] 获取成功: {var_name} = {value}")
+                    with self.lock:
+                        self.variables[var_name] = value
+                    if callback:
+                        callback(value=value)
+                    return value
+                else:
+                    print(f"❌ [线程-获取] 获取失败")
+                    if response:
+                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
+                    if callback:
+                        callback(value=None)
+            except Exception as e:
+                print(f"❌ [线程-获取] 获取异常: {str(e)}")
+                traceback.print_exc()
+                if callback:
+                    callback(value=None)
+        
+        thread = threading.Thread(target=_get)
+        thread.daemon = True
+        thread.start()
+        return thread
     
-    def get_all_variables(self):
-        """获取所有变量"""
-        if not self.project_id or not self.api_key:
-            print("❌ 未设置项目ID或API密钥")
-            return {}
-        
-        url = f"{self.server_url}/{self.project_id}/all"
-        headers = {"X-API-Key": self.api_key}
-        
-        try:
-            print("📥 获取所有变量")
-            response = requests.get(url, headers=headers, timeout=5)
+    def get_all_variables(self, callback=None):
+        """在后台线程中获取所有变量，结果通过回调返回"""
+        def _get_all():
+            self._wait_for_initialization()
             
-            if response.status_code == 200:
-                variables = response.json()
-                print(f"✅ 获取所有变量成功: 共 {len(variables)} 个变量")
-                self.variables = {k: v['value'] for k, v in variables.items()}
-                return variables
-            else:
-                print(f"❌ 获取所有变量失败: {response.status_code}")
-                print(f"响应内容: {response.text}")
-                return {}
-        except Exception as e:
-            print(f"❌ 获取所有变量异常: {str(e)}")
-            traceback.print_exc()
-            return {}
+            url = f"{self.server_url}/{self.project_id}/all"
+            headers = {"X-API-Key": self.api_key}
+            
+            try:
+                print("📥 [线程-获取全部] 获取所有变量")
+                response = self._retry_request('get', url, headers=headers, timeout=5)
+                
+                if response and response.status_code == 200:
+                    variables = response.json()
+                    print(f"✅ [线程-获取全部] 获取成功: 共 {len(variables)} 个变量")
+                    with self.lock:
+                        self.variables = {k: v['value'] for k, v in variables.items()}
+                    if callback:
+                        callback(variables)
+                    return variables
+                else:
+                    print(f"❌ [线程-获取全部] 获取失败")
+                    if response:
+                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
+                    if callback:
+                        callback({})
+            except Exception as e:
+                print(f"❌ [线程-获取全部] 获取异常: {str(e)}")
+                traceback.print_exc()
+                if callback:
+                    callback({})
+        
+        thread = threading.Thread(target=_get_all)
+        thread.daemon = True
+        thread.start()
+        return thread
     
-    def health_check(self):
-        """健康检查"""
-        url = f"{self.server_url}/health"
-        
-        try:
-            print("🩺 健康检查")
-            response = requests.get(url, timeout=5)
+    def health_check(self, callback=None):
+        """在后台线程中执行健康检查"""
+        def _health_check():
+            url = f"{self.server_url}/health"
             
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ 健康检查通过: {data}")
-                return True
-            else:
-                print(f"❌ 健康检查失败: {response.status_code}")
-                print(f"响应内容: {response.text}")
-                return False
-        except Exception as e:
-            print(f"❌ 健康检查异常: {str(e)}")
-            traceback.print_exc()
-            return False
+            try:
+                print("🩺 [线程-健康检查] 执行健康检查")
+                response = self._retry_request('get', url, timeout=5)
+                
+                if response and response.status_code == 200:
+                    data = response.json()
+                    print(f"✅ [线程-健康检查] 检查通过: {data}")
+                    if callback:
+                        callback(True, data)
+                    return True
+                else:
+                    print(f"❌ [线程-健康检查] 检查失败")
+                    if response:
+                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
+                    if callback:
+                        callback(False, None)
+            except Exception as e:
+                print(f"❌ [线程-健康检查] 检查异常: {str(e)}")
+                traceback.print_exc()
+                if callback:
+                    callback(False, None)
+        
+        thread = threading.Thread(target=_health_check)
+        thread.daemon = True
+        thread.start()
+        return thread
 
 # 获取当前包目录的绝对路径
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
