@@ -1095,11 +1095,11 @@ class Sprite:
         
         while self.game.current_time < end_time:
             # 检查是否应该互斥移动
-        if exclusive and self._is_moving:
-            # 检查新移动是否与当前活动移动冲突
-            if self._is_conflicting_movement(direction):
-                # 取消新移动
-                return
+            if exclusive and self._is_moving:
+                # 检查新移动是否与当前活动移动冲突
+                if self._is_conflicting_movement(direction):
+                    # 取消新移动
+                    return
 
             # 计算当前进度（0.0 - 1.0）
             progress = (self.game.current_time - start_time) / duration
