@@ -1009,7 +1009,7 @@ class Sprite:
         self.direction = math.degrees(angle_rad) % 360
 
     
-    def glide_to(self, target_x: float, target_y: float, duration: float = 1000):
+    def glide_to(self, target_x: float, target_y: float, duration: float = 1000,easing: str = "linear"):
         """在指定时间内平滑移动到目标位置
         
         Args:
