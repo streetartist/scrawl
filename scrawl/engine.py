@@ -19,7 +19,7 @@ SERVER_URL = "https://scrawl.weber.edu.deal/api"  # 您的 Vercel 部署 URL
 
 
 class CloudVariableClient:
-    def __init__(self, server_url, project_id=None, api_key=None):
+    def __init__(self, server_url=SERVER_URL, project_id=None, api_key=None):
         self.server_url = server_url
         self.project_id = project_id
         self.api_key = api_key
