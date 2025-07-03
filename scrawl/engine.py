@@ -6,9 +6,12 @@ import uuid
 import json
 import traceback
 import pygame
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Tuple, List
 import os
 import numpy
+import sys
+import math
+import types
 
 class CloudVariables:
     """云变量管理类，处理与云变量服务器的交互"""
