@@ -21,26 +21,16 @@ class CloudVariable:
         var_name: str,
         default_value: Any = "",
         sync_interval: int = 5,
-        max_retries: int = 3
+        max_retries: int = 3,
+        value_serializer: Callable[[Any], str] = None,
+        value_deserializer: Callable[[str], Any] = None
     ):
-        """
-        云变量类，用于在游戏中同步全局变量
-        
-        参数:
-            game: 游戏实例
-            project_id: 云项目ID
-            api_key: API密钥
-            var_name: 变量名称
-            default_value: 默认值
-            sync_interval: 同步间隔(秒)
-            max_retries: 最大重试次数
-        """
         self.game = game
         self.server_url = game.cloud_server_url
         self.project_id = project_id
         self.api_key = api_key
         self.var_name = var_name
-        self.value = default_value
+        self._value = default_value
         self.default_value = default_value
         self.last_updated = 0
         self.last_synced = 0
@@ -49,6 +39,11 @@ class CloudVariable:
         self.error_count = 0
         self.change_listeners = []
         self.lock = threading.Lock()
+        self.last_value = None  # 用于变化检测
+        
+        # 序列化/反序列化函数
+        self.serialize = value_serializer or self._default_serializer
+        self.deserialize = value_deserializer or self._default_deserializer
         
         # 初始同步
         self._sync()
@@ -58,29 +53,41 @@ class CloudVariable:
         self.thread = threading.Thread(target=self._sync_thread, daemon=True)
         self.thread.start()
     
-    def set_value(self, value: Any, immediate_sync: bool = False):
-        """设置变量值
-        
-        参数:
-            value: 新值
-            immediate_sync: 是否立即同步到云端
-        """
+    @property
+    def value(self):
+        """获取当前值（线程安全）"""
         with self.lock:
-            self.value = value
+            return self._value
+    
+    @value.setter
+    def value(self, new_value):
+        """设置新值（自动通知监听器）"""
+        with self.lock:
+            old_value = self._value
+            self._value = new_value
             self.last_updated = time.time()
             
-            # 通知监听器
-            for listener in self.change_listeners:
-                listener(self.value)
+            # 值变化时通知监听器
+            if new_value != old_value:
+                self._notify_listeners(new_value)
+    
+    def _default_serializer(self, value):
+        """默认序列化函数"""
+        return json.dumps(value)
+    
+    def _default_deserializer(self, value_str):
+        """默认反序列化函数"""
+        try:
+            return json.loads(value_str)
+        except json.JSONDecodeError:
+            return value_str
+    
+    def set_value(self, value: Any, immediate_sync: bool = False):
+        """设置值并可选立即同步"""
+        self.value = value
         
-        # 如果需要立即同步
         if immediate_sync:
             self._push_value()
-    
-    def get_value(self) -> Any:
-        """获取当前变量值"""
-        with self.lock:
-            return self.value
     
     def add_change_listener(self, callback: Callable[[Any], None]):
         """添加值变更监听器"""
@@ -94,21 +101,27 @@ class CloudVariable:
             if callback in self.change_listeners:
                 self.change_listeners.remove(callback)
     
-    def reset(self, immediate_sync: bool = False):
-        """重置为默认值"""
-        self.set_value(self.default_value, immediate_sync)
+    def _notify_listeners(self, new_value):
+        """通知所有监听器值已变化"""
+        for listener in self.change_listeners:
+            try:
+                listener(new_value)
+            except Exception as e:
+                self.game.log_debug(f"Cloud variable listener error: {str(e)}")
     
     def _push_value(self):
         """推送值到云端（带重试机制）"""
-        value_to_push = self.get_value()
+        value_to_push = self.value
         
         for attempt in range(self.max_retries):
             try:
+                serialized_value = self.serialize(value_to_push)
+                
                 response = requests.post(
                     f"{self.server_url}/api/{self.project_id}/set",
                     json={
                         'var_name': self.var_name,
-                        'var_value': json.dumps(value_to_push)  # 支持复杂数据结构
+                        'var_value': serialized_value
                     },
                     headers={'X-API-Key': self.api_key},
                     timeout=5 + attempt  # 递增超时时间
@@ -116,8 +129,7 @@ class CloudVariable:
                 
                 if response.status_code == 200:
                     self.last_synced = time.time()
-                    self.error_count = 0
-                    self.game.log_debug(f"Cloud variable '{self.var_name}' synced successfully")
+                    self.error_count = max(0, self.error_count - 1)
                     return True
                 elif response.status_code == 429:  # 速率限制
                     retry_after = int(response.headers.get('Retry-After', 1))
@@ -125,7 +137,6 @@ class CloudVariable:
                 else:
                     self.game.log_debug(f"Cloud push failed: {response.status_code} - {response.text}")
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                self.game.log_debug(f"Cloud push error: {str(e)}")
                 time.sleep(0.5 * attempt)  # 指数退避
             except Exception as e:
                 self.game.log_debug(f"Unexpected error during cloud push: {str(e)}")
@@ -146,31 +157,24 @@ class CloudVariable:
                 
                 if response.status_code == 200:
                     data = response.json()
-                    
-                    # 尝试解析 JSON 值
-                    try:
-                        cloud_value = json.loads(data['var_value'])
-                    except (json.JSONDecodeError, TypeError):
-                        cloud_value = data['var_value']
-                    
                     cloud_updated = float(data['last_updated'])
                     
                     # 如果云端有更新
                     if cloud_updated > self.last_updated:
+                        serialized_value = data['var_value']
+                        cloud_value = self.deserialize(serialized_value)
+                        
                         with self.lock:
-                            old_value = self.value
-                            self.value = cloud_value
+                            old_value = self._value
+                            self._value = cloud_value
                             self.last_updated = cloud_updated
                         
                         # 值变化时通知监听器
-                        if old_value != cloud_value:
-                            for listener in self.change_listeners:
-                                listener(cloud_value)
-                        
-                        self.game.log_debug(f"Cloud variable '{self.var_name}' updated from cloud")
+                        if cloud_value != old_value:
+                            self._notify_listeners(cloud_value)
                     
                     self.last_synced = time.time()
-                    self.error_count = 0
+                    self.error_count = max(0, self.error_count - 1)
                     return True
                 elif response.status_code == 429:  # 速率限制
                     retry_after = int(response.headers.get('Retry-After', 1))
@@ -178,7 +182,6 @@ class CloudVariable:
                 else:
                     self.game.log_debug(f"Cloud sync failed: {response.status_code} - {response.text}")
             except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
-                self.game.log_debug(f"Cloud sync error: {str(e)}")
                 time.sleep(0.5 * attempt)  # 指数退避
             except Exception as e:
                 self.game.log_debug(f"Unexpected error during cloud sync: {str(e)}")
@@ -191,19 +194,7 @@ class CloudVariable:
         while self.running:
             try:
                 # 动态调整同步间隔
-                base_interval = self.sync_interval
-                
-                # 错误越多，同步间隔越长
-                if self.error_count > 10:
-                    interval = base_interval * 8
-                elif self.error_count > 5:
-                    interval = base_interval * 4
-                elif self.error_count > 0:
-                    interval = base_interval * 2
-                else:
-                    interval = base_interval
-                
-                # 等待下一个同步周期
+                interval = self.sync_interval * (2 ** min(self.error_count, 3))
                 time.sleep(interval)
                 
                 # 执行同步
@@ -217,6 +208,8 @@ class CloudVariable:
         self.running = False
         if self.thread.is_alive():
             self.thread.join(timeout=2.0)
+        self.game.log_debug(f"Closed cloud variable: {self.var_name}")
+
 
 # 获取当前包目录的绝对路径
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -296,7 +289,8 @@ class Game:
                  font_path: str = "Simhei.ttf",
                  font_size: int = 20,
                  fullscreen: bool = False,
-                 cloud_server_url: str = "https://scrawl.weber.edu.deal/api"):
+                 cloud_server_url: str = "https://scrawl.weber.edu.deal",
+        cloud_config_file: str = "game_cloud_config.json"):
         pygame.init()
         self.width = width
         self.height = height
@@ -366,21 +360,90 @@ class Game:
 
         # 云变量系统
         self.cloud_server_url = cloud_server_url
+        self.cloud_config_file = cloud_config_file
         self.cloud_project_id = None
         self.cloud_api_key = None
         self.cloud_variables = {}  # 存储所有云变量
         self.cloud_registered = False
+        self.load_cloud_config()
 
-    def register_cloud_project(self, project_name: str) -> bool:
-        """注册新的云项目
+    def load_cloud_config(self):
+        """加载云配置"""
+        try:
+            if os.path.exists(self.cloud_config_file):
+                with open(self.cloud_config_file, 'r') as f:
+                    config = json.load(f)
+                    self.cloud_project_id = config.get('project_id')
+                    self.cloud_api_key = config.get('api_key')
+                    self.cloud_registered = bool(self.cloud_project_id and self.cloud_api_key)
+                    self.log_debug("Loaded cloud config from file")
+        except Exception as e:
+            self.log_debug(f"Error loading cloud config: {str(e)}")
+            self.cloud_registered = False
+    
+    def save_cloud_config(self):
+        """保存云配置"""
+        if not self.cloud_project_id or not self.cloud_api_key:
+            return
         
-        返回:
-            bool: 注册是否成功
-        """
+        try:
+            with open(self.cloud_config_file, 'w') as f:
+                json.dump({
+                    'project_id': self.cloud_project_id,
+                    'api_key': self.cloud_api_key
+                }, f)
+            self.log_debug("Saved cloud config to file")
+        except Exception as e:
+            self.log_debug(f"Error saving cloud config: {str(e)}")
+    
+    def init_cloud_project(self, project_name: str, force_new: bool = False) -> bool:
+        """初始化云项目（确保使用相同的项目）"""
+        # 如果已有配置且不强制新建，直接使用
+        if self.cloud_registered and not force_new:
+            return True
+        
+        # 尝试加载现有配置
+        self.load_cloud_config()
+        if self.cloud_registered and not force_new:
+            return True
+        
+        # 注册新项目
+        if self._register_cloud_project(project_name):
+            self.save_cloud_config()
+            return True
+        
+        return False
+    
+    def _register_cloud_project(self, project_name: str) -> bool:
+        """注册或获取现有云项目"""
+        # 生成项目ID的稳定哈希（确保相同游戏名称生成相同ID）
+        project_hash = hashlib.sha256(project_name.encode()).hexdigest()[:16]
+        project_id = f"{project_name[:8]}_{project_hash}"
+        
+        try:
+            # 检查项目是否已存在
+            response = requests.get(
+                f"{self.cloud_server_url}/api/{project_id}/get",
+                params={'var_name': '__project_check__'},
+                timeout=10
+            )
+            
+            # 如果项目已存在，获取其API密钥
+            if response.status_code == 200:
+                data = response.json()
+                self.cloud_project_id = project_id
+                self.cloud_api_key = data['var_value']
+                self.cloud_registered = True
+                self.log_debug(f"Using existing cloud project: {project_id}")
+                return True
+        except:
+            pass
+        
+        # 创建新项目
         try:
             response = requests.post(
                 f"{self.cloud_server_url}/api/register",
-                json={'project_name': project_name},
+                json={'project_name': project_id},
                 timeout=10
             )
             
@@ -389,10 +452,15 @@ class Game:
                 self.cloud_project_id = data['project_id']
                 self.cloud_api_key = data['api_key']
                 self.cloud_registered = True
-                self.log_debug(f"Registered cloud project: {project_name}")
+                
+                # 保存项目标识
+                self.create_cloud_variable(
+                    "__project_check__", 
+                    self.cloud_api_key
+                ).set_value(self.cloud_api_key, True)
+                
+                self.log_debug(f"Registered new cloud project: {self.cloud_project_id}")
                 return True
-            else:
-                self.log_debug(f"Cloud registration failed: {response.status_code} - {response.text}")
         except Exception as e:
             self.log_debug(f"Cloud registration error: {str(e)}")
         
@@ -402,18 +470,11 @@ class Game:
         self,
         var_name: str,
         default_value: Any = "",
-        sync_interval: int = 5
+        sync_interval: int = 5,
+        serializer: Callable[[Any], str] = None,
+        deserializer: Callable[[str], Any] = None
     ) -> Optional[CloudVariable]:
-        """创建云变量
-        
-        参数:
-            var_name: 变量名称
-            default_value: 默认值
-            sync_interval: 同步间隔(秒)
-        
-        返回:
-            CloudVariable: 云变量实例，如果创建失败返回None
-        """
+        """创建云变量"""
         if not self.cloud_registered:
             self.log_debug("Cannot create cloud variable without registered project")
             return None
@@ -429,30 +490,28 @@ class Game:
             self.cloud_api_key,
             var_name,
             default_value,
-            sync_interval
+            sync_interval,
+            value_serializer=serializer,
+            value_deserializer=deserializer
         )
         
         self.cloud_variables[var_name] = var
         self.log_debug(f"Created cloud variable: {var_name}")
         return var
     
-    def get_cloud_variable(self, var_name: str) -> Optional[CloudVariable]:
-        """获取云变量
-        
-        参数:
-            var_name: 变量名称
-        
-        返回:
-            CloudVariable: 云变量实例，如果不存在返回None
-        """
-        return self.cloud_variables.get(var_name)
-    
     def close_cloud_variables(self):
         """关闭所有云变量，释放资源"""
-        for var in self.cloud_variables.values():
+        for var_name, var in list(self.cloud_variables.items()):
             var.close()
-        self.cloud_variables.clear()
+            del self.cloud_variables[var_name]
         self.log_debug("All cloud variables closed")
+    
+    def run(self, fps: int = 60, debug: bool = False):
+        try:
+            # ... 游戏主循环 ...
+        finally:
+            # 确保资源被清理
+            self.close_cloud_variables()
 
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
