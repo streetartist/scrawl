@@ -506,13 +506,7 @@ class Game:
             del self.cloud_variables[var_name]
         self.log_debug("All cloud variables closed")
     
-    def run(self, fps: int = 60, debug: bool = False):
-        try:
-            # ... 游戏主循环 ...
-        finally:
-            # 确保资源被清理
-            self.close_cloud_variables()
-
+    
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
 
