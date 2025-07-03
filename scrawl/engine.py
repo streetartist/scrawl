@@ -941,7 +941,7 @@ class Sprite:
 
         self.is_moving_right == False
 
-    def move_right(self):
+    def move_left(self):
         self.is_moving_left == True
         
         for i in range(10):
