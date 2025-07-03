@@ -1,1 +1,3 @@
 pygame
+requests
+numpy
