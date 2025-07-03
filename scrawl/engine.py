@@ -519,12 +519,10 @@ class Sprite:
         self.needs_sprite_collision = False
         self.collision_targets = set()  # 存储需要检测的精灵名称
         
-        # 左右上下glide移动状态变量
-        self.is_moving_left = False
-        self.is_moving_right = False
-        self.is_moving_up = False
-        self.is_moving_down = False
-
+        # 添加移动状态变量
+        self._is_moving = False  # 是否正在移动
+        self._active_movement = None  # 当前活动移动的方向标识
+        
 
     # 新增的图片管理方法
     def add_costume(self, name: str, image: pygame.Surface):
@@ -1054,86 +1052,101 @@ class Sprite:
         self.pos.y = target_y
     
     
-    def glide_left(self, distance: float, duration: float = 1000, 
-                   easing: str = "linear"):
-        """向左平滑移动指定距离
+    def glide_in_direction(self, direction: float, distance: float, 
+                           duration: float = 1000, easing: str = "linear",
+                           exclusive: bool = True):
+        """
+        向指定方向平滑移动指定距离
         
         Args:
+            direction: 移动方向（角度，0表示右，90表示上）
             distance: 移动距离（像素）
             duration: 移动所需时间（毫秒）
-            easing: 缓动函数类型
+            easing: 缓动函数类型 ("linear", "ease_in", "ease_out", "ease_in_out")
+            exclusive: 是否启用方向互斥（默认为True）
         """
-        if self.is_moving_right == True:
-            return
+        # 计算目标位置
+        rad = math.radians(direction)
+        dx = distance * math.cos(rad)
+        dy = -distance * math.sin(rad)  # 注意：屏幕坐标系y轴向下
         
-        self.is_moving_left = True
-
-        target_x = self.pos.x - distance
-        target_y = self.pos.y
-
+        # 检查是否应该互斥移动
+        if exclusive and self._is_moving:
+            # 检查新移动是否与当前活动移动冲突
+            if self._is_conflicting_movement(direction):
+                # 取消新移动
+                return
+        
+        # 设置移动状态
+        self._is_moving = True
+        self._active_movement = self._get_movement_type(direction)
+        
+        # 计算目标位置
+        target_x = self.pos.x + dx
+        target_y = self.pos.y + dy
+        
+        # 执行移动
         yield from self.glide_to(target_x, target_y, duration, easing)
         
-        self.is_moving_left = False
+        # 移动完成后重置状态
+        self._is_moving = False
+        self._active_movement = None
+    
+    def _get_movement_type(self, direction: float) -> str:
+        """获取移动方向类型"""
+        # 将角度标准化到0-360度
+        normalized_direction = direction % 360
+        
+        # 判断主要方向
+        if 315 <= normalized_direction or normalized_direction < 45:
+            return "right"
+        elif 45 <= normalized_direction < 135:
+            return "up"
+        elif 135 <= normalized_direction < 225:
+            return "left"
+        else:  # 225 <= normalized_direction < 315
+            return "down"
+    
+    def _is_conflicting_movement(self, new_direction: float) -> bool:
+        """检查新移动是否与当前活动移动冲突"""
+        if not self._active_movement:
+            return False
+        
+        new_type = self._get_movement_type(new_direction)
+        current_type = self._active_movement
+        
+        # 定义冲突对
+        horizontal_conflict = {"left", "right"}
+        vertical_conflict = {"up", "down"}
+        
+        # 检查是否在同一个冲突组
+        if current_type in horizontal_conflict and new_type in horizontal_conflict:
+            return True
+        if current_type in vertical_conflict and new_type in vertical_conflict:
+            return True
+        
+        return False
+
+    # 更新方向移动方法以使用新的互斥功能
+    def glide_left(self, distance: float, duration: float = 1000, 
+                   easing: str = "linear", exclusive: bool = True):
+        """向左平滑移动指定距离（支持互斥）"""
+        yield from self.glide_in_direction(180, distance, duration, easing, exclusive)
 
     def glide_right(self, distance: float, duration: float = 1000, 
-                    easing: str = "linear"):
-        """向右平滑移动指定距离
-        
-        Args:
-            distance: 移动距离（像素）
-            duration: 移动所需时间（毫秒）
-            easing: 缓动函数类型
-        """
-        if self.is_moving_left == True:
-            return
-        
-        self.is_moving_right = True
-
-        target_x = self.pos.x + distance
-        target_y = self.pos.y
-        yield from self.glide_to(target_x, target_y, duration, easing)
-
-        self.is_moving_right = False
+                    easing: str = "linear", exclusive: bool = True):
+        """向右平滑移动指定距离（支持互斥）"""
+        yield from self.glide_in_direction(0, distance, duration, easing, exclusive)
 
     def glide_up(self, distance: float, duration: float = 1000, 
-                 easing: str = "linear"):
-        """向上平滑移动指定距离
-        
-        Args:
-            distance: 移动距离（像素）
-            duration: 移动所需时间（毫秒）
-            easing: 缓动函数类型
-        """
-        if self.is_moving_down == True:
-            return
-        
-        self.is_moving_up = True
-
-        target_x = self.pos.x
-        target_y = self.pos.y - distance
-        yield from self.glide_to(target_x, target_y, duration, easing)
-        
-        self.is_moving_up = False
+                 easing: str = "linear", exclusive: bool = True):
+        """向上平滑移动指定距离（支持互斥）"""
+        yield from self.glide_in_direction(90, distance, duration, easing, exclusive)
 
     def glide_down(self, distance: float, duration: float = 1000, 
-                   easing: str = "linear"):
-        """向下平滑移动指定距离
-        
-        Args:
-            distance: 移动距离（像素）
-            duration: 移动所需时间（毫秒）
-            easing: 缓动函数类型
-        """
-        if self.is_moving_up == True:
-            return
-        
-        self.is_moving_down = True
-
-        target_x = self.pos.x
-        target_y = self.pos.y + distance
-        yield from self.glide_to(target_x, target_y, duration, easing)
-        
-        self.is_moving_down = False
+                   easing: str = "linear", exclusive: bool = True):
+        """向下平滑移动指定距离（支持互斥）"""
+        yield from self.glide_in_direction(270, distance, duration, easing, exclusive)
 
     def goto(self, x: float, y: float):
         self.pos.x = x
