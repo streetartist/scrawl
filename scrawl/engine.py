@@ -1024,24 +1024,29 @@ class Sprite:
         start_time = self.game.current_time
         end_time = start_time + duration
         
-        while self.game.current_time < end_timewhile self.game.current_time < end_time:
-        progress = (self.game.current_time - start_time) / duration
-        progress = min(progress, 1.0)
-        
-        # 应用缓动函数
-        if easing == "ease_in_out":
-            # 使用三次贝塞尔曲线实现平滑缓动
-            progress = progress * progress * (3 - 2 * progress)
-        elif easing == "ease_in":
-            progress = progress * progress
-        elif easing == "ease_out":
-            progress = 1 - (1 - progress) * (1 - progress)
-        # 默认为线性
-        
-        self.pos.x = start_x + (target_x - start_x) * progress
-        self.pos.y = start_y + (target_y - start_y) * progress
-        
-        yield 0
+        while self.game.current_time < end_time:
+            # 计算当前进度（0.0 - 1.0）
+            progress = (self.game.current_time - start_time) / duration
+            progress = min(progress, 1.0)  # 确保不超过1.0
+            
+            # 应用缓动函数
+            if easing == "ease_in_out":
+                # 三次贝塞尔曲线缓动
+                progress = progress * progress * (3 - 2 * progress)
+            elif easing == "ease_in":
+                # 加速缓动
+                progress = progress * progress
+            elif easing == "ease_out":
+                # 减速缓动
+                progress = 1 - (1 - progress) * (1 - progress)
+            # 默认为线性
+            
+            # 计算新位置
+            self.pos.x = start_x + (target_x - start_x) * progress
+            self.pos.y = start_y + (target_y - start_y) * progress
+            
+            # 等待下一帧
+            yield 0
         
         # 确保最终位置准确
         self.pos.x = target_x
