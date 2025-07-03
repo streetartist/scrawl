@@ -144,6 +144,15 @@ class Game:
         self.broadcast_history = {}  # 存储广播触发状态
         self.current_frame_broadcasts = set()  # 当前帧触发的广播
 
+        # 初始化音频系统
+        pygame.mixer.init()
+        self.sound_effects = {}  # 存储加载的音效
+        self.music = {}  # 存储加载的背景音乐文件路径
+        self.current_music = None  # 当前播放的音乐
+        self.music_volume = 0.5  # 背景音乐音量 (0.0-1.0)
+        self.sound_volume = 0.7  # 音效音量 (0.0-1.0)
+        self.music_looping = False  # 背景音乐是否循环
+
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
 
@@ -336,6 +345,141 @@ class Game:
 
         self.debug_info = self.debug_info[-5:]
 
+    def load_sound(self, name: str, file_path: str):
+        """加载音效文件并存储在游戏中"""
+        try:
+            sound = pygame.mixer.Sound(get_resource_path(file_path))
+            self.sound_effects[name] = sound
+            self.log_debug(f"Loaded sound: {name}")
+        except Exception as e:
+            self.log_debug(f"Failed to load sound {name}: {e}")
+    
+    def load_music(self, name: str, file_path: str):
+        """加载背景音乐文件路径（实际播放时才加载）"""
+        self.music[name] = get_resource_path(file_path)
+        self.log_debug(f"Registered music: {name}")
+    
+    def play_sound(self, name: str, volume: float = None):
+        """播放音效"""
+        if name not in self.sound_effects:
+            self.log_debug(f"Sound not found: {name}")
+            return
+            
+        sound = self.sound_effects[name]
+        if volume is not None:
+            sound.set_volume(max(0.0, min(1.0, volume))  # 确保音量在0-1之间
+        else:
+            sound.set_volume(self.sound_volume)
+            
+        sound.play()
+    
+    def play_music(self, name: str, loops: int = -1, volume: float = None):
+        """播放背景音乐（loops=-1表示无限循环）"""
+        if name not in self.music:
+            self.log_debug(f"Music not found: {name}")
+            return
+            
+        pygame.mixer.music.load(self.music[name])
+        
+        if volume is not None:
+            pygame.mixer.music.set_volume(max(0.0, min(1.0, volume)))
+        else:
+            pygame.mixer.music.set_volume(self.music_volume)
+            
+        pygame.mixer.music.play(loops)
+        self.current_music = name
+        self.music_looping = (loops == -1)
+    
+    def stop_music(self):
+        """停止背景音乐"""
+        pygame.mixer.music.stop()
+        self.current_music = None
+    
+    def pause_music(self):
+        """暂停背景音乐"""
+        pygame.mixer.music.pause()
+    
+    def unpause_music(self):
+        """继续播放背景音乐"""
+        pygame.mixer.music.unpause()
+    
+    def set_music_volume(self, volume: float):
+        """设置背景音乐音量 (0.0-1.0)"""
+        self.music_volume = max(0.0, min(1.0, volume))
+        pygame.mixer.music.set_volume(self.music_volume)
+    
+    def set_sound_volume(self, volume: float):
+        """设置音效音量 (0.0-1.0)"""
+        self.sound_volume = max(0.0, min(1.0, volume))
+        for sound in self.sound_effects.values():
+            sound.set_volume(self.sound_volume)
+    
+    def play_drum(self, drum_type: str, duration: int = 100):
+        """播放鼓声（类似Scratch的鼓声效果）"""
+        # 使用内置的鼓声效果
+        frequencies = {
+            "bass": 60,   # 低音鼓
+            "snare": 200,  # 小鼓
+            "hihat": 1000, # 踩镲
+            "cymbal": 1500 # 铙钹
+        }
+        
+        if drum_type not in frequencies:
+            self.log_debug(f"Unknown drum type: {drum_type}")
+            return
+            
+        # 生成简单的鼓声波形
+        sample_rate = 44100
+        samples = int(sample_rate * duration / 1000)
+        buf = numpy.zeros((samples, 2), dtype=numpy.int16)
+        
+        max_amplitude = 32767
+        decay = 0.997  # 衰减系数
+        
+        # 创建衰减的正弦波
+        for s in range(samples):
+            t = float(s) / sample_rate
+            amplitude = max_amplitude * math.exp(-t * 10)  # 指数衰减
+            wave = amplitude * math.sin(2 * math.pi * frequencies[drum_type] * t)
+            buf[s][0] = int(wave)
+            buf[s][1] = int(wave)
+            
+        # 创建并播放声音
+        sound = pygame.mixer.Sound(buffer=buf)
+        sound.set_volume(self.sound_volume)
+        sound.play()
+    
+    def play_note(self, note: str, duration: int = 500):
+        """播放音符（类似Scratch的音符效果）"""
+        # 音符到频率的映射
+        note_freq = {
+            "C4": 261.63, "D4": 293.66, "E4": 329.63, "F4": 349.23,
+            "G4": 392.00, "A4": 440.00, "B4": 493.88, "C5": 523.25
+        }
+        
+        if note not in note_freq:
+            self.log_debug(f"Unknown note: {note}")
+            return
+            
+        # 生成简单的正弦波
+        sample_rate = 44100
+        samples = int(sample_rate * duration / 1000)
+        buf = numpy.zeros((samples, 2), dtype=numpy.int16)
+        
+        max_amplitude = 32767
+        freq = note_freq[note]
+        
+        for s in range(samples):
+            t = float(s) / sample_rate
+            wave = max_amplitude * math.sin(2 * math.pi * freq * t)
+            buf[s][0] = int(wave)
+            buf[s][1] = int(wave)
+            
+        # 创建并播放声音
+        sound = pygame.mixer.Sound(buffer=buf)
+        sound.set_volume(self.sound_volume)
+        sound.play()
+
 
 class Scene:
 
@@ -476,6 +620,41 @@ class Scene:
         if self.game:
             return self.game.received_broadcast(event_name)
         return False
+
+    def play_sound(self, name: str, volume: float = None):
+        """场景播放音效"""
+        if self.game:
+            self.game.play_sound(name, volume)
+    
+    def play_music(self, name: str, loops: int = -1, volume: float = None):
+        """场景播放背景音乐"""
+        if self.game:
+            self.game.play_music(name, loops, volume)
+    
+    def play_drum(self, drum_type: str, duration: int = 100):
+        """场景播放鼓声"""
+        if self.game:
+            self.game.play_drum(drum_type, duration)
+    
+    def play_note(self, note: str, duration: int = 500):
+        """场景播放音符"""
+        if self.game:
+            self.game.play_note(note, duration)
+    
+    def stop_music(self):
+        """场景停止背景音乐"""
+        if self.game:
+            self.game.stop_music()
+    
+    def set_music_volume(self, volume: float):
+        """场景设置背景音乐音量"""
+        if self.game:
+            self.game.set_music_volume(volume)
+    
+    def set_sound_volume(self, volume: float):
+        """场景设置音效音量"""
+        if self.game:
+            self.game.set_sound_volume(volume)
 
 
 class Sprite:
@@ -1544,6 +1723,41 @@ class Sprite:
             pygame.draw.polygon(surface, (200, 200, 100), points, 2)
 
             surface.blit(text, (bubble_rect.x + 10, bubble_rect.y + 7))
+
+    def play_sound(self, name: str, volume: float = None):
+        """精灵播放音效"""
+        if self.game:
+            self.game.play_sound(name, volume)
+    
+    def play_music(self, name: str, loops: int = -1, volume: float = None):
+        """精灵播放背景音乐"""
+        if self.game:
+            self.game.play_music(name, loops, volume)
+    
+    def play_drum(self, drum_type: str, duration: int = 100):
+        """精灵播放鼓声"""
+        if self.game:
+            self.game.play_drum(drum_type, duration)
+    
+    def play_note(self, note: str, duration: int = 500):
+        """精灵播放音符"""
+        if self.game:
+            self.game.play_note(note, duration)
+    
+    def stop_music(self):
+        """精灵停止背景音乐"""
+        if self.game:
+            self.game.stop_music()
+    
+    def set_music_volume(self, volume: float):
+        """精灵设置背景音乐音量"""
+        if self.game:
+            self.game.set_music_volume(volume)
+    
+    def set_sound_volume(self, volume: float):
+        """精灵设置音效音量"""
+        if self.game:
+            self.game.set_sound_volume(volume)
 
 class Cat(Sprite):
 
