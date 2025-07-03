@@ -78,7 +78,6 @@ def handle_sprite_collision(target: [type, str]):
 
 
 class Game:
-
     def __init__(self,
                  width: int = 800,
                  height: int = 600,
