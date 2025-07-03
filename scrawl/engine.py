@@ -929,29 +929,45 @@ class Sprite:
         angle_rad = math.atan2(dy, dx)  # 使用正确的dx和dy计算角度
         self.direction = math.degrees(angle_rad) % 360
 
-    def move_right(self, speed=8):
-        self.is_moving_right == True
+    
+    def glide_to(self, target_x: float, target_y: float, duration: float = 1000):
+        """在指定时间内平滑移动到目标位置
         
-        for i in range(10):
-            if self.is_moving_left == True:
-                break
-            else:
-                self.pos.x = self.pos.x + speed * 0.5 ** i
-                yield 35 * 8 / speed
-
-        self.is_moving_right == False
-
-    def move_left(self, speed=8):
-        self.is_moving_left == True
+        Args:
+            target_x: 目标位置的x坐标
+            target_y: 目标位置的y坐标
+            duration: 移动所需时间（毫秒）
+        """
+        if not self.game:
+            return
         
-        for i in range(10):
-            if self.is_moving_right == True:
-                break
-            else:
-                self.pos.x = self.pos.x - 8 * 0.5 ** i
-                yield 35 * 8 / speed
-
-        self.is_moving_left == False
+        start_x, start_y = self.pos.x, self.pos.y
+        start_time = self.game.current_time
+        end_time = start_time + duration
+        
+        while self.game.current_time < end_timewhile self.game.current_time < end_time:
+        progress = (self.game.current_time - start_time) / duration
+        progress = min(progress, 1.0)
+        
+        # 应用缓动函数
+        if easing == "ease_in_out":
+            # 使用三次贝塞尔曲线实现平滑缓动
+            progress = progress * progress * (3 - 2 * progress)
+        elif easing == "ease_in":
+            progress = progress * progress
+        elif easing == "ease_out":
+            progress = 1 - (1 - progress) * (1 - progress)
+        # 默认为线性
+        
+        self.pos.x = start_x + (target_x - start_x) * progress
+        self.pos.y = start_y + (target_y - start_y) * progress
+        
+        yield 0
+        
+        # 确保最终位置准确
+        self.pos.x = target_x
+        self.pos.y = target_y
+    
 
     def goto(self, x: float, y: float):
         self.pos.x = x
