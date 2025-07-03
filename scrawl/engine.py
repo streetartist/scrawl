@@ -11,6 +11,7 @@ import threading
 import time
 import requests
 import json
+import hashlib
 
 class CloudVariable:
     def __init__(
@@ -582,6 +583,7 @@ class Game:
 
         pygame.quit()
         sys.exit()
+        self.close_cloud_variables()
 
     def process_key_event(self, key: int, mode: str):
         """处理单个按键事件"""
