@@ -724,7 +724,7 @@ class Game:
             
         sound = self.sound_effects[name]
         if volume is not None:
-            sound.set_volume(max(0.0, min(1.0, volume))  # 确保音量在0-1之间
+            sound.set_volume(max(0.0, min(1.0, volume)))  # 确保音量在0-1之间
         else:
             sound.set_volume(self.sound_volume)
             
