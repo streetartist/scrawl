@@ -929,19 +929,19 @@ class Sprite:
         angle_rad = math.atan2(dy, dx)  # 使用正确的dx和dy计算角度
         self.direction = math.degrees(angle_rad) % 360
 
-    def move_right(self):
+    def move_right(self, speed=8):
         self.is_moving_right == True
         
         for i in range(10):
             if self.is_moving_left == True:
                 break
             else:
-                self.pos.x = self.pos.x + 8 * 0.5 ** i
-                yield 35
+                self.pos.x = self.pos.x + speed * 0.5 ** i
+                yield 35 * 8 / speed
 
         self.is_moving_right == False
 
-    def move_left(self):
+    def move_left(self, speed=8):
         self.is_moving_left == True
         
         for i in range(10):
@@ -949,7 +949,7 @@ class Sprite:
                 break
             else:
                 self.pos.x = self.pos.x - 8 * 0.5 ** i
-                yield 35
+                yield 35 * 8 / speed
 
         self.is_moving_left == False
 
