@@ -884,6 +884,108 @@ class Sprite:
             target = getattr(handler, '_sprite_collision', None)
             if isinstance(target, str):
                 self.collision_targets.add(target)
+    
+    def touches_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
+        """检查精灵边缘是否触碰到指定颜色
+        
+        Args:
+            color: 目标颜色 (R, G, B)
+            tolerance: 颜色容差范围 (0-255)，默认0表示完全匹配
+            
+        Returns:
+            bool: 精灵边缘是否触碰到目标颜色
+        """
+        if not self.game or not self.visible:
+            return False
+            
+        # 获取精灵边缘点（圆形或基于图像的轮廓）
+        edge_points = self._get_edge_points()
+        
+        # 检查每个边缘点是否碰到目标颜色
+        for point in edge_points:
+            if self._point_touches_color(point, color, tolerance):
+                return True
+                
+        return False
+        
+    def _get_edge_points(self) -> List[Tuple[int, int]]:
+        """获取精灵边缘的点（用于颜色碰撞检测）"""
+        points = []
+        center_x, center_y = int(self.pos.x), int(self.pos.y)
+        radius = int(self.collision_radius * self.size)
+        
+        # 如果精灵有图像，使用基于图像的轮廓点
+        if self.image:
+            # 获取缩放和旋转后的图像
+            if self.size != 1.0:
+                orig_size = self.image.get_size()
+                new_size = (int(orig_size[0] * self.size),
+                            int(orig_size[1] * self.size))
+                scaled_img = pygame.transform.scale(self.image, new_size)
+            else:
+                scaled_img = self.image
+                
+            if self.direction != 0:
+                rotated_img = pygame.transform.rotate(scaled_img, self.direction - 90)
+            else:
+                rotated_img = scaled_img
+                
+            # 获取轮廓点（每隔5度取一个点）
+            mask = pygame.mask.from_surface(rotated_img)
+            if mask:
+                rect = rotated_img.get_rect(center=(center_x, center_y))
+                outline = mask.outline()
+                
+                # 简化轮廓点（每隔5个点取一个）
+                for i in range(0, len(outline), 5):
+                    x, y = outline[i]
+                    points.append((x + rect.x, y + rect.y))
+            else:
+                # 如果没有mask，使用圆形轮廓作为后备
+                for angle in range(0, 360, 10):
+                    rad = math.radians(angle)
+                    x = center_x + radius * math.cos(rad)
+                    y = center_y + radius * math.sin(rad)
+                    points.append((int(x), int(y)))
+        else:
+            # 没有图像时使用圆形轮廓
+            for angle in range(0, 360, 10):
+                rad = math.radians(angle)
+                x = center_x + radius * math.cos(rad)
+                y = center_y + radius * math.sin(rad)
+                points.append((int(x), int(y)))
+                
+        return points
+        
+    def _point_touches_color(self, point: Tuple[int, int], 
+                             target_color: Tuple[int, int, int], 
+                             tolerance: int) -> bool:
+        """检查特定点是否触碰到目标颜色"""
+        # 确保点在屏幕范围内
+        x, y = point
+        if x < 0 or x >= self.game.width or y < 0 or y >= self.game.height:
+            return False
+            
+        # 获取该点的颜色
+        try:
+            # 直接从屏幕表面获取颜色
+            screen_color = self.game.screen.get_at((x, y))[:3]
+        except IndexError:
+            return False
+            
+        # 检查颜色是否匹配（考虑容差）
+        return self._colors_match(screen_color, target_color, tolerance)
+        
+    def _colors_match(self, color1: Tuple[int, int, int], 
+                      color2: Tuple[int, int, int], 
+                      tolerance: int) -> bool:
+        """检查两个颜色是否在容差范围内匹配"""
+        r1, g1, b1 = color1
+        r2, g2, b2 = color2
+        
+        return (abs(r1 - r2) <= tolerance and \
+               abs(g1 - g2) <= tolerance and \
+               abs(b1 - b2) <= tolerance
 
     def set_size(self, size: float):
         self.size = size
