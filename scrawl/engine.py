@@ -936,7 +936,7 @@ class Sprite:
             if self.is_moving_left == True:
                 break
             else:
-                self.pos.x = self.pos.x - 8 * 0.5 ** i
+                self.pos.x = self.pos.x + 8 * 0.5 ** i
                 yield 35
 
         self.is_moving_right == False
