@@ -1155,14 +1155,14 @@ class Sprite:
         new_type = self._get_movement_type(new_direction)
         current_type = self._active_movement
         
-        # 定义冲突对
-        horizontal_conflict = {"left", "right"}
-        vertical_conflict = {"up", "down"}
-        
         # 检查是否在同一个冲突组
-        if current_type in horizontal_conflict and new_type in horizontal_conflict:
+        if current_type == "left" and new_type == "right":
             return True
-        if current_type in vertical_conflict and new_type in vertical_conflict:
+        elif current_type == "right" and new_type == "left":
+            return True
+        elif current_type == "up" and new_type == "down":
+            return True
+        elif current_type == "down" and new_type == "up":
             return True
         
         return False
