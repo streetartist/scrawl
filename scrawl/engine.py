@@ -580,11 +580,12 @@ class Game:
 
             pygame.display.flip()
             self.clock.tick(fps)
+        
+        self.close_cloud_variables()
 
         pygame.quit()
         sys.exit()
-        self.close_cloud_variables()
-
+        
     def process_key_event(self, key: int, mode: str):
         """处理单个按键事件"""
         for obj, method, event_key, event_mode in self.key_events:
