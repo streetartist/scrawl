@@ -14,7 +14,7 @@ import time
 class CloudVariable:
     def __init__(self, game, project_id, api_key, var_name, default_value=""):
         # 使用你的 Vercel 部署 URL
-        self.server_url = "https://your-project.vercel.app/api" 
+        self.server_url = "https://scrawl.weber.edu.deal/api" 
         self.project_id = project_id
         self.api_key = api_key
         self.var_name = var_name
