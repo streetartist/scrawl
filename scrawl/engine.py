@@ -7,6 +7,164 @@ from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
 
+import requests
+import time
+import threading
+import uuid
+import json
+import traceback
+
+# 配置信息 - 替换为您的实际值
+SERVER_URL = "https://scrawl.weber.edu.deal/api"  # 您的 Vercel 部署 URL
+
+
+class CloudVariableClient:
+    def __init__(self, server_url, project_id=None, api_key=None):
+        self.server_url = server_url
+        self.project_id = project_id
+        self.api_key = api_key
+        self.variables = {}
+        
+        # 如果没有提供项目ID，自动注册新项目
+        if not project_id or not api_key:
+            self.register_project()
+    
+    def register_project(self, project_name="TestProject"):
+        """注册新项目"""
+        url = f"{self.server_url}/register"
+        payload = {"project_name": project_name}
+        
+        try:
+            print(f"📤 注册项目: {project_name}")
+            response = requests.post(url, json=payload, timeout=10)
+            
+            if response.status_code == 201:
+                data = response.json()
+                self.project_id = data['project_id']
+                self.api_key = data['api_key']
+                print(f"✅ 项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
+                return True
+            else:
+                print(f"❌ 项目注册失败: {response.status_code}")
+                print(f"响应内容: {response.text}")
+                print(f"请求URL: {url}")
+                print(f"请求负载: {payload}")
+                return False
+        except Exception as e:
+            print(f"❌ 注册请求异常: {str(e)}")
+            traceback.print_exc()
+            return False
+    
+    def set_variable(self, var_name, var_value):
+        """设置变量值"""
+        if not self.project_id or not self.api_key:
+            print("❌ 未设置项目ID或API密钥")
+            return False
+        
+        url = f"{self.server_url}/{self.project_id}/set"
+        headers = {"X-API-Key": self.api_key}
+        payload = {"var_name": var_name, "var_value": var_value}
+        
+        try:
+            print(f"📤 设置变量: {var_name} = {var_value}")
+            response = requests.post(url, json=payload, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                print(f"✅ 设置变量成功: {var_name} = {var_value}")
+                self.variables[var_name] = var_value
+                return True
+            else:
+                print(f"❌ 设置变量失败: {response.status_code}")
+                print(f"响应内容: {response.text}")
+                print(f"请求URL: {url}")
+                print(f"请求头: {headers}")
+                print(f"请求负载: {payload}")
+                return False
+        except Exception as e:
+            print(f"❌ 设置变量异常: {str(e)}")
+            traceback.print_exc()
+            return False
+    
+    def get_variable(self, var_name):
+        """获取变量值"""
+        if not self.project_id or not self.api_key:
+            print("❌ 未设置项目ID或API密钥")
+            return None
+        
+        url = f"{self.server_url}/{self.project_id}/get"
+        headers = {"X-API-Key": self.api_key}
+        params = {"var_name": var_name}
+        
+        try:
+            print(f"📥 获取变量: {var_name}")
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                value = data['var_value']
+                print(f"✅ 获取变量成功: {var_name} = {value}")
+                self.variables[var_name] = value
+                return value
+            else:
+                print(f"❌ 获取变量失败: {response.status_code}")
+                print(f"响应内容: {response.text}")
+                print(f"请求URL: {url}")
+                print(f"请求头: {headers}")
+                print(f"请求参数: {params}")
+                return None
+        except Exception as e:
+            print(f"❌ 获取变量异常: {str(e)}")
+            traceback.print_exc()
+            return None
+    
+    def get_all_variables(self):
+        """获取所有变量"""
+        if not self.project_id or not self.api_key:
+            print("❌ 未设置项目ID或API密钥")
+            return {}
+        
+        url = f"{self.server_url}/{self.project_id}/all"
+        headers = {"X-API-Key": self.api_key}
+        
+        try:
+            print("📥 获取所有变量")
+            response = requests.get(url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                variables = response.json()
+                print(f"✅ 获取所有变量成功: 共 {len(variables)} 个变量")
+                self.variables = {k: v['value'] for k, v in variables.items()}
+                return variables
+            else:
+                print(f"❌ 获取所有变量失败: {response.status_code}")
+                print(f"响应内容: {response.text}")
+                return {}
+        except Exception as e:
+            print(f"❌ 获取所有变量异常: {str(e)}")
+            traceback.print_exc()
+            return {}
+    
+    def health_check(self):
+        """健康检查"""
+        url = f"{self.server_url}/health"
+        
+        try:
+            print("🩺 健康检查")
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                print(f"✅ 健康检查通过: {data}")
+                return True
+            else:
+                print(f"❌ 健康检查失败: {response.status_code}")
+                print(f"响应内容: {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ 健康检查异常: {str(e)}")
+            traceback.print_exc()
+            return False
+
 # 获取当前包目录的绝对路径
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 
