@@ -1,11 +1,209 @@
-import pygame
-import sys
-import types
-import math
+import requests
+import time
+import threading
 import random
-from collections import deque
-from typing import Tuple, List, Callable, Any, Dict, Optional
+import uuid
+import json
+import traceback
+import pygame
+from typing import Dict, Any, Optional, Callable
 import os
+import numpy
+
+class CloudVariables:
+    """云变量管理类，处理与云变量服务器的交互"""
+    
+    def __init__(self, game: 'Game', server_url: str, 
+                 project_id: str = None, api_key: str = None):
+        self.game = game
+        self.server_url = server_url
+        self.project_id = project_id
+        self.api_key = api_key
+        self.variables: Dict[str, Any] = {}
+        self.updated_callbacks: Dict[str, Callable[[Any, Any], None]] = {}
+        self.sync_interval = 5.0  # 同步间隔（秒）
+        self.last_sync_time = 0
+        self.is_syncing = False
+        self.sync_thread = None
+        self.is_running = False
+        
+        # 如果没有提供项目ID，自动注册新项目
+        if not project_id or not api_key:
+            self.register_project()
+            self.start_sync_thread()
+    
+    def register_project(self, project_name: str = "Scrawl Project") -> bool:
+        """注册新项目并获取项目ID和API密钥"""
+        url = f"{self.server_url}/register"
+        payload = {"project_name": project_name}
+        
+        try:
+            self.game.log_debug(f"📤 注册云变量项目: {project_name}")
+            response = requests.post(url, json=payload, timeout=10)
+            
+            if response.status_code == 201:
+                data = response.json()
+                self.project_id = data['project_id']
+                self.api_key = data['api_key']
+                self.game.log_debug(f"✅ 云变量项目注册成功! ID: {self.project_id}")
+                return True
+            else:
+                self.game.log_debug(f"❌ 云变量项目注册失败: {response.status_code}")
+                self.game.log_debug(f"响应内容: {response.text}")
+                return False
+        except Exception as e:
+            self.game.log_debug(f"❌ 云变量注册请求异常: {str(e)}")
+            traceback.print_exc()
+            return False
+    
+    def set_variable(self, var_name: str, var_value: Any) -> bool:
+        """设置云变量值"""
+        if not self.project_id or not self.api_key:
+            self.game.log_debug("❌ 未设置云变量项目ID或API密钥")
+            return False
+        
+        url = f"{self.server_url}/{self.project_id}/set"
+        headers = {"X-API-Key": self.api_key}
+        payload = {"var_name": var_name, "var_value": str(var_value)}
+        
+        try:
+            self.game.log_debug(f"📤 设置云变量: {var_name} = {var_value}")
+            response = requests.post(url, json=payload, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                self.game.log_debug(f"✅ 云变量设置成功: {var_name} = {var_value}")
+                old_value = self.variables.get(var_name)
+                self.variables[var_name] = var_value
+                
+                # 触发更新回调
+                if var_name in self.updated_callbacks:
+                    self.updated_callbacks[var_name](old_value, var_value)
+                    
+                return True
+            else:
+                self.game.log_debug(f"❌ 云变量设置失败: {response.status_code}")
+                self.game.log_debug(f"响应内容: {response.text}")
+                return False
+        except Exception as e:
+            self.game.log_debug(f"❌ 云变量设置异常: {str(e)}")
+            traceback.print_exc()
+            return False
+    
+    def get_variable(self, var_name: str) -> Optional[Any]:
+        """获取云变量值"""
+        if not self.project_id or not self.api_key:
+            self.game.log_debug("❌ 未设置云变量项目ID或API密钥")
+            return None
+        
+        # 先检查本地缓存
+        if var_name in self.variables:
+            return self.variables[var_name]
+        
+        url = f"{self.server_url}/{self.project_id}/get"
+        headers = {"X-API-Key": self.api_key}
+        params = {"var_name": var_name}
+        
+        try:
+            self.game.log_debug(f"📥 获取云变量: {var_name}")
+            response = requests.get(url, params=params, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                value = data['var_value']
+                self.game.log_debug(f"✅ 云变量获取成功: {var_name} = {value}")
+                self.variables[var_name] = value
+                return value
+            else:
+                self.game.log_debug(f"❌ 云变量获取失败: {response.status_code}")
+                self.game.log_debug(f"响应内容: {response.text}")
+                return None
+        except Exception as e:
+            self.game.log_debug(f"❌ 云变量获取异常: {str(e)}")
+            traceback.print_exc()
+            return None
+    
+    def get_all_variables(self) -> Dict[str, Any]:
+        """获取所有云变量"""
+        if not self.project_id or not self.api_key:
+            self.game.log_debug("❌ 未设置云变量项目ID或API密钥")
+            return {}
+        
+        url = f"{self.server_url}/{self.project_id}/all"
+        headers = {"X-API-Key": self.api_key}
+        
+        try:
+            self.game.log_debug("📥 获取所有云变量")
+            response = requests.get(url, headers=headers, timeout=5)
+            
+            if response.status_code == 200:
+                variables = response.json()
+                self.game.log_debug(f"✅ 云变量获取成功: 共 {len(variables)} 个变量")
+                self.variables = {k: v['value'] for k, v in variables.items()}
+                return variables
+            else:
+                self.game.log_debug(f"❌ 云变量获取失败: {response.status_code}")
+                self.game.log_debug(f"响应内容: {response.text}")
+                return {}
+        except Exception as e:
+            self.game.log_debug(f"❌ 云变量获取异常: {str(e)}")
+            traceback.print_exc()
+            return {}
+    
+    def on_variable_updated(self, var_name: str, callback: Callable[[Any, Any], None]):
+        """注册变量更新回调函数"""
+        self.updated_callbacks[var_name] = callback
+        self.game.log_debug(f"📌 注册云变量更新回调: {var_name}")
+    
+    def start_sync_thread(self):
+        """启动后台同步线程"""
+        if self.sync_thread and self.sync_thread.is_alive():
+            return
+            
+        self.is_running = True
+        self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
+        self.sync_thread.start()
+        self.game.log_debug("🔄 云变量同步线程已启动")
+    
+    def stop_sync_thread(self):
+        """停止后台同步线程"""
+        self.is_running = False
+        if self.sync_thread:
+            self.sync_thread.join(timeout=2.0)
+        self.game.log_debug("🔄 云变量同步线程已停止")
+    
+    def _sync_loop(self):
+        """后台同步循环"""
+        while self.is_running:
+            try:
+                current_time = time.time()
+                if current_time - self.last_sync_time >= self.sync_interval:
+                    self.last_sync_time = current_time
+                    self.get_all_variables()
+                time.sleep(1.0)
+            except Exception as e:
+                self.game.log_debug(f"❌ 云变量同步异常: {str(e)}")
+                time.sleep(5.0)  # 出错后等待更长时间再重试
+    
+    def health_check(self) -> bool:
+        """云变量服务器健康检查"""
+        url = f"{self.server_url}/health"
+        
+        try:
+            self.game.log_debug("🩺 云变量服务器健康检查")
+            response = requests.get(url, timeout=5)
+            
+            if response.status_code == 200:
+                data = response.json()
+                self.game.log_debug(f"✅ 健康检查通过: {data}")
+                return True
+            else:
+                self.game.log_debug(f"❌ 健康检查失败: {response.status_code}")
+                self.game.log_debug(f"响应内容: {response.text}")
+                return False
+        except Exception as e:
+            self.game.log_debug(f"❌ 健康检查异常: {str(e)}")
+            traceback.print_exc()
+            return False
 
 # 获取当前包目录的绝对路径
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -84,7 +282,8 @@ class Game:
                  title: str = "Scratch-like Game",
                  font_path: str = "Simhei.ttf",
                  font_size: int = 20,
-                 fullscreen: bool = False):
+                 fullscreen: bool = False,
+                 cloud_server_url: str = "https://scrawl.weber.edu.deal/api"):
         pygame.init()
         self.width = width
         self.height = height
@@ -151,7 +350,21 @@ class Game:
         self.music_volume = 0.5  # 背景音乐音量 (0.0-1.0)
         self.sound_volume = 0.7  # 音效音量 (0.0-1.0)
         self.music_looping = False  # 背景音乐是否循环
-        
+        self.cloud_server_url = cloud_server_url
+        self.cloud_variables = None
+    
+    def init_cloud_variables(self, project_id: str = None, api_key: str = None):
+        """初始化云变量功能"""
+        if not self.cloud_variables:
+            self.cloud_variables = CloudVariables(
+                self, self.cloud_server_url, project_id, api_key)
+            self.log_debug("☁️ 云变量功能已初始化")
+    
+    def close_cloud_variables(self):
+        """关闭云变量功能"""
+        if self.cloud_variables:
+            self.cloud_variables.stop_sync_thread()
+            self.log_debug("☁️ 云变量功能已关闭")
     
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
@@ -496,6 +709,23 @@ class Scene:
 
         self.main_tasks = []  # 存储所有标记为main的任务
         self.broadcast_handlers = {}  # 存储广播事件处理函数
+    
+    def set_cloud_variable(self, var_name: str, var_value: Any) -> bool:
+        """设置云变量值"""
+        if self.game and self.game.cloud_variables:
+            return self.game.cloud_variables.set_variable(var_name, var_value)
+        return False
+    
+    def get_cloud_variable(self, var_name: str) -> Optional[Any]:
+        """获取云变量值"""
+        if self.game and self.game.cloud_variables:
+            return self.game.cloud_variables.get_variable(var_name)
+        return None
+    
+    def on_cloud_variable_updated(self, var_name: str, callback: Callable[[Any, Any], None]):
+        """注册云变量更新回调"""
+        if self.game and self.game.cloud_variables:
+            self.game.cloud_variables.on_variable_updated(var_name, callback)
 
     def setup(self):
         if not self.game:
@@ -703,6 +933,23 @@ class Sprite:
         # 添加移动状态变量
         self._is_moving = False  # 是否正在移动
         self._active_movement = None  # 当前活动移动的方向标识
+
+    def set_cloud_variable(self, var_name: str, var_value: Any) -> bool:
+        """设置云变量值"""
+        if self.scene and self.scene.game and self.scene.game.cloud_variables:
+            return self.scene.game.cloud_variables.set_variable(var_name, var_value)
+        return False
+    
+    def get_cloud_variable(self, var_name: str) -> Optional[Any]:
+        """获取云变量值"""
+        if self.scene and self.scene.game and self.scene.game.cloud_variables:
+            return self.scene.game.cloud_variables.get_variable(var_name)
+        return None
+    
+    def on_cloud_variable_updated(self, var_name: str, callback: Callable[[Any, Any], None]):
+        """注册云变量更新回调"""
+        if self.scene and self.scene.game and self.scene.game.cloud_variables:
+            self.scene.game.cloud_variables.on_variable_updated(var_name, callback)
 
     # 新增的图片管理方法
     def add_costume(self, name: str, image: pygame.Surface):
