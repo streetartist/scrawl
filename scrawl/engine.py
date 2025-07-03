@@ -1555,7 +1555,7 @@ class Sprite:
         
         return (abs(r1 - r2) <= tolerance and \
                abs(g1 - g2) <= tolerance and \
-               abs(b1 - b2) <= tolerance
+               abs(b1 - b2) <= tolerance)
 
     def set_size(self, size: float):
         self.size = size
