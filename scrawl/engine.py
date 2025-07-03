@@ -6,17 +6,19 @@ import random
 from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
+
 import threading
 import time
 import requests
 import json
 import hashlib
-import uuid
 
 class CloudVariable:
     def __init__(
         self,
         game: 'Game',
+        project_id: str,
+        api_key: str,
         var_name: str,
         default_value: Any = "",
         sync_interval: int = 5,
@@ -26,6 +28,8 @@ class CloudVariable:
     ):
         self.game = game
         self.server_url = game.cloud_server_url
+        self.project_id = project_id
+        self.api_key = api_key
         self.var_name = var_name
         self._value = default_value
         self.default_value = default_value
@@ -41,10 +45,6 @@ class CloudVariable:
         # 序列化/反序列化函数
         self.serialize = value_serializer or self._default_serializer
         self.deserialize = value_deserializer or self._default_deserializer
-        
-        # 项目凭证
-        self.project_id = game.cloud_project_id
-        self.api_key = game.cloud_api_key
         
         # 初始同步
         self._sync()
@@ -131,7 +131,6 @@ class CloudVariable:
                 if response.status_code == 200:
                     self.last_synced = time.time()
                     self.error_count = max(0, self.error_count - 1)
-                    self.game.log_debug(f"Cloud push success: {self.var_name}")
                     return True
                 elif response.status_code == 429:  # 速率限制
                     retry_after = int(response.headers.get('Retry-After', 1))
@@ -144,7 +143,6 @@ class CloudVariable:
                 self.game.log_debug(f"Unexpected error during cloud push: {str(e)}")
         
         self.error_count += 1
-        self.game.log_debug(f"Cloud push failed after {self.max_retries} attempts: {self.var_name}")
         return False
     
     def _sync(self):
@@ -160,19 +158,24 @@ class CloudVariable:
                 
                 if response.status_code == 200:
                     data = response.json()
-                    cloud_value = self.deserialize(data['var_value'])
+                    cloud_updated = float(data['last_updated'])
                     
-                    with self.lock:
-                        old_value = self._value
-                        self._value = cloud_value
-                    
-                    # 值变化时通知监听器
-                    if cloud_value != old_value:
-                        self._notify_listeners(cloud_value)
+                    # 如果云端有更新
+                    if cloud_updated > self.last_updated:
+                        serialized_value = data['var_value']
+                        cloud_value = self.deserialize(serialized_value)
+                        
+                        with self.lock:
+                            old_value = self._value
+                            self._value = cloud_value
+                            self.last_updated = cloud_updated
+                        
+                        # 值变化时通知监听器
+                        if cloud_value != old_value:
+                            self._notify_listeners(cloud_value)
                     
                     self.last_synced = time.time()
                     self.error_count = max(0, self.error_count - 1)
-                    self.game.log_debug(f"Cloud sync success: {self.var_name}")
                     return True
                 elif response.status_code == 429:  # 速率限制
                     retry_after = int(response.headers.get('Retry-After', 1))
@@ -185,7 +188,6 @@ class CloudVariable:
                 self.game.log_debug(f"Unexpected error during cloud sync: {str(e)}")
         
         self.error_count += 1
-        self.game.log_debug(f"Cloud sync failed after {self.max_retries} attempts: {self.var_name}")
         return False
     
     def _sync_thread(self):
@@ -289,7 +291,7 @@ class Game:
                  font_size: int = 20,
                  fullscreen: bool = False,
                  cloud_server_url: str = "https://scrawl.weber.edu.deal",
-                 cloud_config_file: str = "game_cloud_config.json"):
+        cloud_config_file: str = "game_cloud_config.json"):
         pygame.init()
         self.width = width
         self.height = height
@@ -365,35 +367,6 @@ class Game:
         self.cloud_variables = {}  # 存储所有云变量
         self.cloud_registered = False
         self.load_cloud_config()
-        
-        # 如果配置文件不存在，自动注册云项目
-        if not self.cloud_registered:
-            self._register_cloud_project()
-    
-    def _register_cloud_project(self, project_name: str = None):
-        """注册云项目"""
-        if project_name is None:
-            project_name = f"scratch-game-{uuid.uuid4().hex[:8]}"
-        
-        try:
-            response = requests.post(
-                f"{self.cloud_server_url}/api/register",
-                json={'project_name': project_name},
-                timeout=10
-            )
-            
-            if response.status_code == 201:
-                data = response.json()
-                self.cloud_project_id = data['project_id']
-                self.cloud_api_key = data['api_key']
-                self.cloud_registered = True
-                self.log_debug(f"Registered new cloud project: {self.cloud_project_id}")
-                self.save_cloud_config()
-                return True
-        except Exception as e:
-            self.log_debug(f"Cloud registration error: {str(e)}")
-        
-        return False
 
     def load_cloud_config(self):
         """加载云配置"""
@@ -405,11 +378,9 @@ class Game:
                     self.cloud_api_key = config.get('api_key')
                     self.cloud_registered = bool(self.cloud_project_id and self.cloud_api_key)
                     self.log_debug("Loaded cloud config from file")
-                    return True
         except Exception as e:
             self.log_debug(f"Error loading cloud config: {str(e)}")
             self.cloud_registered = False
-        return False
     
     def save_cloud_config(self):
         """保存云配置"""
@@ -423,9 +394,77 @@ class Game:
                     'api_key': self.cloud_api_key
                 }, f)
             self.log_debug("Saved cloud config to file")
-            return True
         except Exception as e:
             self.log_debug(f"Error saving cloud config: {str(e)}")
+    
+    def init_cloud_project(self, project_name: str, force_new: bool = False) -> bool:
+        """初始化云项目（确保使用相同的项目）"""
+        # 如果已有配置且不强制新建，直接使用
+        if self.cloud_registered and not force_new:
+            return True
+        
+        # 尝试加载现有配置
+        self.load_cloud_config()
+        if self.cloud_registered and not force_new:
+            return True
+        
+        # 注册新项目
+        if self._register_cloud_project(project_name):
+            self.save_cloud_config()
+            return True
+        
+        return False
+    
+    def _register_cloud_project(self, project_name: str) -> bool:
+        """注册或获取现有云项目"""
+        # 生成项目ID的稳定哈希（确保相同游戏名称生成相同ID）
+        project_hash = hashlib.sha256(project_name.encode()).hexdigest()[:16]
+        project_id = f"{project_name[:8]}_{project_hash}"
+        
+        try:
+            # 检查项目是否已存在
+            response = requests.get(
+                f"{self.cloud_server_url}/api/{project_id}/get",
+                params={'var_name': '__project_check__'},
+                timeout=10
+            )
+            
+            # 如果项目已存在，获取其API密钥
+            if response.status_code == 200:
+                data = response.json()
+                self.cloud_project_id = project_id
+                self.cloud_api_key = data['var_value']
+                self.cloud_registered = True
+                self.log_debug(f"Using existing cloud project: {project_id}")
+                return True
+        except:
+            pass
+        
+        # 创建新项目
+        try:
+            response = requests.post(
+                f"{self.cloud_server_url}/api/register",
+                json={'project_name': project_id},
+                timeout=10
+            )
+            
+            if response.status_code == 201:
+                data = response.json()
+                self.cloud_project_id = data['project_id']
+                self.cloud_api_key = data['api_key']
+                self.cloud_registered = True
+                
+                # 保存项目标识
+                self.create_cloud_variable(
+                    "__project_check__", 
+                    self.cloud_api_key
+                ).set_value(self.cloud_api_key, True)
+                
+                self.log_debug(f"Registered new cloud project: {self.cloud_project_id}")
+                return True
+        except Exception as e:
+            self.log_debug(f"Cloud registration error: {str(e)}")
+        
         return False
     
     def create_cloud_variable(
@@ -448,6 +487,8 @@ class Game:
         # 创建新变量
         var = CloudVariable(
             self,
+            self.cloud_project_id,
+            self.cloud_api_key,
             var_name,
             default_value,
             sync_interval,
@@ -458,10 +499,6 @@ class Game:
         self.cloud_variables[var_name] = var
         self.log_debug(f"Created cloud variable: {var_name}")
         return var
-    
-    def get_cloud_variable(self, var_name: str) -> Optional[CloudVariable]:
-        """获取云变量"""
-        return self.cloud_variables.get(var_name)
     
     def close_cloud_variables(self):
         """关闭所有云变量，释放资源"""
@@ -543,11 +580,12 @@ class Game:
 
             pygame.display.flip()
             self.clock.tick(fps)
+        
+        self.close_cloud_variables()
 
         pygame.quit()
         sys.exit()
-        self.close_cloud_variables()
-
+        
     def process_key_event(self, key: int, mode: str):
         """处理单个按键事件"""
         for obj, method, event_key, event_mode in self.key_events:
@@ -686,7 +724,7 @@ class Game:
             
         sound = self.sound_effects[name]
         if volume is not None:
-            sound.set_volume(max(0.0, min(1.0, volume))  # 确保音量在0-1之间
+            sound.set_volume(max(0.0, min(1.0, volume)))  # 确保音量在0-1之间
         else:
             sound.set_volume(self.sound_volume)
             
@@ -1517,7 +1555,7 @@ class Sprite:
         
         return (abs(r1 - r2) <= tolerance and \
                abs(g1 - g2) <= tolerance and \
-               abs(b1 - b2) <= tolerance
+               abs(b1 - b2) <= tolerance)
 
     def set_size(self, size: float):
         self.size = size
