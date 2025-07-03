@@ -1086,7 +1086,47 @@ class Sprite:
         target_y = self.pos.y + dy
         
         # 执行移动
-        yield from self.glide_to(target_x, target_y, duration, easing)
+        if not self.game:
+            return
+        
+        start_x, start_y = self.pos.x, self.pos.y
+        start_time = self.game.current_time
+        end_time = start_time + duration
+        
+        while self.game.current_time < end_time:
+            # 检查是否应该互斥移动
+        if exclusive and self._is_moving:
+            # 检查新移动是否与当前活动移动冲突
+            if self._is_conflicting_movement(direction):
+                # 取消新移动
+                return
+
+            # 计算当前进度（0.0 - 1.0）
+            progress = (self.game.current_time - start_time) / duration
+            progress = min(progress, 1.0)  # 确保不超过1.0
+            
+            # 应用缓动函数
+            if easing == "ease_in_out":
+                # 三次贝塞尔曲线缓动
+                progress = progress * progress * (3 - 2 * progress)
+            elif easing == "ease_in":
+                # 加速缓动
+                progress = progress * progress
+            elif easing == "ease_out":
+                # 减速缓动
+                progress = 1 - (1 - progress) * (1 - progress)
+            # 默认为线性
+            
+            # 计算新位置
+            self.pos.x = start_x + (target_x - start_x) * progress
+            self.pos.y = start_y + (target_y - start_y) * progress
+            
+            # 等待下一帧
+            yield 0
+        
+        # 确保最终位置准确
+        self.pos.x = target_x
+        self.pos.y = target_y
         
         # 移动完成后重置状态
         self._is_moving = False
