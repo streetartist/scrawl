@@ -279,6 +279,12 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 pip install scrawl-engine
 ```
 
+Upgrade
+
+```bash
+pip install --upgrade scrawl-engine
+```
+
 ## Development Documentation (Tentative Version)
 
 # Scrawl Library Usage Documentation
