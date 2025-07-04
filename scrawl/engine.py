@@ -6,6 +6,7 @@ import random
 from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
+import numpy
 
 import threading
 import time
@@ -397,8 +398,6 @@ class Game:
             pygame.display.flip()
             self.clock.tick(fps)
         
-        self.close_cloud_variables()
-
         pygame.quit()
         sys.exit()
         
