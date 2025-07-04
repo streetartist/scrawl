@@ -15,9 +15,9 @@ import uuid
 
 class CloudVariablesClient:
     def __init__(self, project_name=None, project_id=None, api_key=None, 
-                 base_url="http://scrawl.pythonanywhere.com", sync_interval=0.1):
+                 base_url="http://scrawl.pythonanywhere.com", sync_interval=100):
         self.base_url = base_url
-        self.sync_interval = sync_interval
+        self.sync_interval = sync_interval/1000 # 毫秒化秒
         self.local_vars = {}              # 本地变量存储
         self.change_queue = deque()       # 变更队列 (线程安全)
         self.lock = threading.Lock()      # 线程锁
