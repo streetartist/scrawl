@@ -8,6 +8,18 @@
 
 Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者提供类似 Scratch 的直观编程体验，同时借力 Python 的强大功能。
 
+## 安装 **注意是scrawl-engine！！**
+
+```bash
+pip install scrawl-engine
+```
+
+更新
+
+```bash
+pip install --upgrade scrawl-engine
+```
+
 ## 最佳 Demo
 
 女巫游戏：https://github.com/streetartist/scrawl_demo_witch
@@ -277,6 +289,12 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 
 ```bash
 pip install scrawl-engine
+```
+
+更新
+
+```bash
+pip install --upgrade scrawl-engine
 ```
 
 ## 开发文档（试行版）
