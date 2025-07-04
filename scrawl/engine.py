@@ -15,257 +15,171 @@ import json
 import traceback
 from requests.exceptions import ConnectionError, Timeout, RequestException
 
-# 配置信息 - 替换为您的实际值
-SERVER_URL = "https://scrawl.pythonanywhere.com/api"  # 您的部署 URL
-
 class CloudVariableClient:
-    def __init__(self, server_url=SERVER_URL, project_id=None, api_key=None, 
-                 max_retries=5, retry_delay=1.0, backoff_factor=1.5):
+    def __init__(self, project_name=None, project_id=None, api_key=None, base_url="http://scrawl.pythonanywhere.com"):
         """
         初始化云变量客户端
         
-        参数:
-        - server_url: 服务器URL
-        - project_id: 项目ID (可选)
-        - api_key: API密钥 (可选)
-        - max_retries: 最大重试次数 (默认5)
-        - retry_delay: 初始重试延迟(秒) (默认1.0)
-        - backoff_factor: 重试延迟增长因子 (默认1.5)
+        :param project_name: 项目名称（用于注册新项目）
+        :param project_id: 项目ID（用于连接现有项目）
+        :param api_key: API密钥（用于连接现有项目）
+        :param base_url: 服务器基础URL
         """
-        self.server_url = server_url
-        self.project_id = project_id
-        self.api_key = api_key
-        self.variables = {}
-        self.lock = threading.Lock()
-        self.init_event = threading.Event()
-        self.max_retries = max_retries
-        self.retry_delay = retry_delay
-        self.backoff_factor = backoff_factor
+        self.base_url = base_url
+        self.local_vars = {}         # 本地变量存储
+        self.changed_vars = set()    # 标记已修改的变量
+        self.lock = threading.Lock() # 线程锁
+        self.syncing = False        # 同步状态标志
+        self.running = True          # 控制同步线程运行
         
-        # 启动初始化线程
-        init_thread = threading.Thread(target=self._initialize, args=(project_id, api_key))
-        init_thread.daemon = True
-        init_thread.start()
-    
-    def _initialize(self, project_id, api_key):
-        """在后台线程中执行初始化"""
-        # 如果没有提供项目ID，自动注册新项目
-        if not project_id or not api_key:
-            self._register_project_in_thread()
+        # 注册新项目或使用现有项目
+        if project_name:
+            self._register_project(project_name)
+        elif project_id and api_key:
+            self.project_id = project_id
+            self.api_key = api_key
         else:
-            # 如果提供了凭证，直接标记为已初始化
-            with self.lock:
-                self.project_id = project_id
-                self.api_key = api_key
-            self.init_event.set()
-    
-    def _retry_request(self, method, url, **kwargs):
-        """
-        带重试机制的请求方法
+            raise ValueError("必须提供project_name或project_id/api_key")
         
-        参数:
-        - method: HTTP方法 ('get', 'post', 等)
-        - url: 请求URL
-        - **kwargs: 其他requests参数
+        # 初始化时从服务器加载所有变量
+        self._sync_all_from_server()
         
-        返回:
-        - 响应对象 (成功时)
-        - None (失败时)
-        """
-        delay = self.retry_delay
-        for attempt in range(self.max_retries + 1):  # +1 包括第一次尝试
-            try:
-                response = requests.request(method, url, **kwargs)
-                if response.status_code in [200, 201]:
-                    return response
-                elif response.status_code >= 500:
-                    # 服务器错误，应该重试
-                    print(f"⚠️ 服务器错误 (状态码 {response.status_code})，尝试 {attempt+1}/{self.max_retries}")
-                else:
-                    # 客户端错误，不需要重试
-                    print(f"❌ 请求失败 (状态码 {response.status_code})，不重试")
-                    return response
-            except (ConnectionError, Timeout) as e:
-                print(f"⚠️ 网络错误: {str(e)}，尝试 {attempt+1}/{self.max_retries}")
-            except RequestException as e:
-                print(f"⚠️ 请求异常: {str(e)}，尝试 {attempt+1}/{self.max_retries}")
-            
-            # 如果不是最后一次尝试，等待后重试
-            if attempt < self.max_retries:
-                time.sleep(delay)
-                delay *= self.backoff_factor  # 指数退避
-        
-        print(f"❌ 所有 {self.max_retries} 次尝试均失败")
-        return None
-    
-    def _register_project_in_thread(self, project_name="TestProject"):
-        """在后台线程中注册新项目"""
-        url = f"{self.server_url}/register"
-        payload = {"project_name": project_name}
+        # 启动同步线程
+        self.sync_thread = threading.Thread(target=self._sync_loop)
+        self.sync_thread.daemon = True
+        self.sync_thread.start()
+
+    def _register_project(self, project_name):
+        """注册新项目并获取凭证"""
+        url = f"{self.base_url}/api/register"
+        try:
+            response = requests.post(url, json={'project_name': project_name})
+            if response.status_code == 201:
+                data = response.json()
+                self.project_id = data['project_id']
+                self.api_key = data['api_key']
+                print(f"项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
+            else:
+                raise ConnectionError(f"注册失败: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException as e:
+            raise ConnectionError(f"连接服务器失败: {str(e)}")
+
+    def set_variable(self, var_name, value):
+        """设置变量值（先更新本地，然后标记需要同步）"""
+        with self.lock:
+            # 只在值变化时更新
+            if var_name not in self.local_vars or self.local_vars[var_name] != value:
+                self.local_vars[var_name] = value
+                self.changed_vars.add(var_name)
+
+    def get_variable(self, var_name):
+        """获取变量值（从本地缓存中读取）"""
+        with self.lock:
+            return self.local_vars.get(var_name, None)
+
+    def get_all_variables(self):
+        """获取所有变量（本地缓存副本）"""
+        with self.lock:
+            return self.local_vars.copy()
+
+    def _sync_all_from_server(self):
+        """从服务器加载所有变量到本地"""
+        url = f"{self.base_url}/api/{self.project_id}/all"
+        headers = {'X-API-Key': self.api_key}
         
         try:
-            print(f"📤 [线程-注册] 注册项目: {project_name}")
-            response = self._retry_request('post', url, json=payload, timeout=10)
-            
-            if response and response.status_code == 201:
-                data = response.json()
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
                 with self.lock:
-                    self.project_id = data['project_id']
-                    self.api_key = data['api_key']
-                print(f"✅ [线程-注册] 项目注册成功! ID: {self.project_id}")
-                self.init_event.set()
+                    self.local_vars = {}
+                    for var_name, var_data in response.json().items():
+                        self.local_vars[var_name] = var_data['value']
+                    print("已从服务器加载所有变量")
+            elif response.status_code == 401:
+                raise PermissionError("无效的API密钥")
             else:
-                print(f"❌ [线程-注册] 项目注册失败")
-                if response:
-                    print(f"状态码: {response.status_code}, 响应内容: {response.text}")
-        except Exception as e:
-            print(f"❌ [线程-注册] 注册请求异常: {str(e)}")
-            traceback.print_exc()
-    
-    def _wait_for_initialization(self):
-        """等待初始化完成"""
-        if not self.init_event.is_set():
-            print("⏳ 等待初始化完成...")
-            self.init_event.wait()
-            print("✅ 初始化完成，继续操作")
-    
-    def set_variable(self, var_name, var_value):
-        """在后台线程中设置变量值"""
-        def _set():
-            self._wait_for_initialization()
-            
-            url = f"{self.server_url}/{self.project_id}/set"
-            headers = {"X-API-Key": self.api_key}
-            payload = {"var_name": var_name, "var_value": var_value}
+                print(f"获取变量失败: {response.status_code} - {response.text}")
+        except requests.exceptions.RequestException:
+            print("网络错误，无法从服务器加载变量")
+
+    def _sync_to_server(self):
+        """将本地修改的变量同步到服务器"""
+        if not self.changed_vars:
+            return
+        
+        # 准备需要同步的变量
+        with self.lock:
+            changes = {var: self.local_vars[var] for var in self.changed_vars}
+            self.changed_vars.clear()
+        
+        # 发送更新请求
+        headers = {
+            'X-API-Key': self.api_key,
+            'Content-Type': 'application/json'
+        }
+        
+        success = True
+        for var_name, value in changes.items():
+            url = f"{self.base_url}/api/{self.project_id}/set"
+            data = json.dumps({'var_name': var_name, 'var_value': value})
             
             try:
-                print(f"📤 [线程-设置] 设置变量: {var_name} = {var_value}")
-                response = self._retry_request('post', url, json=payload, headers=headers, timeout=5)
-                
-                if response and response.status_code == 200:
-                    print(f"✅ [线程-设置] 设置成功: {var_name} = {var_value}")
-                    with self.lock:
-                        self.variables[var_name] = var_value
-                else:
-                    print(f"❌ [线程-设置] 设置失败")
-                    if response:
-                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
-            except Exception as e:
-                print(f"❌ [线程-设置] 设置异常: {str(e)}")
-                traceback.print_exc()
+                response = requests.post(url, headers=headers, data=data)
+                if response.status_code != 200:
+                    print(f"同步失败({var_name}): {response.status_code} - {response.text}")
+                    success = False
+            except requests.exceptions.RequestException:
+                print(f"网络错误，变量 {var_name} 同步失败")
+                success = False
         
-        thread = threading.Thread(target=_set)
-        thread.daemon = True
-        thread.start()
-        return thread
+        # 如果同步失败，重新标记失败的变量
+        if not success:
+            with self.lock:
+                self.changed_vars.update(changes.keys())
     
-    def get_variable(self, var_name, callback=None):
-        """在后台线程中获取变量值，结果通过回调返回"""
-        def _get():
-            self._wait_for_initialization()
-            
-            url = f"{self.server_url}/{self.project_id}/get"
-            headers = {"X-API-Key": self.api_key}
-            params = {"var_name": var_name}
-            
-            try:
-                print(f"📥 [线程-获取] 获取变量: {var_name}")
-                response = self._retry_request('get', url, params=params, headers=headers, timeout=5)
-                
-                if response and response.status_code == 200:
-                    data = response.json()
-                    value = data['var_value']
-                    print(f"✅ [线程-获取] 获取成功: {var_name} = {value}")
-                    with self.lock:
-                        self.variables[var_name] = value
-                    if callback:
-                        callback(value=value)
-                    return value
-                else:
-                    print(f"❌ [线程-获取] 获取失败")
-                    if response:
-                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
-                    if callback:
-                        callback(value=None)
-            except Exception as e:
-                print(f"❌ [线程-获取] 获取异常: {str(e)}")
-                traceback.print_exc()
-                if callback:
-                    callback(value=None)
+    def _sync_from_server(self):
+        """从服务器获取最新变量值（只更新未修改的变量）"""
+        url = f"{self.base_url}/api/{self.project_id}/all"
+        headers = {'X-API-Key': self.api_key}
         
-        thread = threading.Thread(target=_get)
-        thread.daemon = True
-        thread.start()
-        return thread
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                server_vars = response.json()
+                with self.lock:
+                    # 只更新本地未修改的变量
+                    for var_name, var_data in server_vars.items():
+                        if var_name not in self.changed_vars:
+                            self.local_vars[var_name] = var_data['value']
+        except requests.exceptions.RequestException:
+            pass  # 网络错误时静默失败
+
+    def _sync_loop(self):
+        """同步循环：每100ms执行一次同步"""
+        while self.running:
+            # 避免重叠的同步操作
+            if not self.syncing:
+                self.syncing = True
+                
+                # 第一步：将本地修改推送到服务器
+                self._sync_to_server()
+                
+                # 第二步：从服务器获取更新
+                self._sync_from_server()
+                
+                self.syncing = False
+            
+            time.sleep(0.1)  # 100ms间隔
     
-    def get_all_variables(self, callback=None):
-        """在后台线程中获取所有变量，结果通过回调返回"""
-        def _get_all():
-            self._wait_for_initialization()
-            
-            url = f"{self.server_url}/{self.project_id}/all"
-            headers = {"X-API-Key": self.api_key}
-            
-            try:
-                print("📥 [线程-获取全部] 获取所有变量")
-                response = self._retry_request('get', url, headers=headers, timeout=5)
-                
-                if response and response.status_code == 200:
-                    variables = response.json()
-                    print(f"✅ [线程-获取全部] 获取成功: 共 {len(variables)} 个变量")
-                    with self.lock:
-                        self.variables = {k: v['value'] for k, v in variables.items()}
-                    if callback:
-                        callback(variables)
-                    return variables
-                else:
-                    print(f"❌ [线程-获取全部] 获取失败")
-                    if response:
-                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
-                    if callback:
-                        callback({})
-            except Exception as e:
-                print(f"❌ [线程-获取全部] 获取异常: {str(e)}")
-                traceback.print_exc()
-                if callback:
-                    callback({})
+    def close(self):
+        """关闭客户端并停止同步"""
+        self.running = False
+        if self.sync_thread.is_alive():
+            self.sync_thread.join(timeout=1.0)
         
-        thread = threading.Thread(target=_get_all)
-        thread.daemon = True
-        thread.start()
-        return thread
-    
-    def health_check(self, callback=None):
-        """在后台线程中执行健康检查"""
-        def _health_check():
-            url = f"{self.server_url}/health"
-            
-            try:
-                print("🩺 [线程-健康检查] 执行健康检查")
-                response = self._retry_request('get', url, timeout=5)
-                
-                if response and response.status_code == 200:
-                    data = response.json()
-                    print(f"✅ [线程-健康检查] 检查通过: {data}")
-                    if callback:
-                        callback(True, data)
-                    return True
-                else:
-                    print(f"❌ [线程-健康检查] 检查失败")
-                    if response:
-                        print(f"状态码: {response.status_code}, 响应内容: {response.text}")
-                    if callback:
-                        callback(False, None)
-            except Exception as e:
-                print(f"❌ [线程-健康检查] 检查异常: {str(e)}")
-                traceback.print_exc()
-                if callback:
-                    callback(False, None)
-        
-        thread = threading.Thread(target=_health_check)
-        thread.daemon = True
-        thread.start()
-        return thread
+        # 最后尝试同步所有变更
+        self._sync_to_server()
+        print("云变量客户端已关闭")
 
 # 获取当前包目录的绝对路径
 PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
