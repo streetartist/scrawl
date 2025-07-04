@@ -7,30 +7,21 @@ from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
 
-import requests
-import time
 import threading
-import uuid
+import time
+import requests
 import json
-import traceback
-from requests.exceptions import ConnectionError, Timeout, RequestException
+import uuid
 
-class CloudVariableClient:
-    def __init__(self, project_name=None, project_id=None, api_key=None, base_url="http://scrawl.pythonanywhere.com"):
-        """
-        初始化云变量客户端
-        
-        :param project_name: 项目名称（用于注册新项目）
-        :param project_id: 项目ID（用于连接现有项目）
-        :param api_key: API密钥（用于连接现有项目）
-        :param base_url: 服务器基础URL
-        """
+class CloudVariablesClient:
+    def __init__(self, project_name=None, project_id=None, api_key=None, 
+                 base_url="http://scrawl.pythonanywhere.com", sync_interval=0.1):
         self.base_url = base_url
-        self.local_vars = {}         # 本地变量存储
-        self.changed_vars = set()    # 标记已修改的变量
-        self.lock = threading.Lock() # 线程锁
-        self.syncing = False        # 同步状态标志
-        self.running = True          # 控制同步线程运行
+        self.sync_interval = sync_interval
+        self.local_vars = {}              # 本地变量存储
+        self.change_queue = deque()       # 变更队列 (线程安全)
+        self.lock = threading.Lock()      # 线程锁
+        self.running = True               # 控制同步线程运行
         
         # 注册新项目或使用现有项目
         if project_name:
@@ -41,12 +32,11 @@ class CloudVariableClient:
         else:
             raise ValueError("必须提供project_name或project_id/api_key")
         
-        # 初始化时从服务器加载所有变量
-        self._sync_all_from_server()
+        # 从服务器加载所有变量
+        self._load_all_variables()
         
         # 启动同步线程
-        self.sync_thread = threading.Thread(target=self._sync_loop)
-        self.sync_thread.daemon = True
+        self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
         self.sync_thread.start()
 
     def _register_project(self, project_name):
@@ -54,131 +44,138 @@ class CloudVariableClient:
         url = f"{self.base_url}/api/register"
         try:
             response = requests.post(url, json={'project_name': project_name})
-            if response.status_code == 201:
-                data = response.json()
-                self.project_id = data['project_id']
-                self.api_key = data['api_key']
-                print(f"项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
-            else:
-                raise ConnectionError(f"注册失败: {response.status_code} - {response.text}")
+            response.raise_for_status()
+            data = response.json()
+            self.project_id = data['project_id']
+            self.api_key = data['api_key']
+            print(f"项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"连接服务器失败: {str(e)}")
 
-    def set_variable(self, var_name, value):
-        """设置变量值（先更新本地，然后标记需要同步）"""
-        with self.lock:
-            # 只在值变化时更新
-            if var_name not in self.local_vars or self.local_vars[var_name] != value:
-                self.local_vars[var_name] = value
-                self.changed_vars.add(var_name)
-
-    def get_variable(self, var_name):
-        """获取变量值（从本地缓存中读取）"""
-        with self.lock:
-            return self.local_vars.get(var_name, None)
-
-    def get_all_variables(self):
-        """获取所有变量（本地缓存副本）"""
-        with self.lock:
-            return self.local_vars.copy()
-
-    def _sync_all_from_server(self):
+    def _load_all_variables(self):
         """从服务器加载所有变量到本地"""
         url = f"{self.base_url}/api/{self.project_id}/all"
         headers = {'X-API-Key': self.api_key}
         
         try:
             response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                with self.lock:
-                    self.local_vars = {}
-                    for var_name, var_data in response.json().items():
-                        self.local_vars[var_name] = var_data['value']
-                    print("已从服务器加载所有变量")
-            elif response.status_code == 401:
-                raise PermissionError("无效的API密钥")
-            else:
-                print(f"获取变量失败: {response.status_code} - {response.text}")
+            response.raise_for_status()
+            server_vars = response.json()
+            
+            with self.lock:
+                self.local_vars = {}
+                for var_name, var_data in server_vars.items():
+                    # 直接存储解析后的值
+                    self.local_vars[var_name] = var_data['value']
         except requests.exceptions.RequestException:
-            print("网络错误，无法从服务器加载变量")
+            print("警告: 无法从服务器加载初始变量")
+        except json.JSONDecodeError:
+            print("错误: 服务器返回了无效的JSON数据")
 
-    def _sync_to_server(self):
-        """将本地修改的变量同步到服务器"""
-        if not self.changed_vars:
+    def set_variable(self, var_name, value):
+        """设置变量值（线程安全）"""
+        with self.lock:
+            # 检查值是否实际变化
+            if var_name in self.local_vars and self.local_vars[var_name] == value:
+                return
+            
+            # 更新本地值
+            self.local_vars[var_name] = value
+            
+            # 添加到变更队列
+            self.change_queue.append((var_name, value))
+
+    def get_variable(self, var_name, default=None):
+        """获取变量值（线程安全）"""
+        with self.lock:
+            return self.local_vars.get(var_name, default)
+
+    def get_all_variables(self):
+        """获取所有变量副本（线程安全）"""
+        with self.lock:
+            return self.local_vars.copy()
+
+    def _sync_changes(self):
+        """同步变更到服务器"""
+        if not self.change_queue:
             return
         
-        # 准备需要同步的变量
-        with self.lock:
-            changes = {var: self.local_vars[var] for var in self.changed_vars}
-            self.changed_vars.clear()
+        # 批量准备变更
+        changes = []
+        while self.change_queue:
+            changes.append(self.change_queue.popleft())
         
-        # 发送更新请求
+        # 准备批量更新数据
+        update_data = [{
+            'var_name': var_name,
+            'var_value': value
+        } for var_name, value in changes]
+        
+        # 发送批量更新请求
         headers = {
             'X-API-Key': self.api_key,
             'Content-Type': 'application/json'
         }
+        url = f"{self.base_url}/api/{self.project_id}/batch_update"
         
-        success = True
-        for var_name, value in changes.items():
-            url = f"{self.base_url}/api/{self.project_id}/set"
-            data = json.dumps({'var_name': var_name, 'var_value': value})
-            
-            try:
-                response = requests.post(url, headers=headers, data=data)
-                if response.status_code != 200:
-                    print(f"同步失败({var_name}): {response.status_code} - {response.text}")
-                    success = False
-            except requests.exceptions.RequestException:
-                print(f"网络错误，变量 {var_name} 同步失败")
-                success = False
-        
-        # 如果同步失败，重新标记失败的变量
-        if not success:
+        try:
+            response = requests.post(
+                url, 
+                headers=headers, 
+                json={'updates': update_data}
+            )
+            response.raise_for_status()
+        except requests.exceptions.RequestException as e:
+            print(f"同步失败: {str(e)}")
+            # 重新加入队列以便重试
             with self.lock:
-                self.changed_vars.update(changes.keys())
-    
-    def _sync_from_server(self):
-        """从服务器获取最新变量值（只更新未修改的变量）"""
+                for change in changes:
+                    self.change_queue.appendleft(change)
+
+    def _fetch_updates(self):
+        """从服务器获取更新"""
         url = f"{self.base_url}/api/{self.project_id}/all"
         headers = {'X-API-Key': self.api_key}
         
         try:
             response = requests.get(url, headers=headers)
-            if response.status_code == 200:
-                server_vars = response.json()
-                with self.lock:
-                    # 只更新本地未修改的变量
-                    for var_name, var_data in server_vars.items():
-                        if var_name not in self.changed_vars:
-                            self.local_vars[var_name] = var_data['value']
+            response.raise_for_status()
+            server_vars = response.json()
+            
+            with self.lock:
+                # 只更新本地未修改的变量
+                for var_name, var_data in server_vars.items():
+                    # 检查此变量是否有未同步的本地修改
+                    has_pending_change = any(
+                        name == var_name for name, _ in self.change_queue
+                    )
+                    
+                    if not has_pending_change:
+                        self.local_vars[var_name] = var_data['value']
         except requests.exceptions.RequestException:
             pass  # 网络错误时静默失败
 
     def _sync_loop(self):
-        """同步循环：每100ms执行一次同步"""
+        """同步循环：定期执行同步"""
         while self.running:
-            # 避免重叠的同步操作
-            if not self.syncing:
-                self.syncing = True
+            try:
+                # 第一步：推送本地变更
+                self._sync_changes()
                 
-                # 第一步：将本地修改推送到服务器
-                self._sync_to_server()
-                
-                # 第二步：从服务器获取更新
-                self._sync_from_server()
-                
-                self.syncing = False
+                # 第二步：获取服务器更新
+                self._fetch_updates()
+            except Exception as e:
+                print(f"同步错误: {str(e)}")
             
-            time.sleep(0.1)  # 100ms间隔
-    
+            time.sleep(self.sync_interval)
+
     def close(self):
         """关闭客户端并停止同步"""
         self.running = False
-        if self.sync_thread.is_alive():
-            self.sync_thread.join(timeout=1.0)
+        self.sync_thread.join(timeout=2.0)
         
         # 最后尝试同步所有变更
-        self._sync_to_server()
+        self._sync_changes()
         print("云变量客户端已关闭")
 
 # 获取当前包目录的绝对路径
