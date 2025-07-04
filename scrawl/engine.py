@@ -16,7 +16,7 @@ import uuid
 
 class CloudVariablesClient:
     def __init__(self, project_name=None, project_id=None, api_key=None, 
-                 base_url="http://scrawl.pythonanywhere.com", sync_interval=100):
+                 base_url="http://1.117.220.147:5000/api", sync_interval=100):
         self.base_url = base_url
         self.sync_interval = sync_interval/1000 # 毫秒化秒
         self.local_vars = {}              # 本地变量存储
