@@ -16,7 +16,7 @@ import traceback
 from requests.exceptions import ConnectionError, Timeout, RequestException
 
 # 配置信息 - 替换为您的实际值
-SERVER_URL = "https://scrawl.weber.edu.deal/api"  # 您的 Vercel 部署 URL
+SERVER_URL = "https://scrawl.pythonanywhere.com/api"  # 您的部署 URL
 
 class CloudVariableClient:
     def __init__(self, server_url=SERVER_URL, project_id=None, api_key=None, 
