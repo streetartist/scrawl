@@ -247,6 +247,22 @@ def handle_sprite_collision(target: [type, str]):
 
     return decorator
 
+# 添加鼠标事件装饰器
+def on_mouse_event(mode: str = "pressed", button: int = 1):
+    """将函数标记为鼠标事件处理函数
+    mode: 
+        "pressed" - 鼠标按下瞬间触发
+        "held" - 鼠标按住状态持续触发
+        "released" - 鼠标释放时触发
+    button:
+        1 - 左键
+        2 - 中键
+        3 - 右键
+    """
+    def decorator(func):
+        func._mouse_event = (button, mode)
+        return func
+    return decorator
 
 class Game:
 
@@ -324,6 +340,13 @@ class Game:
         self.sound_volume = 0.7  # 音效音量 (0.0-1.0)
         self.music_looping = False  # 背景音乐是否循环
         
+        self.mouse_pos = (0, 0)  # 当前鼠标位置
+        self.mouse_pressed = False  # 鼠标是否按下
+        self.mouse_clicked = False  # 鼠标是否刚刚点击
+        self.mouse_released = False  # 鼠标是否刚刚释放
+        self.mouse_held_time = 0  # 鼠标持续按下的时间
+        self.mouse_events = []  # 存储鼠标事件处理函数
+        
     
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
@@ -346,6 +369,9 @@ class Game:
 
             # 保存上一帧的按键状态
             prev_key_down_events = dict(self.key_down_events)
+            
+            self.mouse_clicked = False  # 每帧开始时重置点击状态
+            self.mouse_released = False  # 每帧开始时重置释放状态
 
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
@@ -373,6 +399,23 @@ class Game:
                     # 从按键状态中移除
                     if event.key in self.key_down_events:
                         del self.key_down_events[event.key]
+                
+                # 处理鼠标移动事件
+                if event.type == pygame.MOUSEMOTION:
+                    self.mouse_pos = event.pos
+                
+                # 处理鼠标按下事件
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    if event.button == 1:  # 左键
+                        self.mouse_pressed = True
+                        self.mouse_clicked = True
+                        self.mouse_held_time = 0
+                    
+                # 处理鼠标释放事件
+                if event.type == pygame.MOUSEBUTTONUP:
+                    if event.button == 1:  # 左键
+                        self.mouse_pressed = False
+                        self.mouse_released = True
 
                 # 将事件传递给场景和精灵
                 if self.scene:
@@ -380,6 +423,13 @@ class Game:
                     for sprite in self.scene.sprites:
                         sprite.handle_event(event)
 
+            # 更新鼠标持续按下时间
+            if self.mouse_pressed:
+                self.mouse_held_time += self.clock.get_time()
+        
+            # 处理鼠标事件
+            self.process_mouse_events()
+        
             # 处理按住状态的事件
             self.process_held_keys(prev_key_down_events)
 
@@ -418,6 +468,61 @@ class Game:
                 # 确保按键在上一帧也存在（不是刚按下的）
                 if key in prev_key_down_events:
                     self.process_key_event(key, "held")
+                    
+    def process_mouse_events(self):
+        """处理鼠标事件"""
+        # 处理按下事件
+        if self.mouse_clicked:
+            for obj, method, button, mode in self.mouse_events:
+                if button == 1 and mode == "pressed":
+                    self.add_task(method)
+        
+        # 处理释放事件
+        if self.mouse_released:
+            for obj, method, button, mode in self.mouse_events:
+                if button == 1 and mode == "released":
+                    self.add_task(method)
+        
+        # 处理按住事件（如果鼠标按住超过一帧）
+        if self.mouse_pressed and self.mouse_held_time > 1000 / self.fps:
+            for obj, method, button, mode in self.mouse_events:
+                if button == 1 and mode == "held":
+                    self.add_task(method)
+    
+    def setup_mouse_listeners(self, obj):
+        """设置对象（场景或精灵）的鼠标监听器"""
+        for name in dir(obj):
+            method = getattr(obj, name)
+            if callable(method) and hasattr(method, '_mouse_event'):
+                button, mode = getattr(method, '_mouse_event')
+                self.mouse_events.append((obj, method, button, mode))
+                self.log_debug(
+                    f"注册鼠标事件: 按钮{button} {mode} -> {obj.__class__.__name__}.{method.__name__}"
+                )
+    
+    def mouse_x(self) -> int:
+        """返回鼠标的x坐标"""
+        return self.mouse_pos[0]
+    
+    def mouse_y(self) -> int:
+        """返回鼠标的y坐标"""
+        return self.mouse_pos[1]
+    
+    def mouse_is_down(self) -> bool:
+        """检查鼠标是否按下"""
+        return self.mouse_pressed
+    
+    def mouse_was_clicked(self) -> bool:
+        """检查鼠标是否刚刚点击"""
+        return self.mouse_clicked
+    
+    def mouse_was_released(self) -> bool:
+        """检查鼠标是否刚刚释放"""
+        return self.mouse_released
+    
+    def mouse_held_duration(self) -> int:
+        """返回鼠标持续按下的时间（毫秒）"""
+        return self.mouse_held_time
 
     def set_background(self, color: Tuple[int, int, int]):
         self.background_color = color
@@ -699,9 +804,10 @@ class Scene:
         for sprite in self.sprites:
             sprite.setup(self)
 
-        # 收集按键事件监听器
+        # 收集按键、鼠标事件监听器
         if self.game:
             self.game.setup_key_listeners(self)
+            self.game.setup_mouse_listeners(self)
 
     def add_sprite(self, sprite):
         self.sprites.append(sprite)
@@ -753,6 +859,36 @@ class Scene:
     def handle_event(self, event: pygame.event.Event):
         """处理场景特定的事件"""
         pass
+    
+    def mouse_x(self) -> int:
+        if self.game:
+            return self.game.mouse_x()
+        return 0
+    
+    def mouse_y(self) -> int:
+        if self.game:
+            return self.game.mouse_y()
+        return 0
+    
+    def mouse_is_down(self) -> bool:
+        if self.game:
+            return self.game.mouse_is_down()
+        return False
+    
+    def mouse_was_clicked(self) -> bool:
+        if self.game:
+            return self.game.mouse_was_clicked()
+        return False
+    
+    def mouse_was_released(self) -> bool:
+        if self.game:
+            return self.game.mouse_was_released()
+        return False
+    
+    def mouse_held_duration(self) -> int:
+        if self.game:
+            return self.game.mouse_held_duration()
+        return 0
 
     def bind_key(self, key: int, callback: Callable):
         """绑定场景特定的按键"""
@@ -1029,9 +1165,10 @@ class Sprite:
                 for target in method._sprite_collisions:
                     self.sprite_collision_handlers.append((method, target))
 
-        # 收集按键事件监听器
+        # 收集按键、鼠标事件监听器
         if self.scene and self.scene.game:
             self.scene.game.setup_key_listeners(self)
+            self.scene.game.setup_mouse_listeners(self)
 
 
         # 检查是否有边缘碰撞处理函数
@@ -1117,7 +1254,100 @@ class Sprite:
 
             # 更新碰撞记录
             self._collided_sprites = current_frame_collisions
-
+            
+    def mouse_x(self) -> int:
+        if self.game:
+            return self.game.mouse_x()
+        return 0
+    
+    def mouse_y(self) -> int:
+        if self.game:
+            return self.game.mouse_y()
+        return 0
+    
+    def mouse_is_down(self) -> bool:
+        if self.game:
+            return self.game.mouse_is_down()
+        return False
+    
+    def mouse_was_clicked(self) -> bool:
+        if self.game:
+            return self.game.mouse_was_clicked()
+        return False
+    
+    def mouse_was_released(self) -> bool:
+        if self.game:
+            return self.game.mouse_was_released()
+        return False
+    
+    def mouse_held_duration(self) -> int:
+        if self.game:
+            return self.game.mouse_held_duration()
+        return 0
+    
+    def touches_mouse(self) -> bool:
+        """检查精灵是否碰到鼠标"""
+        if not self.game or not self.visible:
+            return False
+            
+        mouse_x, mouse_y = self.game.mouse_pos
+        distance = math.sqrt((self.pos.x - mouse_x)**2 + (self.pos.y - mouse_y)**2)
+        
+        # 如果精灵有碰撞半径，使用它
+        if self.collision_radius and self.collision_radius > 0:
+            return distance <= self.collision_radius * self.size
+            
+        # 否则使用默认半径
+        return distance <= 20 * self.size
+    
+    def distance_to_mouse(self) -> float:
+        """返回精灵到鼠标的距离"""
+        if not self.game:
+            return 0
+            
+        mouse_x, mouse_y = self.game.mouse_pos
+        return math.sqrt((self.pos.x - mouse_x)**2 + (self.pos.y - mouse_y)**2)
+    
+    def go_to_mouse(self):
+        """立即移动到鼠标位置"""
+        if self.game:
+            self.pos.x, self.pos.y = self.game.mouse_pos
+    
+    def glide_to_mouse(self, duration: float = 1000, easing: str = "linear"):
+        """平滑移动到鼠标位置"""
+        if not self.game:
+            return
+            
+        start_x, start_y = self.pos.x, self.pos.y
+        target_x, target_y = self.game.mouse_pos
+        start_time = self.game.current_time
+        end_time = start_time + duration
+        
+        while self.game.current_time < end_time:
+            # 更新目标位置（鼠标可能移动）
+            target_x, target_y = self.game.mouse_pos
+            
+            # 计算当前进度（0.0 - 1.0）
+            progress = (self.game.current_time - start_time) / duration
+            progress = min(progress, 1.0)
+            
+            # 应用缓动函数
+            if easing == "ease_in_out":
+                progress = progress * progress * (3 - 2 * progress)
+            elif easing == "ease_in":
+                progress = progress * progress
+            elif easing == "ease_out":
+                progress = 1 - (1 - progress) * (1 - progress)
+            
+            # 计算新位置
+            self.pos.x = start_x + (target_x - start_x) * progress
+            self.pos.y = start_y + (target_y - start_y) * progress
+            
+            # 等待下一帧
+            yield 0
+        
+        # 确保最终位置准确
+        self.pos.x, self.pos.y = self.game.mouse_pos
 
     def broadcast(self, event_name: str):
         """广播事件，使所有精灵和场景都能响应"""
