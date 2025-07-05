@@ -989,8 +989,8 @@ class Sprite:
         self.collision_mask = None  # 存储用于碰撞检测的mask
         self.edge_handlers = {}  # 存储碰到舞台边缘的事件处理函数
         self.sprite_collision_handlers = []  # 存储碰到其他精灵的事件处理函数
-        self._last_edge = None  # 记录上次碰撞的边缘
         self._collided_sprites = set()  # 记录当前碰撞的精灵ID
+        self._last_on_edge = None  # 记录上次碰撞的边缘状态
 
         # 添加碰撞检测标志
         self.needs_edge_collision = False
@@ -1147,6 +1147,11 @@ class Sprite:
             if callable(method) and hasattr(method, '_edge_collision'):
                 edge = getattr(method, '_edge_collision')
                 self.edge_handlers[edge] = method
+                # 标记需要边缘碰撞检测
+                self.needs_edge_collision = True
+        
+        # 更新碰撞检测标志
+        self._update_collision_flags()
 
         # 收集所有标记为@handle_sprite_collision的函数
         for name in dir(self):
@@ -1199,11 +1204,11 @@ class Sprite:
         # 检测舞台边缘碰撞（如果精灵需要）
         if self.needs_edge_collision and self.collision_radius:
             current_edge = None
-
+            
             # 计算精灵边界
             x, y = self.pos.x, self.pos.y
             radius = self.collision_radius * self.size
-
+            
             if x - radius <= 0:
                 current_edge = "left"
             elif x + radius >= self.game.width:
@@ -1212,13 +1217,18 @@ class Sprite:
                 current_edge = "top"
             elif y + radius >= self.game.height:
                 current_edge = "bottom"
-
-            # 只在边缘发生变化时触发碰撞事件
-            if current_edge and current_edge != self._last_edge:
-                self._on_edge_collision(current_edge)
-                self._last_edge = current_edge
-            elif not current_edge:
-                self._last_edge = None
+            
+            # 只在边缘状态发生变化时触发事件
+            if current_edge != self._last_on_edge:
+                # 从无碰撞变为有碰撞时触发
+                if current_edge:
+                    self._on_edge_collision(current_edge)
+                # 从有碰撞变为无碰撞时重置
+                elif self._last_on_edge:
+                    self._last_on_edge = None
+                
+                # 更新最后记录的状态
+                self._last_on_edge = current_edge
 
         # 检测精灵碰撞（如果精灵需要）
         if self.needs_sprite_collision and self.scene and self.scene.sprites:
@@ -1384,32 +1394,13 @@ class Sprite:
         """触发碰到舞台边缘事件"""
         # 在游戏日志中记录
         if self.game:
-            self.game.log_debug(
-                f"Edge collision: {self.name} hit {edge} border")
-
+            self.game.log_debug(f"Edge collision: {self.name} hit {edge} border")
+        
         # 调用标记为@handle_edge_collision的函数
         for edge_name, handler in self.edge_handlers.items():
             if edge_name == edge or edge_name == "any":
-                # 如果需要传递参数
-                if "edge" in handler.__code__.co_varnames:
-                    # 直接调用处理函数并传递参数
-                    try:
-                        result = handler(edge)
-                        if hasattr(result, '__next__'):  # 如果返回生成器
-                            self.scene.game.add_task(result)
-                    except TypeError:
-                        # 如果函数不接受参数，尝试无参数调用
-                        result = handler()
-                        if hasattr(result, '__next__'):
-                            self.scene.game.add_task(result)
-                else:
-                    # 直接调用处理函数
-                    try:
-                        result = handler()
-                        if hasattr(result, '__next__'):  # 如果返回生成器
-                            self.scene.game.add_task(result)
-                    except TypeError:
-                        pass
+                # 将事件处理函数添加到任务队列
+                self.scene.game.add_task(handler)
 
     def _on_sprite_collision(self, other: "Sprite"):
         """触发碰到其他精灵事件"""
@@ -1445,10 +1436,16 @@ class Sprite:
     def _update_collision_flags(self):
         """更新碰撞检测标志"""
         # 检查是否有边缘碰撞处理函数
-        self.needs_edge_collision = bool(self.edge_handlers)
-
+        self.needs_edge_collision = bool(self.edge_handlers) or self.needs_edge_collision
+        
         # 检查是否有精灵碰撞处理函数
         self.needs_sprite_collision = bool(self.sprite_collision_handlers)
+        
+        # 收集需要检测的精灵名称
+        for handler in self.sprite_collision_handlers:
+            target = getattr(handler, '_sprite_collision', None)
+            if isinstance(target, str):
+                self.collision_targets.add(target)
 
         # 收集需要检测的精灵名称
         for handler in self.sprite_collision_handlers:
