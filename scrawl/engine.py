@@ -13,25 +13,22 @@ import time
 import requests
 import json
 import uuid
+from collections import deque
 
 class CloudVariablesClient:
-    def __init__(self, project_name=None, project_id=None, api_key=None, 
-                 base_url="http://1.117.220.147:5000", sync_interval=100):
+    def __init__(self, project_id=None, base_url="http://1.117.220.147:5000", sync_interval=100):
         self.base_url = base_url
-        self.sync_interval = sync_interval/1000 # 毫秒化秒
+        self.sync_interval = sync_interval/1000  # 毫秒化秒
         self.local_vars = {}              # 本地变量存储
         self.change_queue = deque()       # 变更队列 (线程安全)
         self.lock = threading.Lock()      # 线程锁
         self.running = True               # 控制同步线程运行
         
         # 注册新项目或使用现有项目
-        if project_name:
-            self._register_project(project_name)
-        elif project_id and api_key:
+        if project_id:
             self.project_id = project_id
-            self.api_key = api_key
         else:
-            raise ValueError("必须提供project_name或project_id/api_key")
+            self._register_project()
         
         # 从服务器加载所有变量
         self._load_all_variables()
@@ -40,26 +37,24 @@ class CloudVariablesClient:
         self.sync_thread = threading.Thread(target=self._sync_loop, daemon=True)
         self.sync_thread.start()
 
-    def _register_project(self, project_name):
-        """注册新项目并获取凭证"""
+    def _register_project(self):
+        """注册新项目并获取project_id"""
         url = f"{self.base_url}/api/register"
         try:
-            response = requests.post(url, json={'project_name': project_name})
+            response = requests.post(url)
             response.raise_for_status()
             data = response.json()
             self.project_id = data['project_id']
-            self.api_key = data['api_key']
-            print(f"项目注册成功! ID: {self.project_id}, API Key: {self.api_key}")
+            print(f"项目注册成功! ID: {self.project_id}")
         except requests.exceptions.RequestException as e:
             raise ConnectionError(f"连接服务器失败: {str(e)}")
 
     def _load_all_variables(self):
         """从服务器加载所有变量到本地"""
         url = f"{self.base_url}/api/{self.project_id}/all"
-        headers = {'X-API-Key': self.api_key}
         
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url)
             response.raise_for_status()
             server_vars = response.json()
             
@@ -113,10 +108,7 @@ class CloudVariablesClient:
         } for var_name, value in changes]
         
         # 发送批量更新请求
-        headers = {
-            'X-API-Key': self.api_key,
-            'Content-Type': 'application/json'
-        }
+        headers = {'Content-Type': 'application/json'}
         url = f"{self.base_url}/api/{self.project_id}/batch_update"
         
         try:
@@ -136,10 +128,9 @@ class CloudVariablesClient:
     def _fetch_updates(self):
         """从服务器获取更新"""
         url = f"{self.base_url}/api/{self.project_id}/all"
-        headers = {'X-API-Key': self.api_key}
         
         try:
-            response = requests.get(url, headers=headers)
+            response = requests.get(url)
             response.raise_for_status()
             server_vars = response.json()
             
