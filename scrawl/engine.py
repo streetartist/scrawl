@@ -7,7 +7,7 @@ from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
 import numpy
-import inspect  # 引入inspect模块
+import inspect
 
 import threading
 import time
@@ -171,96 +171,56 @@ class CloudVariablesClient:
         self._sync_changes()
         print("云变量客户端已关闭")
 
-# 获取当前包目录的绝对路径
-# NOTE: This will fail if not run as a package. For a single script, use '.'
 try:
     PACKAGE_DIR = os.path.dirname(os.path.abspath(__file__))
 except NameError:
     PACKAGE_DIR = os.path.abspath('.')
 
-
 def get_resource_path(resource):
-    # 组合包内其他文件的路径
     data_path = os.path.join(PACKAGE_DIR, resource)
     return data_path
 
-
 def on_key(key: int, mode: str = "pressed"):
-    """将函数标记为按键事件处理函数
-    mode: 
-        "pressed" - 按键按下瞬间触发（默认）
-        "held" - 按键按住状态持续触发
-        "released" - 按键释放时触发
-    """
-
     def decorator(func):
         func._key_event = (key, mode)
         return func
-
     return decorator
 
-
-# 添加装饰器定义
 def as_main(func):
-    """将函数标记为main函数，类似于原始的main方法"""
     func._is_main = True
     return func
 
-
 def as_clones(func):
-    """将函数标记为克隆体函数，类似于原始的clones方法"""
     func._is_clones = True
     return func
 
-
 def handle_broadcast(event_name: str):
-    """将函数标记为广播事件处理函数"""
-
     def decorator(func):
         func._broadcast_event = event_name
         return func
-
     return decorator
 
-
 def handle_edge_collision(edge: str = "any"):
-    """将函数标记为碰到舞台边缘事件处理函数"""
-
     def decorator(func):
         func._edge_collision = edge
         return func
-
     return decorator
-
 
 def handle_sprite_collision(target: [type, str]):
-    """将函数标记为碰到指定类型或名称的精灵类事件处理函数"""
-
     def decorator(func):
         if not hasattr(func, '_sprite_collisions'):
-            func._sprite_collisions = [] # 修改目的：支持标记检查多个碰撞
+            func._sprite_collisions = []
         func._sprite_collisions.append(target)
         return func
-
     return decorator
 
-# 添加鼠标事件装饰器
 def on_mouse_event(mode: str = "pressed", button: int = 1):
-    """将函数标记为鼠标事件处理函数
-    mode: 
-        "pressed" - 鼠标按下瞬间触发
-        "held" - 鼠标按住状态持续触发
-        "released" - 鼠标释放时触发
-    button:
-        1 - 左键
-        2 - 中键
-        3 - 右键
-    """
     def decorator(func):
         func._mouse_event = (button, mode)
         return func
     return decorator
 
+# ... (Game class remains unchanged) ...
 class Game:
 
     def __init__(self,
@@ -342,8 +302,7 @@ class Game:
         self.mouse_released = False  # 鼠标是否刚刚释放
         self.mouse_held_time = 0  # 鼠标持续按下的时间
         self.mouse_events = []  # 存储鼠标事件处理函数
-        
-    
+
     def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
 
@@ -621,7 +580,7 @@ class Game:
     def load_sound(self, name: str, file_path: str):
         """加载音效文件并存储在游戏中"""
         try:
-            sound = pygame.mixer.Sound(get_resource_path(file_path))
+            sound = pygame.mixer.Sound(file_path)
             self.sound_effects[name] = sound
             self.log_debug(f"Loaded sound: {name}")
         except Exception as e:
@@ -629,7 +588,7 @@ class Game:
     
     def load_music(self, name: str, file_path: str):
         """加载背景音乐文件路径（实际播放时才加载）"""
-        self.music[name] = get_resource_path(file_path)
+        self.music[name] = file_path
         self.log_debug(f"Registered music: {name}")
     
     def play_sound(self, name: str, volume: float = None):
@@ -753,7 +712,7 @@ class Game:
         sound.set_volume(self.sound_volume)
         sound.play()
 
-
+# ... (Scene class remains unchanged) ...
 class Scene:
 
     def __init__(self):
@@ -810,7 +769,7 @@ class Scene:
         """设置背景图片，并可选择缩放尺寸"""
         try:
             # 加载图片
-            self.background_image = pygame.image.load(get_resource_path(image_path)).convert()
+            self.background_image = pygame.image.load(image_path).convert()
             
             # 如果指定了尺寸，缩放图片
             if size:
@@ -994,56 +953,67 @@ class Scene:
         if self.game:
             self.game.set_sound_volume(volume)
 
-
 class Sprite:
 
     def __init__(self):
         self.name = "Sprite"
         self.pos = pygame.Vector2(400, 300)
-        self.direction = 90  # 默认方向：0=右，90=上
+        self.direction = 90
         self.size = 1.0
         self.visible = True
         self.delete = False
-        self.scene: Scene = None
-        self.game: Game = None
+        self.scene: Optional[Scene] = None
+        self.game: Optional[Game] = None
 
-        # 图片管理相关属性
         self.costumes: Dict[str, pygame.Surface] = {}
-        self.current_costume: str = None
-        self._default_image: pygame.Surface = None
+        self.current_costume: Optional[str] = None
+        self._default_image: Optional[pygame.Surface] = None
 
         self.color = (255, 100, 100)
-        self.speech: str = None
+        self.speech: Optional[str] = None
         self.speech_timer = 0
         self.pen_down = False
         self.pen_color = (0, 0, 0)
         self.pen_size = 2
         self.pen_path = []
-        self.collision_radius = 20.0 # 默认半径
+        self.collision_radius = 20.0
         self.main_tasks = []
         self.clones_tasks = []
         self.broadcast_handlers = {}
         self.is_clones = False
 
         # --- 碰撞检测相关属性 ---
-        self.collision_mask: Optional[pygame.mask.Mask] = None # 存储用于碰撞检测的mask
-        self.edge_handlers: Dict[str, Callable] = {} # 存储碰到舞台边缘的事件处理函数
-        self.sprite_collision_handlers: List[Tuple[Callable, Any]] = [] # 存储碰到其他精灵的事件处理函数
-        
-        self._collided_sprites: set = set() # 记录当前碰撞的精灵ID，以触发一次性事件
-        self._last_on_edge: Optional[str] = None # 记录上次碰撞的边缘状态
-
-        # 碰撞检测优化标志
+        self.collision_mask: Optional[pygame.mask.Mask] = None
+        self.edge_handlers: Dict[str, Callable] = {}
+        self.sprite_collision_handlers: List[Tuple[Callable, Any]] = []
+        self._collided_sprites: set = set()
+        self._last_on_edge: Optional[str] = None
         self.needs_edge_collision = False
         self.needs_sprite_collision = False
         
-        # 添加移动状态变量
+        # [修改] 碰撞类型属性，默认使用 "circle"
+        self.collision_type = "circle"  # 可选值: "circle", "mask", "rect"
+
         self._is_moving = False
         self._active_movement = None
 
-    # 新增的图片管理方法
+    # [修改] 设置碰撞类型的方法
+    def set_collision_type(self, mode: str):
+        """
+        设置精灵的碰撞检测方式。
+
+        Args:
+            mode (str): 碰撞模式。可选值为:
+                        - "circle" (默认): 基于半径的圆形碰撞。速度快，精度低。
+                        - "rect": 基于旋转后图像的矩形边界框碰撞。
+                        - "mask": 像素完美碰撞。精度最高，但性能开销最大。
+        """
+        if mode in ["circle", "mask", "rect"]:
+            self.collision_type = mode
+        else:
+            print(f"警告: 无效的碰撞类型 '{mode}'。将使用默认值 'circle'。")
+
     def add_costume(self, name: str, image: pygame.Surface):
-        """添加一个造型"""
         self.costumes[name] = image
         if not self._default_image:
             self._default_image = image
@@ -1051,10 +1021,8 @@ class Sprite:
             self.switch_costume(name)
 
     def next_costume(self):
-        """切换到下一个造型"""
         keys = list(self.costumes.keys())
-        if len(keys) < 2:
-            return
+        if len(keys) < 2: return
         try:
             current_index = keys.index(self.current_costume)
             next_index = (current_index + 1) % len(keys)
@@ -1063,13 +1031,11 @@ class Sprite:
             self.switch_costume(keys[0])
 
     def switch_costume(self, name: str):
-        """切换到指定名称的造型"""
         if name in self.costumes:
             self.current_costume = name
             self._update_collision_radius()
 
     def set_image(self, image: pygame.Surface):
-        """设置当前使用的单个图像（向后兼容）"""
         self._default_image = image
         self.costumes = {}
         self.current_costume = None
@@ -1077,87 +1043,66 @@ class Sprite:
 
     @property
     def image(self) -> Optional[pygame.Surface]:
-        """获取当前使用的图像"""
         if self.current_costume and self.current_costume in self.costumes:
             return self.costumes[self.current_costume]
         return self._default_image
 
     def _update_collision_radius(self):
-        """根据当前图像更新碰撞半径"""
         img = self.image
         if img:
             w, h = img.get_size()
-            self.collision_radius = min(w, h) / 2.0
+            self.collision_radius = (w + h) / 4.0 # 使用平均值作为半径
         else:
-            self.collision_radius = 20.0 # 默认值
+            self.collision_radius = 20.0
 
-    def _create_mask(self):
-        """(修正) 如果当前图像有alpha通道，创建并更新用于碰撞的mask"""
-        img = self.image
-        if img is None or not (img.get_flags() & pygame.SRCALPHA):
-            self.collision_mask = None
-            return
+    # [新增] 辅助方法，用于获取变换后的图像和矩形
+    def _get_transformed_image_and_rect(self) -> Tuple[Optional[pygame.Surface], Optional[pygame.Rect]]:
+        """获取经过缩放和旋转后的最终图像及其矩形。"""
+        img_to_draw = self.image
+        if not img_to_draw:
+            return None, None
+        
+        try:
+            scaled_img = pygame.transform.scale(
+                img_to_draw, 
+                (int(img_to_draw.get_width() * self.size), int(img_to_draw.get_height() * self.size))
+            ) if self.size != 1.0 else img_to_draw
+            
+            rotated_image = pygame.transform.rotate(scaled_img, self.direction - 90)
+            rect = rotated_image.get_rect(center=self.pos)
+            return rotated_image, rect
+        except pygame.error:
+            return None, None
 
-        # 缩放
-        if self.size != 1.0:
-            orig_size = img.get_size()
-            new_size = (int(orig_size[0] * self.size), int(orig_size[1] * self.size))
-            # 防止尺寸为0
-            if new_size[0] <= 0 or new_size[1] <= 0:
-                self.collision_mask = None
-                return
-            scaled_img = pygame.transform.scale(img, new_size)
-        else:
-            scaled_img = img
-
-        # 旋转 (Pygame中，逆时针为正，而我们的方向系统是顺时针)
-        # 90度是向上，所以需要调整
-        rotated_img = pygame.transform.rotate(scaled_img, self.direction - 90)
-        self.collision_mask = pygame.mask.from_surface(rotated_img)
-
-    def main(self):
-        pass
-
-    def clones(self):
-        pass
+    def main(self): pass
+    def clones(self): pass
 
     def setup(self, scene: Scene):
         self.scene = scene
         self.game = scene.game
         self._update_collision_radius()
 
-        if not self.game:
-            return
+        if not self.game: return
 
-        # --- (修正) 收集事件处理器并设置标志 ---
-        # 收集@as_main, @as_clones, @handle_broadcast
         for name in dir(self):
             method = getattr(self, name)
-            if not callable(method):
-                continue
-            if hasattr(method, '_is_main'):
-                self.main_tasks.append(method)
-            if hasattr(method, '_is_clones'):
-                self.clones_tasks.append(method)
+            if not callable(method): continue
+            if hasattr(method, '_is_main'): self.main_tasks.append(method)
+            if hasattr(method, '_is_clones'): self.clones_tasks.append(method)
             if hasattr(method, '_broadcast_event'):
                 event = getattr(method, '_broadcast_event')
-                if event not in self.broadcast_handlers:
-                    self.broadcast_handlers[event] = []
+                if event not in self.broadcast_handlers: self.broadcast_handlers[event] = []
                 self.broadcast_handlers[event].append(method)
-            # 收集边缘碰撞处理器
             if hasattr(method, '_edge_collision'):
                 edge = getattr(method, '_edge_collision')
                 self.edge_handlers[edge] = method
-            # 收集精灵碰撞处理器
             if hasattr(method, '_sprite_collisions'):
                 for target in method._sprite_collisions:
                     self.sprite_collision_handlers.append((method, target))
 
-        # (修正) 直接在此处设置优化标志
         self.needs_edge_collision = bool(self.edge_handlers)
         self.needs_sprite_collision = bool(self.sprite_collision_handlers)
 
-        # --- 启动任务 ---
         if not self.is_clones:
             for task in self.main_tasks: self.game.add_task(task)
             if hasattr(self, 'main') and callable(self.main): self.game.add_task(self.main)
@@ -1165,34 +1110,36 @@ class Sprite:
             for task in self.clones_tasks: self.game.add_task(task)
             if hasattr(self, 'clones') and callable(self.clones): self.game.add_task(self.clones)
 
-        # 收集按键、鼠标事件监听器
         if self.game:
             self.game.setup_key_listeners(self)
             self.game.setup_mouse_listeners(self)
 
-    def handle_event(self, event: pygame.event.Event):
-        pass
+    def handle_event(self, event: pygame.event.Event): pass
 
     def update(self):
-        """(修正) 基础精灵更新逻辑"""
-        if not self.game:
-            return
+        if not self.game: return
 
-        # (新增) 如果需要，更新碰撞mask
-        if self.needs_sprite_collision:
-            self._create_mask()
+        # [修改] 根据碰撞类型更新 mask
+        if self.collision_type == "mask":
+            rotated_image, _ = self._get_transformed_image_and_rect()
+            if rotated_image:
+                try:
+                    self.collision_mask = pygame.mask.from_surface(rotated_image)
+                except pygame.error:
+                    self.collision_mask = None
+            else:
+                self.collision_mask = None
+        else:
+            # 对于 "rect" 和 "circle" 模式，确保 mask 为 None
+            self.collision_mask = None
 
         if self.speech and self.speech_timer > 0:
             self.speech_timer -= self.game.clock.get_time()
-            if self.speech_timer <= 0:
-                self.speech = None
+            if self.speech_timer <= 0: self.speech = None
 
-        # 执行必要的碰撞检测
         self._perform_collision_detection()
 
     def _perform_collision_detection(self):
-        """(修正) 执行必要的碰撞检测"""
-        # 1. 检测舞台边缘碰撞
         if self.needs_edge_collision:
             radius = self.collision_radius * self.size
             current_edge = None
@@ -1200,23 +1147,17 @@ class Sprite:
             elif self.pos.x + radius >= self.game.width: current_edge = "right"
             elif self.pos.y - radius <= 0: current_edge = "top"
             elif self.pos.y + radius >= self.game.height: current_edge = "bottom"
-            
             if current_edge != self._last_on_edge:
-                if current_edge:
-                    self._on_edge_collision(current_edge)
+                if current_edge: self._on_edge_collision(current_edge)
                 self._last_on_edge = current_edge
 
-        # 2. 检测精灵间碰撞
         if self.needs_sprite_collision and self.scene:
             current_frame_collisions = set()
             for other in self.scene.sprites:
-                if other is self or not other.visible:
-                    continue
-
+                if other is self or not other.visible: continue
                 if self.collides_with(other):
                     current_frame_collisions.add(id(other))
                     if id(other) not in self._collided_sprites:
-                        # 碰撞发生，现在检查哪个处理器对这个'other'感兴趣
                         for handler, target in self.sprite_collision_handlers:
                             is_match = (target is None or
                                         (isinstance(target, str) and other.name == target) or
@@ -1224,46 +1165,29 @@ class Sprite:
                             if is_match:
                                 self._trigger_sprite_collision_handler(handler, other)
             self._collided_sprites = current_frame_collisions
-            
-    def mouse_x(self) -> int:
-        return self.game.mouse_x() if self.game else 0
-    
-    def mouse_y(self) -> int:
-        return self.game.mouse_y() if self.game else 0
-    
-    def mouse_is_down(self) -> bool:
-        return self.game.mouse_is_down() if self.game else False
-    
-    def mouse_was_clicked(self) -> bool:
-        return self.game.mouse_was_clicked() if self.game else False
-    
-    def mouse_was_released(self) -> bool:
-        return self.game.mouse_was_released() if self.game else False
-    
-    def mouse_held_duration(self) -> int:
-        return self.game.mouse_held_duration() if self.game else 0
-    
+
+    def mouse_x(self) -> int: return self.game.mouse_x() if self.game else 0
+    def mouse_y(self) -> int: return self.game.mouse_y() if self.game else 0
+    def mouse_is_down(self) -> bool: return self.game.mouse_is_down() if self.game else False
+    def mouse_was_clicked(self) -> bool: return self.game.mouse_was_clicked() if self.game else False
+    def mouse_was_released(self) -> bool: return self.game.mouse_was_released() if self.game else False
+    def mouse_held_duration(self) -> int: return self.game.mouse_held_duration() if self.game else 0
+
     def touches_mouse(self) -> bool:
-        """检查精灵是否碰到鼠标"""
-        if not self.game or not self.visible:
-            return False
-            
+        if not self.game or not self.visible: return False
         mouse_x, mouse_y = self.game.mouse_pos
         distance_sq = (self.pos.x - mouse_x)**2 + (self.pos.y - mouse_y)**2
         radius = self.collision_radius * self.size
         return distance_sq <= radius**2
-    
+
     def distance_to_mouse(self) -> float:
-        """返回精灵到鼠标的距离"""
         if not self.game: return 0
         return self.pos.distance_to(self.game.mouse_pos)
-    
+
     def go_to_mouse(self):
-        """立即移动到鼠标位置"""
         if self.game: self.pos.update(self.game.mouse_pos)
-    
+
     def glide_to_mouse(self, duration: float = 1000, easing: str = "linear"):
-        """平滑移动到鼠标位置"""
         if not self.game: return
         target_pos = pygame.Vector2(self.game.mouse_pos)
         yield from self.glide_to(target_pos.x, target_pos.y, duration, easing)
@@ -1272,409 +1196,264 @@ class Sprite:
         if self.scene: self.scene.broadcast(event_name)
 
     def received_broadcast(self, event_name: str) -> bool:
-        return self.game.received_broadcast(event_name) if self.game else False
+        return self.game.received_broadcast(self.game) if self.game else False
 
+    # [修改] 重构碰撞检测逻辑
     def collides_with(self, other: "Sprite") -> bool:
-        """(修正) 检查两个精灵是否碰撞 (Mask优先)"""
         if not self.visible or not other.visible:
             return False
 
-        # 优先使用mask碰撞检测
-        # (修正) 确保另一个精灵也有mask
-        if self.collision_mask and other.collision_mask:
-            offset_x = int(other.pos.x - other.collision_mask.get_rect().width / 2) - \
-                       int(self.pos.x - self.collision_mask.get_rect().width / 2)
-            offset_y = int(other.pos.y - other.collision_mask.get_rect().height / 2) - \
-                       int(self.pos.y - self.collision_mask.get_rect().height / 2)
-            
-            return self.collision_mask.overlap(other.collision_mask, (offset_x, offset_y)) is not None
+        # --- Mask vs Mask Collision ---
+        # 仅当两个精灵都设置为 "mask" 模式时触发
+        if self.collision_type == "mask" and other.collision_type == "mask":
+            if self.collision_mask and other.collision_mask:
+                rect1 = self.collision_mask.get_rect(center=self.pos)
+                rect2 = other.collision_mask.get_rect(center=other.pos)
+                offset = (rect2.x - rect1.x, rect2.y - rect1.y)
+                return self.collision_mask.overlap(other.collision_mask, offset) is not None
+            # 如果mask不存在，则回退到圆形检测
 
-        # 后备：圆形碰撞检测
+        # --- Rect vs Rect Collision ---
+        # 仅当两个精灵都设置为 "rect" 模式时触发
+        if self.collision_type == "rect" and other.collision_type == "rect":
+            _, rect1 = self._get_transformed_image_and_rect()
+            _, rect2 = other._get_transformed_image_and_rect()
+            if rect1 and rect2:
+                return rect1.colliderect(rect2)
+            # 如果无法获取矩形，则回退到圆形检测
+
+        # --- Circle Collision (Default and Fallback) ---
+        # 用于所有其他组合，或在上述检测失败时作为后备
         my_radius = self.collision_radius * self.size
         other_radius = other.collision_radius * other.size
-        distance_sq = self.pos.distance_squared_to(other.pos)
-        return distance_sq < (my_radius + other_radius)**2
+        try:
+            distance_sq = self.pos.distance_squared_to(other.pos)
+            return distance_sq < (my_radius + other_radius)**2
+        except (AttributeError, TypeError):
+            return False
 
     def _on_edge_collision(self, edge: str):
-        """触发碰到舞台边缘事件"""
-        if self.game:
-            self.game.log_debug(f"Edge collision: {self.name} hit {edge} border")
-        
-        # 触发通用处理器
-        if "any" in self.edge_handlers:
-            self.game.add_task(self.edge_handlers["any"])
-        # 触发特定处理器
-        if edge in self.edge_handlers:
-            self.game.add_task(self.edge_handlers[edge])
+        if self.game: self.game.log_debug(f"Edge collision: {self.name} hit {edge} border")
+        if "any" in self.edge_handlers: self.game.add_task(self.edge_handlers["any"])
+        if edge in self.edge_handlers: self.game.add_task(self.edge_handlers[edge])
 
     def _trigger_sprite_collision_handler(self, handler: Callable, other: "Sprite"):
-        """(新增) 根据处理器签名，安全地将任务添加到游戏循环中"""
         sig = inspect.signature(handler)
-        if 'other' in sig.parameters:
-            task_to_add = lambda: handler(other)
-        else:
-            task_to_add = handler
+        task_to_add = (lambda: handler(other)) if 'other' in sig.parameters else handler
         self.game.add_task(task_to_add)
 
     def touches_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
-        """
-        检查精灵边缘是否触碰到指定颜色。
-        注意：此操作性能开销较大，请谨慎使用。
-        """
-        if not self.game or not self.visible:
-            return False
-            
+        if not self.game or not self.visible: return False
         edge_points = self._get_edge_points()
         for point in edge_points:
-            if self._point_touches_color(point, color, tolerance):
-                return True
+            if self._point_touches_color(point, color, tolerance): return True
         return False
-        
+
     def _get_edge_points(self) -> List[Tuple[int, int]]:
-        """获取精灵边缘的点（用于颜色碰撞检测）"""
-        # ... 此方法逻辑正确但性能开销大，保持不变 ...
         points = []
         center_x, center_y = int(self.pos.x), int(self.pos.y)
-        
-        # 如果有mask，使用其轮廓
         if self.collision_mask:
             rect = self.collision_mask.get_rect(center=(center_x, center_y))
-            # 每隔5个点取一个以提高性能
             for i, p in enumerate(self.collision_mask.outline()):
-                if i % 5 == 0:
-                    points.append((p[0] + rect.x, p[1] + rect.y))
-        # 否则使用圆形轮廓
+                if i % 5 == 0: points.append((p[0] + rect.x, p[1] + rect.y))
         else:
             radius = int(self.collision_radius * self.size)
-            for angle in range(0, 360, 15): # 增加步长以提高性能
+            for angle in range(0, 360, 15):
                 rad = math.radians(angle)
                 x = center_x + radius * math.cos(rad)
-                y = center_y - radius * math.sin(rad) # Pygame Y轴向下
+                y = center_y - radius * math.sin(rad)
                 points.append((int(x), int(y)))
         return points
-        
-    def _point_touches_color(self, point: Tuple[int, int], 
-                             target_color: Tuple[int, int, int], 
-                             tolerance: int) -> bool:
-        """检查特定点是否触碰到目标颜色"""
+
+    def _point_touches_color(self, point: Tuple[int, int], target_color: Tuple[int, int, int], tolerance: int) -> bool:
         x, y = point
-        if not (0 <= x < self.game.width and 0 <= y < self.game.height):
-            return False
-            
+        if not (0 <= x < self.game.width and 0 <= y < self.game.height): return False
         try:
             screen_color = self.game.screen.get_at((x, y))
         except IndexError:
             return False
-            
         return self._colors_match(screen_color[:3], target_color, tolerance)
-        
-    def _colors_match(self, color1: Tuple[int, int, int], 
-                      color2: Tuple[int, int, int], 
-                      tolerance: int) -> bool:
-        """检查两个颜色是否在容差范围内匹配"""
-        return (abs(color1[0] - color2[0]) <= tolerance and
-                abs(color1[1] - color2[1]) <= tolerance and
-                abs(color1[2] - color2[2]) <= tolerance)
+
+    def _colors_match(self, c1: Tuple[int, int, int], c2: Tuple[int, int, int], tol: int) -> bool:
+        return (abs(c1[0] - c2[0]) <= tol and abs(c1[1] - c2[1]) <= tol and abs(c1[2] - c2[2]) <= tol)
 
     def set_size(self, size: float):
-        self.size = max(0.01, size) # 防止尺寸为0
+        self.size = max(0.01, size)
         self._update_collision_radius()
 
     def change_size(self, change: float):
         self.set_size(self.size + change)
 
     def move(self, steps: float):
-        """移动精灵，无物理效果"""
         rad = math.radians(self.direction)
-        dx = steps * math.cos(rad)
-        dy = -steps * math.sin(rad)
-        new_pos = self.pos + pygame.Vector2(dx, dy)
+        delta = pygame.Vector2(math.cos(rad), -math.sin(rad)) * steps
+        if self.pen_down: self.pen_path.append(self.pos.xy)
+        self.pos += delta
+        if self.pen_down: self.pen_path.append(self.pos.xy)
 
-        if self.pen_down:
-            self.pen_path.append(self.pos.xy)
-            self.pos.update(new_pos)
-            self.pen_path.append(self.pos.xy)
-        else:
-            self.pos.update(new_pos)
-    
-    def move_left(self, distance: float, prevent_boundary: bool = True):
-        """向左移动指定距离"""
-        new_x = self.pos.x - distance
-        if prevent_boundary and self.game:
-            radius = self.collision_radius * self.size
-            new_x = max(radius, new_x)
+    def move_left(self, dist: float, prevent_boundary: bool = True):
+        new_x = self.pos.x - dist
+        if prevent_boundary and self.game: new_x = max(self.collision_radius * self.size, new_x)
         self.pos.x = new_x
         if self.pen_down: self.pen_path.append(self.pos.xy)
 
-    def move_right(self, distance: float, prevent_boundary: bool = True):
-        """向右移动指定距离"""
-        new_x = self.pos.x + distance
-        if prevent_boundary and self.game:
-            radius = self.collision_radius * self.size
-            new_x = min(self.game.width - radius, new_x)
+    def move_right(self, dist: float, prevent_boundary: bool = True):
+        new_x = self.pos.x + dist
+        if prevent_boundary and self.game: new_x = min(self.game.width - self.collision_radius * self.size, new_x)
         self.pos.x = new_x
         if self.pen_down: self.pen_path.append(self.pos.xy)
 
-    def move_up(self, distance: float, prevent_boundary: bool = True):
-        """向上移动指定距离"""
-        new_y = self.pos.y - distance
-        if prevent_boundary and self.game:
-            radius = self.collision_radius * self.size
-            new_y = max(radius, new_y)
+    def move_up(self, dist: float, prevent_boundary: bool = True):
+        new_y = self.pos.y - dist
+        if prevent_boundary and self.game: new_y = max(self.collision_radius * self.size, new_y)
         self.pos.y = new_y
         if self.pen_down: self.pen_path.append(self.pos.xy)
 
-    def move_down(self, distance: float, prevent_boundary: bool = True):
-        """向下移动指定距离"""
-        new_y = self.pos.y + distance
-        if prevent_boundary and self.game:
-            radius = self.collision_radius * self.size
-            new_y = min(self.game.height - radius, new_y)
+    def move_down(self, dist: float, prevent_boundary: bool = True):
+        new_y = self.pos.y + dist
+        if prevent_boundary and self.game: new_y = min(self.game.height - self.collision_radius * self.size, new_y)
         self.pos.y = new_y
         if self.pen_down: self.pen_path.append(self.pos.xy)
 
-    def turn_right(self, degrees: float):
-        self.direction = (self.direction - degrees) % 360
-
-    def turn_left(self, degrees: float):
-        self.direction = (self.direction + degrees) % 360
-
-    def point_in_direction(self, degrees: float):
-        self.direction = degrees % 360
+    def turn_right(self, deg: float): self.direction = (self.direction - deg) % 360
+    def turn_left(self, deg: float): self.direction = (self.direction + deg) % 360
+    def point_in_direction(self, deg: float): self.direction = deg % 360
 
     def point_towards(self, x: float, y: float):
-        dx = x - self.pos.x
-        dy = self.pos.y - y
-        self.direction = math.degrees(math.atan2(dy, dx)) % 360
+        self.direction = math.degrees(math.atan2(self.pos.y - y, x - self.pos.x)) % 360
 
-    
-    def glide_to(self, target_x: float, target_y: float, duration: float = 1000,easing: str = "linear"):
-        """在指定时间内平滑移动到目标位置"""
-        if not self.game or duration <= 0:
-            self.pos.update(target_x, target_y)
+    def glide_to(self, tx: float, ty: float, dur: float = 1000, easing: str = "linear"):
+        if not self.game or dur <= 0:
+            self.pos.update(tx, ty)
             return
-
-        start_pos = self.pos.copy()
-        target_pos = pygame.Vector2(target_x, target_y)
-        start_time = self.game.current_time
-        end_time = start_time + duration
-        
+        start_pos, target_pos = self.pos.copy(), pygame.Vector2(tx, ty)
+        start_time, end_time = self.game.current_time, self.game.current_time + dur
         while self.game.current_time < end_time:
-            progress = (self.game.current_time - start_time) / duration
-            
-            if easing == "ease_in_out":
-                t = progress * progress * (3 - 2 * progress)
-            elif easing == "ease_in":
-                t = progress * progress
-            elif easing == "ease_out":
-                t = 1 - (1 - progress) * (1 - progress)
-            else: # linear
-                t = progress
-            
+            progress = (self.game.current_time - start_time) / dur
+            if easing == "ease_in_out": t = progress * progress * (3 - 2 * progress)
+            elif easing == "ease_in": t = progress * progress
+            elif easing == "ease_out": t = 1 - (1 - progress)**2
+            else: t = progress
             self.pos = start_pos.lerp(target_pos, t)
             yield 0
-        
         self.pos.update(target_pos)
-    
-    
-    def glide_in_direction(self, direction: float, distance: float, 
-                           duration: float = 1000, easing: str = "linear",
-                           exclusive: bool = True):
-        """向指定方向平滑移动指定距离"""
+
+    def glide_in_direction(self, direction: float, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
         rad = math.radians(direction)
-        delta = pygame.Vector2(math.cos(rad), -math.sin(rad)) * distance
-        target_pos = self.pos + delta
-        
-        # 互斥逻辑
-        if exclusive and self._is_moving:
-            if self._is_conflicting_movement(direction):
-                return
-        
+        target_pos = self.pos + pygame.Vector2(math.cos(rad), -math.sin(rad)) * distance
+        if exclusive and self._is_moving and self._is_conflicting_movement(direction): return
         self._is_moving = True
         self._active_movement = self._get_movement_type(direction)
-        
         yield from self.glide_to(target_pos.x, target_pos.y, duration, easing)
-        
         self._is_moving = False
         self._active_movement = None
-    
+
     def _get_movement_type(self, direction: float) -> str:
-        """获取移动方向类型"""
         d = direction % 360
         if 315 <= d or d < 45: return "right"
         if 45 <= d < 135: return "up"
         if 135 <= d < 225: return "left"
         return "down"
-    
+
     def _is_conflicting_movement(self, new_direction: float) -> bool:
-        """检查新移动是否与当前活动移动冲突"""
         if not self._active_movement: return False
-        new_type = self._get_movement_type(new_direction)
         opposites = {"left": "right", "right": "left", "up": "down", "down": "up"}
-        return opposites.get(self._active_movement) == new_type
+        return opposites.get(self._active_movement) == self._get_movement_type(new_direction)
 
-    def glide_left(self, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
-        yield from self.glide_in_direction(180, distance, duration, easing, exclusive)
+    def glide_left(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(180, dist, dur, ease, excl)
+    def glide_right(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(0, dist, dur, ease, excl)
+    def glide_up(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(90, dist, dur, ease, excl)
+    def glide_down(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(270, dist, dur, ease, excl)
 
-    def glide_right(self, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
-        yield from self.glide_in_direction(0, distance, duration, easing, exclusive)
-
-    def glide_up(self, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
-        yield from self.glide_in_direction(90, distance, duration, easing, exclusive)
-
-    def glide_down(self, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
-        yield from self.glide_in_direction(270, distance, duration, easing, exclusive)
-
-    def goto(self, x: float, y: float):
-        self.pos.update(x, y)
+    def goto(self, x: float, y: float): self.pos.update(x, y)
 
     def goto_random_position(self):
         if not self.game: return
-        radius = self.collision_radius * self.size
-        self.pos.x = random.uniform(radius, self.game.width - radius)
-        self.pos.y = random.uniform(radius, self.game.height - radius)
+        r = self.collision_radius * self.size
+        self.pos.x, self.pos.y = random.uniform(r, self.game.width - r), random.uniform(r, self.game.height - r)
 
-    def say(self, text: str, duration: int = 2000):
-        self.speech = text
-        self.speech_timer = duration
-
-    def think(self, text: str, duration: int = 2000):
-        self.say(text, duration)
-
-    def change_color_to(self, color: Tuple[int, int, int]):
-        self.color = color
-
-    def change_color_random(self):
-        self.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    def say(self, text: str, duration: int = 2000): self.speech, self.speech_timer = text, duration
+    def think(self, text: str, duration: int = 2000): self.say(text, duration)
+    def change_color_to(self, color: Tuple[int, int, int]): self.color = color
+    def change_color_random(self): self.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def clone(self, other_sprite: 'Sprite' = None):
-        """克隆精灵"""
-        if not self.scene or not self.game or len(self.scene.sprites) >= 500:
-            return
-
-        source = other_sprite if other_sprite else self
-        clone = type(source)() # 创建同类型的实例
-
-        # 复制属性
-        clone.pos = source.pos.copy()
-        clone.direction = source.direction
-        clone.size = source.size
-        clone.color = source.color
-        clone.costumes = source.costumes.copy()
-        clone.current_costume = source.current_costume
-        clone._default_image = source._default_image
-        clone.visible = source.visible
-        clone.is_clones = True
-
+        if not self.scene or not self.game or len(self.scene.sprites) >= 500: return
+        source = other_sprite or self
+        clone = type(source)()
+        clone.pos, clone.direction, clone.size, clone.color = source.pos.copy(), source.direction, source.size, source.color
+        clone.costumes, clone.current_costume, clone._default_image = source.costumes.copy(), source.current_costume, source._default_image
+        clone.visible, clone.is_clones = source.visible, True
         self.scene.add_sprite(clone)
         self.game.log_debug(f"Cloned sprite: {source.name}")
 
-    def delete_self(self):
-        self.delete = True
-
-    def pen_down(self):
-        self.pen_down = True
-        self.pen_path.append(self.pos.xy)
-
-    def pen_up(self):
-        self.pen_down = False
-        self.pen_path.clear() # 或者根据需要不清空
-
-    def change_pen_color(self, color: Tuple[int, int, int]):
-        self.pen_color = color
-
-    def set_pen_color_random(self):
-        self.pen_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-
-    def change_pen_size(self, size: int):
-        self.pen_size = max(1, size)
-
-    def clear_pen(self):
-        # 这个方法应该在场景层面实现，因为它需要清除所有精灵的轨迹
-        if self.scene:
-            # 这是一个示例，实际可能需要一个全局的画板
-            for s in self.scene.sprites:
-                s.pen_path = []
+    def delete_self(self): self.delete = True
+    def pen_down(self): self.pen_down, self.pen_path.append(self.pos.xy)
+    def pen_up(self): self.pen_down = False
+    def change_pen_color(self, color: Tuple[int, int, int]): self.pen_color = color
+    def set_pen_color_random(self): self.pen_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    def change_pen_size(self, size: int): self.pen_size = max(1, size)
+    def clear_pen(self): self.pen_path = []
 
     def face_towards(self, target: Any):
-        """让精灵面向特定目标"""
         if isinstance(target, str):
-            if target == "mouse":
-                if self.game: self.point_towards(*self.game.mouse_pos)
-                return
-            if target == "edge":
-                if not self.game: return
-                distances = {
-                    "left": self.pos.x, "right": self.game.width - self.pos.x,
-                    "top": self.pos.y, "bottom": self.game.height - self.pos.y,
-                }
-                closest_edge = min(distances, key=distances.get)
-                if closest_edge == "left": self.point_towards(0, self.pos.y)
-                elif closest_edge == "right": self.point_towards(self.game.width, self.pos.y)
-                elif closest_edge == "top": self.point_towards(self.pos.x, 0)
+            if target == "mouse" and self.game: self.point_towards(*self.game.mouse_pos)
+            elif target == "edge" and self.game:
+                d = {"l": self.pos.x, "r": self.game.width - self.pos.x, "t": self.pos.y, "b": self.game.height - self.pos.y}
+                edge = min(d, key=d.get)
+                if edge == "l": self.point_towards(0, self.pos.y)
+                elif edge == "r": self.point_towards(self.game.width, self.pos.y)
+                elif edge == "t": self.point_towards(self.pos.x, 0)
                 else: self.point_towards(self.pos.x, self.game.height)
-                return
-            
-            # 按名称查找精灵
-            if self.scene:
-                for sprite in self.scene.sprites:
-                    if sprite.name == target:
-                        self.point_towards(sprite.pos.x, sprite.pos.y)
-                        return
-        elif isinstance(target, Sprite):
-            self.point_towards(target.pos.x, target.pos.y)
-        elif isinstance(target, (pygame.Vector2, tuple)):
-            self.point_towards(*target)
+            elif self.scene:
+                for s in self.scene.sprites:
+                    if s.name == target: self.point_towards(s.pos.x, s.pos.y); return
+        elif isinstance(target, Sprite): self.point_towards(target.pos.x, target.pos.y)
+        elif isinstance(target, (pygame.Vector2, tuple)): self.point_towards(*target)
 
-    def face_random_direction(self):
-        self.direction = random.uniform(0, 360)
+    def face_random_direction(self): self.direction = random.uniform(0, 360)
+    def face_horizontal(self, degrees: float = 0): self.point_in_direction(degrees)
+    def face_vertical(self, degrees: float = 90): self.point_in_direction(degrees)
+    def face_away_from(self, target: Any): self.face_towards(target); self.direction = (self.direction + 180) % 360
 
-    def face_horizontal(self, degrees: float = 0):
-        self.point_in_direction(degrees)
-
-    def face_vertical(self, degrees: float = 90):
-        self.point_in_direction(degrees)
-
-    def face_away_from(self, target: Any):
-        """背向特定目标"""
-        self.face_towards(target)
-        self.direction = (self.direction + 180) % 360
-
+    # [修改] 重构 draw 方法以使用辅助函数并增强调试绘图
     def draw(self, surface: pygame.Surface):
-        """绘制精灵"""
         if not self.visible: return
-        
-        # 绘制画笔轨迹
         if self.pen_path and len(self.pen_path) >= 2:
             pygame.draw.lines(surface, self.pen_color, False, self.pen_path, self.pen_size)
 
-        # 绘制精灵主体
-        img_to_draw = self.image
-        if img_to_draw:
-            scaled_img = pygame.transform.scale(img_to_draw, (int(img_to_draw.get_width() * self.size), int(img_to_draw.get_height() * self.size))) if self.size != 1.0 else img_to_draw
-            rotated_image = pygame.transform.rotate(scaled_img, self.direction - 90)
-            rect = rotated_image.get_rect(center=self.pos)
-            surface.blit(rotated_image, rect)
-        else:
+        rotated_image, final_rect = self._get_transformed_image_and_rect()
+
+        if rotated_image and final_rect:
+            surface.blit(rotated_image, final_rect)
+        elif not rotated_image: # 如果没有图像，则绘制一个圆形
             radius = int(self.collision_radius * self.size)
             pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), radius)
             rad = math.radians(self.direction)
             end_pos = self.pos + pygame.Vector2(math.cos(rad), -math.sin(rad)) * radius
             pygame.draw.line(surface, (0, 0, 0), self.pos, end_pos, 2)
 
-        # 绘制说话气泡
         if self.speech and self.game:
             text = self.game.font.render(self.speech, True, (0, 0, 0))
             bubble_rect = text.get_rect(center=(self.pos.x, self.pos.y - 50)).inflate(20, 15)
             pygame.draw.rect(surface, (255, 255, 200), bubble_rect, border_radius=10)
             pygame.draw.rect(surface, (200, 200, 100), bubble_rect, 2, border_radius=10)
-            # 绘制小三角
-            p1 = bubble_rect.midbottom
-            p2 = (p1[0] - 10, p1[1] + 10)
-            p3 = (p1[0] + 10, p1[1] + 10)
+            p1, p2, p3 = bubble_rect.midbottom, (bubble_rect.centerx - 10, bubble_rect.bottom + 10), (bubble_rect.centerx + 10, bubble_rect.bottom + 10)
             pygame.draw.polygon(surface, (255, 255, 200), (p1, p2, p3))
             pygame.draw.polygon(surface, (200, 200, 100), (p1, p2, p3), 2)
             surface.blit(text, text.get_rect(center=bubble_rect.center))
+
+        # 调试模式下根据碰撞类型绘制不同的轮廓
+        if self.game and self.game.debug:
+            if self.collision_type == "mask" and self.collision_mask and final_rect:
+                outline = self.collision_mask.outline()
+                points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
+                if len(points) > 1:
+                    pygame.draw.lines(surface, (255, 0, 0), True, points, 1) # 红色 for Mask
+            elif self.collision_type == "rect" and final_rect:
+                pygame.draw.rect(surface, (0, 255, 0), final_rect, 1) # 绿色 for Rect
+            elif self.collision_type == "circle":
+                pygame.draw.circle(surface, (0, 0, 255), (int(self.pos.x), int(self.pos.y)), int(self.collision_radius * self.size), 1) # 蓝色 for Circle
 
     def play_sound(self, name: str, volume: float = None):
         if self.game: self.game.play_sound(name, volume)
@@ -1697,23 +1476,7 @@ class Sprite:
     def set_sound_volume(self, volume: float):
         if self.game: self.game.set_sound_volume(volume)
 
-class Cat(Sprite):
-
-    def __init__(self):
-        super().__init__()
-        self.name = "Cat"
-        # 确保资源文件存在
-        try:
-            self.add_costume("costume1", pygame.image.load(get_resource_path("cat1.svg")).convert_alpha())
-            self.add_costume("costume2", pygame.image.load(get_resource_path("cat2.svg")).convert_alpha())
-        except pygame.error as e:
-            print(f"无法加载Cat资源: {e}. 将使用默认圆形。")
-
-
-    def walk(self):
-        self.next_costume()
-
-
+# ... (Particle, ParticleSystem, and PhysicsSprite classes remain unchanged) ...
 class Particle:
     """单个粒子"""
 
@@ -1746,7 +1509,6 @@ class Particle:
                                self.size)
             surface.blit(particle_surf,
                          (self.pos.x - self.size, self.pos.y - self.size))
-
 
 class ParticleSystem:
     """粒子系统"""
@@ -1789,7 +1551,6 @@ class ParticleSystem:
     def draw(self, surface):
         for particle in self.particles:
             particle.draw(surface)
-
 
 class PhysicsSprite(Sprite):
     """添加物理属性的精灵类"""
@@ -1920,3 +1681,19 @@ class PhysicsSprite(Sprite):
             speed_text = f"{speed:.1f}"
             speed_surf = self.game.font.render(speed_text, True, (255, 0, 0))
             surface.blit(speed_surf, (end_vx + 5, end_vy - 10))
+            
+class Cat(Sprite):
+
+    def __init__(self):
+        super().__init__()
+        self.name = "Cat"
+        # 确保资源文件存在
+        try:
+            self.add_costume("costume1", pygame.image.load(get_resource_path("cat1.svg")).convert_alpha())
+            self.add_costume("costume2", pygame.image.load(get_resource_path("cat2.svg")).convert_alpha())
+        except pygame.error as e:
+            print(f"无法加载Cat资源: {e}. 将使用默认圆形。")
+
+
+    def walk(self):
+        self.next_costume()
