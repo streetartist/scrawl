@@ -270,8 +270,7 @@ class Game:
         self.title = title
 
         if fullscreen:
-            self.screen = pygame.display.set_mode((width, height),
-                                                  pygame.FULLSCREEN)
+            self.screen = pygame.display.set_mode((width, height), pygame.SCALED | pygame.FULLSCREEN)
         else:
             self.screen = pygame.display.set_mode((width, height))
 
@@ -339,9 +338,8 @@ class Game:
         self.mouse_events = []  # 存储鼠标事件处理函数
         
     
-    def run(self, fps: int = 60, debug: bool = False, fullscreen = False):
+    def run(self, fps: int = 60, debug: bool = False):
         self.debug = debug
-        self.fullscreen = fullscreen
 
         if not self.scene:
             print("No scene set!")
