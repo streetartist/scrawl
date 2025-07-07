@@ -339,8 +339,9 @@ class Game:
         self.mouse_events = []  # 存储鼠标事件处理函数
         
     
-    def run(self, fps: int = 60, debug: bool = False):
+    def run(self, fps: int = 60, debug: bool = False, fullscreen=False):
         self.debug = debug
+        self.fullscreen = fullscreen
 
         if not self.scene:
             print("No scene set!")
@@ -755,7 +756,6 @@ class Scene:
         self.sprites: List[Sprite] = []
         self.background_color = (100, 150, 200)
         self.background_image: pygame.Surface = None
-        self.background_size = None  # 背景图片尺寸 (width, height)
         self.game: Game = None
         self.name = "Scene"
         self.particle_systems: List[ParticleSystem] = []
@@ -800,31 +800,6 @@ class Scene:
         if self.game:
             self.game.setup_key_listeners(self)
             self.game.setup_mouse_listeners(self)
-
-    def set_background_image(self, image_path: str, size: Tuple[int, int] = None):
-        """设置背景图片，并可选择缩放尺寸"""
-        try:
-            # 加载图片
-            self.background_image = pygame.image.load(get_resource_path(image_path)).convert()
-            
-            # 如果指定了尺寸，缩放图片
-            if size:
-                self.background_size = size
-                self.background_image = pygame.transform.scale(self.background_image, size)
-            else:
-                self.background_size = self.background_image.get_size()
-                
-            self.game.log_debug(f"Set background image: {image_path}")
-        except Exception as e:
-            self.game.log_debug(f"Failed to load background: {str(e)}")
-            self.background_image = None
-            self.background_size = None
-
-    def set_background_size(self, width: int, height: int):
-        """设置背景图片尺寸并缩放"""
-        if self.background_image:
-            self.background_size = (width, height)
-            self.background_image = pygame.transform.scale(self.background_image, (width, height))
 
     def add_sprite(self, sprite):
         self.sprites.append(sprite)
@@ -929,15 +904,7 @@ class Scene:
             return
 
         if self.background_image:
-            # 如果有自定义尺寸，使用缩放后的图片
-            if self.background_size:
-                surface.blit(self.background_image, (0, 0))
-            else:
-                # 否则将图片平铺填满整个屏幕
-                img_width, img_height = self.background_image.get_size()
-                for y in range(0, self.game.height, img_height):
-                    for x in range(0, self.game.width, img_width):
-                        surface.blit(self.background_image, (x, y))
+            surface.blit(self.background_image, (0, 0))
         else:
             surface.fill(self.background_color)
 
@@ -2285,6 +2252,7 @@ class PhysicsSprite(Sprite):
         self.friction = 0.98  # 摩擦力系数
         self.gravity = pygame.Vector2(0, 0.2)  # 重力向量
         self.elasticity = 0.8  # 弹性系数
+        self.show_speed_surf = False
 
     def update(self):
         """物理精灵更新逻辑：处理物理模拟"""
@@ -2393,9 +2361,8 @@ class PhysicsSprite(Sprite):
 
         # 计算碰撞半径
         radius = int(self.collision_radius * self.size)
-
         # 绘制速度矢量
-        if self.velocity.length() > 0:
+        if self.velocity.length() > 0 and self.show_speed_surf == True:
             end_vx = self.pos.x + self.velocity.x * 10
             end_vy = self.pos.y + self.velocity.y * 10
             pygame.draw.line(surface, (255, 0, 0), self.pos, (end_vx, end_vy),
