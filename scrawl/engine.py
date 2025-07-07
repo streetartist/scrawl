@@ -16,6 +16,7 @@ import json
 import uuid
 from collections import deque
 
+# ... (CloudVariablesClient and other helper functions remain unchanged) ...
 class CloudVariablesClient:
     def __init__(self, project_id=None, base_url="http/1.117.220.147:5000", sync_interval=100):
         self.base_url = base_url
@@ -991,24 +992,23 @@ class Sprite:
         self.needs_edge_collision = False
         self.needs_sprite_collision = False
         
-        # [修改] 碰撞类型属性，默认使用 "circle"
-        self.collision_type = "circle"  # 可选值: "circle", "mask", "rect"
+        # [修改] 将 "circle" 设为默认碰撞类型
+        self.collision_type = "circle"  # 可选值: "circle", "mask"
 
         self._is_moving = False
         self._active_movement = None
 
-    # [修改] 设置碰撞类型的方法
+    # [修改] 简化设置碰撞类型的方法
     def set_collision_type(self, mode: str):
         """
         设置精灵的碰撞检测方式。
 
         Args:
             mode (str): 碰撞模式。可选值为:
-                        - "circle" (默认): 基于半径的圆形碰撞。速度快，精度低。
-                        - "rect": 基于旋转后图像的矩形边界框碰撞。
-                        - "mask": 像素完美碰撞。精度最高，但性能开销最大。
+                        - "circle" (默认): 使用基于半径的圆形碰撞 (性能较高)。
+                        - "mask": 强制使用像素完美碰撞 (会生成mask，性能较低)。
         """
-        if mode in ["circle", "mask", "rect"]:
+        if mode in ["circle", "mask"]:
             self.collision_type = mode
         else:
             print(f"警告: 无效的碰撞类型 '{mode}'。将使用默认值 'circle'。")
@@ -1051,28 +1051,31 @@ class Sprite:
         img = self.image
         if img:
             w, h = img.get_size()
-            self.collision_radius = (w + h) / 4.0 # 使用平均值作为半径
+            self.collision_radius = min(w, h) / 2.0
         else:
             self.collision_radius = 20.0
 
-    # [新增] 辅助方法，用于获取变换后的图像和矩形
-    def _get_transformed_image_and_rect(self) -> Tuple[Optional[pygame.Surface], Optional[pygame.Rect]]:
-        """获取经过缩放和旋转后的最终图像及其矩形。"""
-        img_to_draw = self.image
-        if not img_to_draw:
-            return None, None
-        
+    def _create_mask(self):
+        img = self.image
+        if img is None:
+            self.collision_mask = None
+            return
+
         try:
-            scaled_img = pygame.transform.scale(
-                img_to_draw, 
-                (int(img_to_draw.get_width() * self.size), int(img_to_draw.get_height() * self.size))
-            ) if self.size != 1.0 else img_to_draw
-            
-            rotated_image = pygame.transform.rotate(scaled_img, self.direction - 90)
-            rect = rotated_image.get_rect(center=self.pos)
-            return rotated_image, rect
+            if self.size != 1.0:
+                orig_size = img.get_size()
+                new_size = (int(orig_size[0] * self.size), int(orig_size[1] * self.size))
+                if new_size[0] <= 0 or new_size[1] <= 0:
+                    self.collision_mask = None
+                    return
+                scaled_img = pygame.transform.scale(img, new_size)
+            else:
+                scaled_img = img
+
+            rotated_img = pygame.transform.rotate(scaled_img, self.direction - 90)
+            self.collision_mask = pygame.mask.from_surface(rotated_img)
         except pygame.error:
-            return None, None
+            self.collision_mask = None # 如果图像无效，则不创建mask
 
     def main(self): pass
     def clones(self): pass
@@ -1119,19 +1122,12 @@ class Sprite:
     def update(self):
         if not self.game: return
 
-        # [修改] 根据碰撞类型更新 mask
+        # [修改] 简化mask的创建逻辑
+        # 只有当碰撞类型被显式设为 "mask" 时才创建遮罩
         if self.collision_type == "mask":
-            rotated_image, _ = self._get_transformed_image_and_rect()
-            if rotated_image:
-                try:
-                    self.collision_mask = pygame.mask.from_surface(rotated_image)
-                except pygame.error:
-                    self.collision_mask = None
-            else:
-                self.collision_mask = None
+            self._create_mask()
         else:
-            # 对于 "rect" 和 "circle" 模式，确保 mask 为 None
-            self.collision_mask = None
+            self.collision_mask = None # 确保其他模式下mask为None
 
         if self.speech and self.speech_timer > 0:
             self.speech_timer -= self.game.clock.get_time()
@@ -1196,41 +1192,23 @@ class Sprite:
         if self.scene: self.scene.broadcast(event_name)
 
     def received_broadcast(self, event_name: str) -> bool:
-        return self.game.received_broadcast(self.game) if self.game else False
+        return self.game.received_broadcast(event_name) if self.game else False
 
-    # [修改] 重构碰撞检测逻辑
     def collides_with(self, other: "Sprite") -> bool:
-        if not self.visible or not other.visible:
-            return False
+        if not self.visible or not other.visible: return False
+        
+        # 优先使用mask碰撞（如果双方都有mask）
+        if self.collision_mask and other.collision_mask:
+            rect1 = self.collision_mask.get_rect(center=self.pos)
+            rect2 = other.collision_mask.get_rect(center=other.pos)
+            offset = (rect2.x - rect1.x, rect2.y - rect1.y)
+            return self.collision_mask.overlap(other.collision_mask, offset) is not None
 
-        # --- Mask vs Mask Collision ---
-        # 仅当两个精灵都设置为 "mask" 模式时触发
-        if self.collision_type == "mask" and other.collision_type == "mask":
-            if self.collision_mask and other.collision_mask:
-                rect1 = self.collision_mask.get_rect(center=self.pos)
-                rect2 = other.collision_mask.get_rect(center=other.pos)
-                offset = (rect2.x - rect1.x, rect2.y - rect1.y)
-                return self.collision_mask.overlap(other.collision_mask, offset) is not None
-            # 如果mask不存在，则回退到圆形检测
-
-        # --- Rect vs Rect Collision ---
-        # 仅当两个精灵都设置为 "rect" 模式时触发
-        if self.collision_type == "rect" and other.collision_type == "rect":
-            _, rect1 = self._get_transformed_image_and_rect()
-            _, rect2 = other._get_transformed_image_and_rect()
-            if rect1 and rect2:
-                return rect1.colliderect(rect2)
-            # 如果无法获取矩形，则回退到圆形检测
-
-        # --- Circle Collision (Default and Fallback) ---
-        # 用于所有其他组合，或在上述检测失败时作为后备
+        # 否则，回退到圆形碰撞
         my_radius = self.collision_radius * self.size
         other_radius = other.collision_radius * other.size
-        try:
-            distance_sq = self.pos.distance_squared_to(other.pos)
-            return distance_sq < (my_radius + other_radius)**2
-        except (AttributeError, TypeError):
-            return False
+        distance_sq = self.pos.distance_squared_to(other.pos)
+        return distance_sq < (my_radius + other_radius)**2
 
     def _on_edge_collision(self, edge: str):
         if self.game: self.game.log_debug(f"Edge collision: {self.name} hit {edge} border")
@@ -1416,17 +1394,22 @@ class Sprite:
     def face_vertical(self, degrees: float = 90): self.point_in_direction(degrees)
     def face_away_from(self, target: Any): self.face_towards(target); self.direction = (self.direction + 180) % 360
 
-    # [修改] 重构 draw 方法以使用辅助函数并增强调试绘图
     def draw(self, surface: pygame.Surface):
         if not self.visible: return
         if self.pen_path and len(self.pen_path) >= 2:
             pygame.draw.lines(surface, self.pen_color, False, self.pen_path, self.pen_size)
 
-        rotated_image, final_rect = self._get_transformed_image_and_rect()
-
-        if rotated_image and final_rect:
-            surface.blit(rotated_image, final_rect)
-        elif not rotated_image: # 如果没有图像，则绘制一个圆形
+        final_rect = None
+        img_to_draw = self.image
+        if img_to_draw:
+            try:
+                scaled_img = pygame.transform.scale(img_to_draw, (int(img_to_draw.get_width() * self.size), int(img_to_draw.get_height() * self.size))) if self.size != 1.0 else img_to_draw
+                rotated_image = pygame.transform.rotate(scaled_img, self.direction - 90)
+                final_rect = rotated_image.get_rect(center=self.pos)
+                surface.blit(rotated_image, final_rect)
+            except pygame.error: # Handle invalid image surfaces
+                pass
+        else:
             radius = int(self.collision_radius * self.size)
             pygame.draw.circle(surface, self.color, (int(self.pos.x), int(self.pos.y)), radius)
             rad = math.radians(self.direction)
@@ -1443,17 +1426,11 @@ class Sprite:
             pygame.draw.polygon(surface, (200, 200, 100), (p1, p2, p3), 2)
             surface.blit(text, text.get_rect(center=bubble_rect.center))
 
-        # 调试模式下根据碰撞类型绘制不同的轮廓
-        if self.game and self.game.debug:
-            if self.collision_type == "mask" and self.collision_mask and final_rect:
-                outline = self.collision_mask.outline()
-                points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
-                if len(points) > 1:
-                    pygame.draw.lines(surface, (255, 0, 0), True, points, 1) # 红色 for Mask
-            elif self.collision_type == "rect" and final_rect:
-                pygame.draw.rect(surface, (0, 255, 0), final_rect, 1) # 绿色 for Rect
-            elif self.collision_type == "circle":
-                pygame.draw.circle(surface, (0, 0, 255), (int(self.pos.x), int(self.pos.y)), int(self.collision_radius * self.size), 1) # 蓝色 for Circle
+        if self.game and self.game.debug and self.collision_mask and final_rect:
+            outline = self.collision_mask.outline()
+            points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
+            if len(points) > 1:
+                pygame.draw.lines(surface, (255, 0, 0), True, points, 1)
 
     def play_sound(self, name: str, volume: float = None):
         if self.game: self.game.play_sound(name, volume)
