@@ -1010,24 +1010,35 @@ class Sprite:
         self.needs_edge_collision = False
         self.needs_sprite_collision = False
         
-        # [修改] 将 "circle" 设为默认碰撞类型
-        self.collision_type = "circle"  # 可选值: "circle", "mask"
+        self.collision_type = "rect"  # 可选值: "rect", "circle", "mask"，默认为rect
 
+    def get_rect(self) -> pygame.Rect:
+        """返回当前精灵的矩形区域（基于位置和尺寸）"""
+        img = self.image
+        if img:
+            w, h = img.get_size()
+        else:
+            w = h = self.collision_radius * 2  # fallback
 
-    # [修改] 简化设置碰撞类型的方法
+        w *= self.size
+        h *= self.size
+        return pygame.Rect(self.pos.x - w / 2, self.pos.y - h / 2, w, h)
+
     def set_collision_type(self, mode: str):
         """
         设置精灵的碰撞检测方式。
 
         Args:
             mode (str): 碰撞模式。可选值为:
-                        - "circle" (默认): 使用基于半径的圆形碰撞 (性能较高)。
-                        - "mask": 强制使用像素完美碰撞 (会生成mask，性能较低)。
+                        - "rect" (默认):     使用矩形碰撞（基于图像边界）。
+                        - "circle":     使用圆形碰撞（基于碰撞半径）。
+                        - "mask":     使用像素完美碰撞（性能较低）。
         """
-        if mode in ["circle", "mask"]:
+        if mode in ["rect", "circle", "mask"]:
             self.collision_type = mode
         else:
-            print(f"警告: 无效的碰撞类型 '{mode}'。将使用默认值 'circle'。")
+            print(f"警告: 无效的碰撞类型 '{mode}'。将使用默认值 'rect'。")
+
 
     def add_costume(self, name: str, image: pygame.Surface):
         self.costumes[name] = image
@@ -1100,6 +1111,7 @@ class Sprite:
         self.scene = scene
         self.game = scene.game
         self._update_collision_radius()
+        self._create_mask()
 
         if not self.game: return
 
@@ -1136,7 +1148,6 @@ class Sprite:
     def update(self):
         if not self.game: return
 
-        # [修改] 简化mask的创建逻辑
         # 只有当碰撞类型被显式设为 "mask" 时才创建遮罩
         if self.collision_type == "mask":
             self._create_mask()
@@ -1204,25 +1215,81 @@ class Sprite:
 
     def broadcast(self, event_name: str):
         if self.scene: self.scene.broadcast(event_name)
-
+        
     def received_broadcast(self, event_name: str) -> bool:
         return self.game.received_broadcast(event_name) if self.game else False
 
+    def rect_circle_collision(self, rect: pygame.Rect, center: pygame.Vector2, radius: float) -> bool:
+        """矩形与圆的碰撞检测"""
+        closest = pygame.Vector2(
+            max(rect.left, min(center.x, rect.right)),
+            max(rect.top, min(center.y, rect.bottom))
+        )
+        return center.distance_to(closest) <= radius
+
+    def rect_mask_collision(self, rect: pygame.Rect, mask: pygame.mask.Mask, mask_sprite: "Sprite") -> bool:
+        """矩形与 mask 的碰撞检测"""
+        mask_rect = mask.get_rect(center=mask_sprite.pos)
+        # 创建临时 mask 表示矩形
+        temp_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+        pygame.draw.rect(temp_surf, (255, 255, 255), (0, 0, rect.width, rect.height))
+        temp_mask = pygame.mask.from_surface(temp_surf)
+        offset = (mask_rect.x - rect.x, mask_rect.y - rect.y)
+        return temp_mask.overlap(mask, offset) is not None
+
+    def circle_mask_collision(self, center: pygame.Vector2, radius: float, mask: pygame.mask.Mask, mask_sprite: "Sprite") -> bool:
+        """圆形与 mask 的碰撞检测"""
+        mask_rect = mask.get_rect(center=mask_sprite.pos)
+        diameter = int(radius * 2)
+        temp_surf = pygame.Surface((diameter, diameter), pygame.SRCALPHA)
+        pygame.draw.circle(temp_surf, (255, 255, 255), (int(radius), int(radius)), int(radius))
+        temp_mask = pygame.mask.from_surface(temp_surf)
+        offset = (mask_rect.x - int(center.x - radius), mask_rect.y - int(center.y - radius))
+        return temp_mask.overlap(mask, offset) is not None
+
+
     def collides_with(self, other: "Sprite") -> bool:
-        if not self.visible or not other.visible: return False
+        if not self.visible or not other.visible:
+            return False
+
+        # 获取双方类型
+        t1, t2 = self.collision_type, other.collision_type
+
+        # 提前计算常用值
+        rect1 = self.get_rect()
+        rect2 = other.get_rect()
+        center1, center2 = self.pos, other.pos
+        r1 = self.collision_radius * self.size
+        r2 = other.collision_radius * other.size
+
+        # 组合检测逻辑
+        if t1 == "rect" and t2 == "rect":
+            return rect1.colliderect(rect2)
+
+        if t1 == "circle" and t2 == "circle":
+            return center1.distance_squared_to(center2) < (r1 + r2) ** 2
+
+        if t1 == "rect" and t2 == "circle":
+            return self.rect_circle_collision(rect1, center2, r2)
+        if t1 == "circle" and t2 == "rect":
+            return self.rect_circle_collision(rect2, center1, r1)
         
-        # 优先使用mask碰撞（如果双方都有mask）
-        if self.collision_mask and other.collision_mask:
+        if t1 == "mask" and t2 == "mask":
             rect1 = self.collision_mask.get_rect(center=self.pos)
             rect2 = other.collision_mask.get_rect(center=other.pos)
             offset = (rect2.x - rect1.x, rect2.y - rect1.y)
             return self.collision_mask.overlap(other.collision_mask, offset) is not None
+        if t1 == "rect" and t2 == "mask":
+            return self.rect_mask_collision(self.get_rect(), other.collision_mask, other)
+        if t1 == "mask" and t2 == "rect":
+            return self.rect_mask_collision(other.get_rect(), self.collision_mask, self)
+        if t1 == "circle" and t2 == "mask":
+            return self.circle_mask_collision(self.pos, self.collision_radius * self.size, other.collision_mask, other)
+        if t1 == "mask" and t2 == "circle":
+            return self.circle_mask_collision(other.pos, other.collision_radius * other.size, self.collision_mask, self)
 
-        # 否则，回退到圆形碰撞
-        my_radius = self.collision_radius * self.size
-        other_radius = other.collision_radius * other.size
-        distance_sq = self.pos.distance_squared_to(other.pos)
-        return distance_sq < (my_radius + other_radius)**2
+        return False
+
 
     def _on_edge_collision(self, edge: str):
         if self.game: self.game.log_debug(f"Edge collision: {self.name} hit {edge} border")
@@ -1426,14 +1493,18 @@ class Sprite:
             pygame.draw.polygon(surface, (200, 200, 100), (p1, p2, p3), 2)
             surface.blit(text, text.get_rect(center=bubble_rect.center))
 
-        if self.game and self.game.debug and self.collision_mask and final_rect:
-            # 获取所有连通区域
-            components = self.collision_mask.connected_components()
-            for mask in components:
-                outline = mask.outline()
-                points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
-                if len(points) > 1:
-                    pygame.draw.lines(surface, (255, 0, 0), True, points, 1)
+        if self.game and self.game.debug:
+            if self.collision_type == "rect":
+                rect = self.get_rect()
+                pygame.draw.rect(surface, (0, 255, 255), rect, 2)  # 青色矩形
+            elif self.collision_type == "circle":
+                pygame.draw.circle(surface, (255, 0, 0), (int(self.pos.x), int(self.pos.y)), int(self.collision_radius * self.size), 1)
+            elif self.collision_type == "mask" and self.collision_mask and final_rect:
+                for mask in self.collision_mask.connected_components():
+                    outline = mask.outline()
+                    points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
+                    if len(points) > 1:
+                        pygame.draw.lines(surface, (255, 255, 0), True, points, 1)
 
 
     def play_sound(self, name: str, volume: float = None):
