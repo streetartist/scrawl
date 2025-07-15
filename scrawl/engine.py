@@ -1427,10 +1427,14 @@ class Sprite:
             surface.blit(text, text.get_rect(center=bubble_rect.center))
 
         if self.game and self.game.debug and self.collision_mask and final_rect:
-            outline = self.collision_mask.outline()
-            points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
-            if len(points) > 1:
-                pygame.draw.lines(surface, (255, 0, 0), True, points, 1)
+            # 获取所有连通区域
+            components = self.collision_mask.connected_components()
+            for mask in components:
+                outline = mask.outline()
+                points = [(x + final_rect.x, y + final_rect.y) for x, y in outline]
+                if len(points) > 1:
+                    pygame.draw.lines(surface, (255, 0, 0), True, points, 1)
+
 
     def play_sound(self, name: str, volume: float = None):
         if self.game: self.game.play_sound(name, volume)
