@@ -235,7 +235,7 @@ class Game:
         self.title = title
 
         if fullscreen:
-            self.screen = pygame.display.set_mode((width, height), pygame.SCALED | pygame.FULLSCREEN)
+            self.screen = pygame.display.set_mode((width, height), pygame.SCALED | pygame.FULLSCREEN | pygame.HWSURFACE)
         else:
             self.screen = pygame.display.set_mode((width, height))
 
@@ -551,6 +551,10 @@ class Game:
                 new_tasks.append(task)
             except StopIteration:
                 # 协程结束，直接丢弃
+                continue
+            except TypeError:
+                # 不是协程，丢弃即可
+                # 也许要排除其他TypeError，只留下not iterable
                 continue
             except Exception as e:
                 # 其他异常也丢弃，防止卡死
