@@ -3,7 +3,6 @@ import sys
 import types
 import math
 import random
-from collections import deque
 from typing import Tuple, List, Callable, Any, Dict, Optional
 import os
 import numpy
@@ -501,11 +500,18 @@ class Game:
         scene.setup()
         self.log_debug(f"Switched to scene: {scene.name}")
 
-    def add_task(self, function, delay=0):
+    def add_task(self, function, delay=0, obj=None):
+        """
+        向调度队列添加一个协程任务。
+        如果任务属于某个精灵，请把精灵实例通过 obj 参数传入，
+        这样当精灵被删除时可以自动清理相关任务。
+        """
         self.tasks.append({
             'generator': function(),
-            'next_run': self.current_time + delay
+            'next_run': self.current_time + delay,
+            'obj': obj  # 记录任务所属对象，可为 None
         })
+
 
     def setup_key_listeners(self, obj):
         """设置对象（场景或精灵）的按键监听器"""
@@ -525,21 +531,34 @@ class Game:
         new_tasks = deque()
         while self.tasks:
             task = self.tasks.popleft()
-            if self.current_time >= task['next_run']:
-                try:
-                    wait_time = next(task['generator'])
-                    if wait_time is None:
-                        wait_time = 0
-                    task['next_run'] = self.current_time + wait_time
-                    new_tasks.append(task)
-                except StopIteration:
-                    pass
-                except TypeError:
-                    pass
-            else:
+            obj = task.get('obj')
+
+            # 1. 若任务属于已被标记删除的精灵，直接丢弃
+            if isinstance(obj, Sprite) and getattr(obj, 'delete', False):
+                continue
+
+            # 2. 若尚未到下一次执行时间，原样保留
+            if self.current_time < task['next_run']:
                 new_tasks.append(task)
+                continue
+
+            # 3. 已到执行时间：推进协程
+            try:
+                wait_time = next(task['generator'])
+                if wait_time is None:
+                    wait_time = 0
+                task['next_run'] = self.current_time + wait_time
+                new_tasks.append(task)
+            except StopIteration:
+                # 协程结束，直接丢弃
+                continue
+            except Exception as e:
+                # 其他异常也丢弃，防止卡死
+                self.log_debug(f"Task error: {e}")
+                continue
 
         self.tasks = new_tasks
+
 
     def log_debug(self, info: str):
         if self.debug:
@@ -751,11 +770,7 @@ class Scene:
         # 添加所有main任务到游戏队列
         for task in self.main_tasks:
             if hasattr(task, '__call__'):
-                self.game.add_task(task)
-
-        # 原有的main函数处理
-        if hasattr(self, 'main') and callable(self.main):
-            self.game.add_task(self.main)
+                self.game.add_task(task,obj=self)
 
         for sprite in self.sprites:
             sprite.setup(self)
@@ -823,19 +838,19 @@ class Scene:
         for sprite in self.sprites:
             if event_name in sprite.broadcast_handlers:
                 for handler in sprite.broadcast_handlers[event_name]:
-                    self.game.add_task(handler)
+                    self.game.add_task(handler,obj=sprite)
 
         # 其次调用名为"on_{event_name}"的函数
         on_event_name = f"on_{event_name}"
         for sprite in self.sprites:
             if hasattr(sprite, on_event_name) and callable(
                     getattr(sprite, on_event_name)):
-                self.game.add_task(getattr(sprite, on_event_name))
+                self.game.add_task(getattr(sprite, on_event_name),obj=sprite)
 
         # 场景自身的事件处理
         if hasattr(self, on_event_name) and callable(
                 getattr(self, on_event_name)):
-            self.game.add_task(getattr(self, on_event_name))
+            self.game.add_task(getattr(self, on_event_name),obj=self)
 
     def handle_event(self, event: pygame.event.Event):
         """处理场景特定的事件"""
@@ -994,8 +1009,6 @@ class Sprite:
         # [修改] 将 "circle" 设为默认碰撞类型
         self.collision_type = "circle"  # 可选值: "circle", "mask"
 
-        self._is_moving = False
-        self._active_movement = None
 
     # [修改] 简化设置碰撞类型的方法
     def set_collision_type(self, mode: str):
@@ -1106,11 +1119,9 @@ class Sprite:
         self.needs_sprite_collision = bool(self.sprite_collision_handlers)
 
         if not self.is_clones:
-            for task in self.main_tasks: self.game.add_task(task)
-            if hasattr(self, 'main') and callable(self.main): self.game.add_task(self.main)
+            for task in self.main_tasks: self.game.add_task(task,obj=self)
         else:
-            for task in self.clones_tasks: self.game.add_task(task)
-            if hasattr(self, 'clones') and callable(self.clones): self.game.add_task(self.clones)
+            for task in self.clones_tasks: self.game.add_task(task, obj=self)
 
         if self.game:
             self.game.setup_key_listeners(self)
@@ -1217,7 +1228,7 @@ class Sprite:
     def _trigger_sprite_collision_handler(self, handler: Callable, other: "Sprite"):
         sig = inspect.signature(handler)
         task_to_add = (lambda: handler(other)) if 'other' in sig.parameters else handler
-        self.game.add_task(task_to_add)
+        self.game.add_task(task_to_add,obj=self)
 
     def touches_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
         if not self.game or not self.visible: return False
@@ -1315,32 +1326,15 @@ class Sprite:
             yield 0
         self.pos.update(target_pos)
 
-    def glide_in_direction(self, direction: float, distance: float, duration: float = 1000, easing: str = "linear", exclusive: bool = True):
+    def glide_in_direction(self, direction: float, distance: float, duration: float = 1000, easing: str = "linear"):
         rad = math.radians(direction)
         target_pos = self.pos + pygame.Vector2(math.cos(rad), -math.sin(rad)) * distance
-        if exclusive and self._is_moving and self._is_conflicting_movement(direction): return
-        self._is_moving = True
-        self._active_movement = self._get_movement_type(direction)
         yield from self.glide_to(target_pos.x, target_pos.y, duration, easing)
-        self._is_moving = False
-        self._active_movement = None
 
-    def _get_movement_type(self, direction: float) -> str:
-        d = direction % 360
-        if 315 <= d or d < 45: return "right"
-        if 45 <= d < 135: return "up"
-        if 135 <= d < 225: return "left"
-        return "down"
-
-    def _is_conflicting_movement(self, new_direction: float) -> bool:
-        if not self._active_movement: return False
-        opposites = {"left": "right", "right": "left", "up": "down", "down": "up"}
-        return opposites.get(self._active_movement) == self._get_movement_type(new_direction)
-
-    def glide_left(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(180, dist, dur, ease, excl)
-    def glide_right(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(0, dist, dur, ease, excl)
-    def glide_up(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(90, dist, dur, ease, excl)
-    def glide_down(self, dist: float, dur: float = 1000, ease: str = "linear", excl: bool = True): yield from self.glide_in_direction(270, dist, dur, ease, excl)
+    def glide_left(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(180, distance, duration, easing)
+    def glide_right(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(0, distance, duration, easing)
+    def glide_up(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(90, distance, duration, easing)
+    def glide_down(self, distance: float, duration: float = 1000, ease: str = "linear"): yield from self.glide_in_direction(270, distance, duration, easing)
 
     def goto(self, x: float, y: float): self.pos.update(x, y)
 
@@ -1365,8 +1359,11 @@ class Sprite:
         self.game.log_debug(f"Cloned sprite: {source.name}")
 
     def delete_self(self): self.delete = True
-    def pen_down(self): self.pen_down, self.pen_path.append(self.pos.xy)
-    def pen_up(self): self.pen_down = False
+    def put_pen_down(self):
+        self.pen_down = True
+        self.pen_path.append(self.pos.xy)
+    def put_pen_up(self):
+        self.pen_down = False
     def change_pen_color(self, color: Tuple[int, int, int]): self.pen_color = color
     def set_pen_color_random(self): self.pen_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
     def change_pen_size(self, size: int): self.pen_size = max(1, size)
@@ -1669,7 +1666,6 @@ class Cat(Sprite):
             self.add_costume("costume2", pygame.image.load(get_resource_path("cat2.svg")).convert_alpha())
         except pygame.error as e:
             print(f"无法加载Cat资源: {e}. 将使用默认圆形。")
-
 
     def walk(self):
         self.next_costume()
