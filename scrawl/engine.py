@@ -1405,7 +1405,7 @@ class Sprite:
     def glide_left(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(180, distance, duration, easing)
     def glide_right(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(0, distance, duration, easing)
     def glide_up(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(90, distance, duration, easing)
-    def glide_down(self, distance: float, duration: float = 1000, ease: str = "linear"): yield from self.glide_in_direction(270, distance, duration, easing)
+    def glide_down(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(270, distance, duration, easing)
 
     def goto(self, x: float, y: float): self.pos.update(x, y)
 
