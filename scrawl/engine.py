@@ -301,8 +301,25 @@ class Game:
         self.mouse_released = False  # 鼠标是否刚刚释放
         self.mouse_held_time = 0  # 鼠标持续按下的时间
         self.mouse_events = []  # 存储鼠标事件处理函数
+        
+        self.is_fullscreen = fullscreen
+    
+    def toggle_fullscreen(self):
+        """切换全屏/窗口模式"""
+        if self.is_fullscreen:
+            # 退出全屏，恢复窗口模式
+            self.screen = pygame.display.set_mode((self.width, self.height))
+            self.is_fullscreen = False
+        else:
+            # 进入全屏
+            self.screen = pygame.display.set_mode((self.width, self.height), pygame.SCALED | pygame.FULLSCREEN | pygame.HWSURFACE)
+            self.is_fullscreen = True
+
 
     def run(self, fps: int = 60, debug: bool = False):
+        # 绑定 ESC 键，处理全屏
+        self.bind_key(pygame.K_ESCAPE, self.toggle_fullscreen)
+        
         self.debug = debug
 
         if not self.scene:
