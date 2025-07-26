@@ -219,7 +219,158 @@ def on_mouse_event(mode: str = "pressed", button: int = 1):
         return func
     return decorator
 
-# ... (Game class remains unchanged) ...
+# 对GUI的支持部分
+try:
+    import pygame_gui
+    from pygame_gui.elements import UIButton, UILabel, UITextEntryLine
+except ImportError:
+    print("警告: 未安装pygame-gui，GUI功能将不可用")
+    pygame_gui = None
+
+class GUIManager:
+    """GUI管理器，用于创建和管理UI元素"""
+    
+    def __init__(self, game):
+        self.game = game
+        self.ui_manager = None
+        self.ui_elements = {}
+        
+        if pygame_gui:
+            self.ui_manager = pygame_gui.UIManager(
+                (game.width, game.height),
+                theme_path=get_resource_path("theme.json")  # 可选的主题文件
+            )
+    
+    def create_button(self, name, rect, text, callback=None):
+        """创建按钮
+        
+        参数:
+            name: 按钮唯一标识符
+            rect: (x, y, width, height) 位置和尺寸
+            text: 按钮显示的文本
+            callback: 点击按钮时调用的函数
+        """
+        if not self.ui_manager:
+            return None
+            
+        button = UIButton(
+            relative_rect=pygame.Rect(rect),
+            text=text,
+            manager=self.ui_manager
+        )
+        self.ui_elements[name] = {
+            'element': button,
+            'callback': callback
+        }
+        return button
+    
+    def create_label(self, name, rect, text):
+        """创建标签
+        
+        参数:
+            name: 标签唯一标识符
+            rect: (x, y, width, height) 位置和尺寸
+            text: 标签显示的文本
+        """
+        if not self.ui_manager:
+            return None
+            
+        label = UILabel(
+            relative_rect=pygame.Rect(rect),
+            text=text,
+            manager=self.ui_manager
+        )
+        self.ui_elements[name] = {
+            'element': label,
+            'callback': None
+        }
+        return label
+    
+    def create_input(self, name, rect, placeholder=""):
+        """创建输入框
+        
+        参数:
+            name: 输入框唯一标识符
+            rect: (x, y, width, height) 位置和尺寸
+            placeholder: 输入框占位文本
+        """
+        if not self.ui_manager:
+            return None
+            
+        input_field = UITextEntryLine(
+            relative_rect=pygame.Rect(rect),
+            manager=self.ui_manager
+        )
+        input_field.set_text(placeholder)
+        self.ui_elements[name] = {
+            'element': input_field,
+            'callback': None
+        }
+        return input_field
+    
+    def get_input_text(self, name):
+        """获取输入框的内容"""
+        element = self.ui_elements.get(name, {}).get('element')
+        if element and isinstance(element, UITextEntryLine):
+            return element.get_text()
+        return ""
+    
+    def set_label_text(self, name, text):
+        """设置标签文本"""
+        element = self.ui_elements.get(name, {}).get('element')
+        if element and isinstance(element, UILabel):
+            element.set_text(text)
+    
+    def set_button_text(self, name, text):
+        """设置按钮文本"""
+        element = self.ui_elements.get(name, {}).get('element')
+        if element and isinstance(element, UIButton):
+            element.set_text(text)
+    
+    def hide_element(self, name):
+        """隐藏UI元素"""
+        element = self.ui_elements.get(name, {}).get('element')
+        if element:
+            element.hide()
+    
+    def show_element(self, name):
+        """显示UI元素"""
+        element = self.ui_elements.get(name, {}).get('element')
+        if element:
+            element.show()
+    
+    def remove_element(self, name):
+        """删除UI元素"""
+        if name in self.ui_elements:
+            self.ui_elements[name]['element'].kill()
+            del self.ui_elements[name]
+    
+    def clear_all(self):
+        """清除所有UI元素"""
+        for name in list(self.ui_elements.keys()):
+            self.remove_element(name)
+    
+    def process_events(self, event):
+        """处理GUI事件"""
+        if self.ui_manager:
+            self.ui_manager.process_events(event)
+            
+            # 处理按钮点击事件
+            if event.type == pygame.USEREVENT and event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+                for name, data in self.ui_elements.items():
+                    if data['element'] == event.ui_element and data['callback']:
+                        data['callback']()
+    
+    def update(self, dt):
+        """更新GUI状态"""
+        if self.ui_manager:
+            self.ui_manager.update(dt / 1000.0)  # 转换为秒
+    
+    def draw(self, surface):
+        """绘制所有UI元素"""
+        if self.ui_manager:
+            self.ui_manager.draw_ui(surface)
+
 class Game:
 
     def __init__(self,
@@ -303,6 +454,9 @@ class Game:
         self.mouse_events = []  # 存储鼠标事件处理函数
         
         self.is_fullscreen = fullscreen
+        
+        # 添加GUI管理器
+        self.gui = GUIManager(self)
     
     def toggle_fullscreen(self):
         """切换全屏/窗口模式"""
@@ -335,8 +489,12 @@ class Game:
         while self.running:
             # 在每帧开始时清除广播状态
             self.current_frame_broadcasts.clear()
-
+            # 计算时间增量
+            dt = self.clock.tick(fps)
             self.current_time = pygame.time.get_ticks()
+            
+            # 更新GUI
+            self.gui.update(dt)
 
             # 保存上一帧的按键状态
             prev_key_down_events = dict(self.key_down_events)
@@ -345,6 +503,9 @@ class Game:
             self.mouse_released = False  # 每帧开始时重置释放状态
 
             for event in pygame.event.get():
+                # 先让GUI处理事件
+                self.gui.process_events(event)
+                
                 if event.type == pygame.QUIT:
                     self.running = False
 
@@ -752,7 +913,7 @@ class Game:
         sound.set_volume(self.sound_volume)
         sound.play()
 
-# ... (Scene class remains unchanged) ...
+
 class Scene:
 
     def __init__(self):
@@ -767,6 +928,7 @@ class Scene:
 
         self.main_tasks = []  # 存储所有标记为main的任务
         self.broadcast_handlers = {}  # 存储广播事件处理函数
+        
 
     def setup(self):
         if not self.game:
