@@ -1,6 +1,5 @@
 import pygame
 import sys
-import types
 import math
 import random
 from typing import Tuple, List, Callable, Any, Dict, Optional
@@ -12,7 +11,6 @@ import threading
 import time
 import requests
 import json
-import uuid
 from collections import deque
 
 class CloudVariablesClient:
@@ -377,7 +375,7 @@ class Game:
                  width: int = 800,
                  height: int = 600,
                  title: str = "Scratch-like Game",
-                 font_path: str = "Simhei.ttf",
+                 font_path: str = get_resource_path("Simhei.ttf"),
                  font_size: int = 20,
                  fullscreen: bool = False):
         pygame.init()
@@ -576,6 +574,9 @@ class Game:
             self.screen.fill(self.background_color)
             self.scene.draw(self.screen)
             self.draw_debug_info()
+            
+            # 绘制GUI元素 - 添加这一行
+            self.gui.draw(self.screen)
 
             pygame.display.flip()
             self.clock.tick(fps)
@@ -1190,6 +1191,11 @@ class Sprite:
         self.needs_sprite_collision = False
         
         self.collision_type = "rect"  # 可选值: "rect", "circle", "mask"，默认为rect
+
+    @property
+    def gui(self):
+        """便捷的GUI访问属性，允许sprite直接通过self.gui访问GUI管理器"""
+        return self.game.gui if self.game else None
 
     def get_rect(self) -> pygame.Rect:
         """返回当前精灵的矩形区域（基于位置和尺寸）"""
