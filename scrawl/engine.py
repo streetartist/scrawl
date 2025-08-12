@@ -203,7 +203,8 @@ def handle_edge_collision(edge: str = "any"):
         return func
     return decorator
 
-def handle_sprite_collision(target: [type, str]):
+def handle_sprite_collision(target: type|str):
+
     def decorator(func):
         if not hasattr(func, '_sprite_collisions'):
             func._sprite_collisions = []
