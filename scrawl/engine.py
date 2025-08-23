@@ -219,156 +219,128 @@ def on_mouse_event(mode: str = "pressed", button: int = 1):
     return decorator
 
 # 对GUI的支持部分
-try:
-    import pygame_gui
-    from pygame_gui.elements import UIButton, UILabel, UITextEntryLine
-except ImportError:
-    print("警告: 未安装pygame-gui，GUI功能将不可用")
-    pygame_gui = None
+# 需要优化界面，功能与逻辑
+import sys, os
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+# 不优雅的做法，但我会替换掉的！
+import pygameGUI as pg
 
 class GUIManager:
-    """GUI管理器，用于创建和管理UI元素"""
+    """GUI管理器，使用pygameGUI创建和管理UI元素"""
     
     def __init__(self, game):
         self.game = game
-        self.ui_manager = None
-        self.ui_elements = {}
-        
-        if pygame_gui:
-            self.ui_manager = pygame_gui.UIManager(
-                (game.width, game.height),
-                theme_path=get_resource_path("theme.json")  # 可选的主题文件
-            )
+        self.guis = pg.Group()  # pygameGUI元素组
+        self.ui_elements = {}  # 存储UI元素和回调
+        self.default_font = (get_resource_path("Simhei.ttf"), 20)
     
-    def create_button(self, name, rect, text, callback=None):
-        """创建按钮
+    def round_angle_rect(self, image, color, radius):
+        """绘制圆角矩形（参考检测2 - 输入框窗口.py）"""
+        rect = image.get_rect()
+        # 绘制四个角的圆
+        pygame.draw.circle(image, color, (radius, radius), radius)
+        pygame.draw.circle(image, color, (radius, rect.height - radius), radius)
+        pygame.draw.circle(image, color, (rect.width - radius, rect.height - radius), radius)
+        pygame.draw.circle(image, color, (rect.width - radius, radius), radius)
+        # 绘制中间矩形
+        pygame.draw.rect(image, color, (radius, 0, rect.width - radius*2, rect.height))
+        pygame.draw.rect(image, color, (0, radius, rect.width, rect.height - radius*2))
+        return image
+    
+    def create_button(self, name, x, y, label, callback=None):
+        """创建按钮（使用pygameGUI）"""
+        # b = pg.Button(group=guis,active_command=callback1,down_command=callback2,command=callback3)
+        text_img = pg.Label(text=label,color=(255,255,255),bg=None,font=self.default_font).image
+
+        button = pg.Button(group=self.guis,command=callback)
+
+        rect=text_img.get_rect()
+        image = pygame.Surface([rect[2]+10,rect[3]+10])
+        image.fill((100,255,100))
+        pygame.draw.rect(surface=image,color=(240,240,240),rect=image.get_rect(),width=3)
+        image.blit(text_img,[5,5])
+        # image=pygame.transform.smoothscale(image,(image.get_rect()[2]*multiple,image.get_rect()[3]*multiple))
+
+        button.init_image = image
+        button.set_pos("topleft", [x, y])
         
-        参数:
-            name: 按钮唯一标识符
-            rect: (x, y, width, height) 位置和尺寸
-            text: 按钮显示的文本
-            callback: 点击按钮时调用的函数
-        """
-        if not self.ui_manager:
-            return None
-            
-        button = UIButton(
-            relative_rect=pygame.Rect(rect),
-            text=text,
-            manager=self.ui_manager
-        )
         self.ui_elements[name] = {
             'element': button,
+            'label': label,
             'callback': callback
         }
         return button
     
     def create_label(self, name, rect, text):
-        """创建标签
+        """创建标签（使用pygameGUI）"""
+        x, y, width, height = rect
         
-        参数:
-            name: 标签唯一标识符
-            rect: (x, y, width, height) 位置和尺寸
-            text: 标签显示的文本
-        """
-        if not self.ui_manager:
-            return None
-            
-        label = UILabel(
-            relative_rect=pygame.Rect(rect),
+        label = pg.Label(
+            group=self.guis,
             text=text,
-            manager=self.ui_manager
+            font=self.default_font,
+            color=(255, 255, 255)
         )
-        self.ui_elements[name] = {
-            'element': label,
-            'callback': None
-        }
+        label.set_pos("topleft", [x, y])
+        self.ui_elements[name] = {'element': label}
         return label
     
     def create_input(self, name, rect, placeholder=""):
-        """创建输入框
+        """创建输入框（使用pygameGUI）"""
+        x, y, width, height = rect
         
-        参数:
-            name: 输入框唯一标识符
-            rect: (x, y, width, height) 位置和尺寸
-            placeholder: 输入框占位文本
-        """
-        if not self.ui_manager:
-            return None
-            
-        input_field = UITextEntryLine(
-            relative_rect=pygame.Rect(rect),
-            manager=self.ui_manager
+        # 创建输入框外边框
+        frame = pg.Frame(
+            group=self.guis,
+            size=[width, height],
+            texture=lambda img: self.round_angle_rect(img, (255, 255, 255), 5)
         )
-        input_field.set_text(placeholder)
-        self.ui_elements[name] = {
-            'element': input_field,
-            'callback': None
-        }
-        return input_field
+        frame.set_pos("topleft", [x, y])
+        
+        # 创建输入框
+        entry = pg.Entry(
+            group=frame,
+            texture=(255, 255, 255),
+            pos=[5, 5],
+            size=[width-10, height-10]
+        )
+        entry.set_label(text=placeholder, font=self.default_font, bg=(255, 255, 255))
+
+        entry.label.set_pos("center", [0, entry.rect.height/2])
+        entry.label.set_pos("left", 0)
+        
+        self.ui_elements[name] = {'element': entry, 'frame': frame}
+        return entry
     
     def get_input_text(self, name):
-        """获取输入框的内容"""
-        element = self.ui_elements.get(name, {}).get('element')
-        if element and isinstance(element, UITextEntryLine):
-            return element.get_text()
+        """获取输入框文本"""
+        element_data = self.ui_elements.get(name)
+        if element_data and hasattr(element_data['element'], 'get_text'):
+            return element_data['element'].get_text()
         return ""
     
     def set_label_text(self, name, text):
         """设置标签文本"""
-        element = self.ui_elements.get(name, {}).get('element')
-        if element and isinstance(element, UILabel):
-            element.set_text(text)
+        element_data = self.ui_elements.get(name)
+        if element_data and 'element' in element_data:
+            element_data['element'].text = text
     
-    def set_button_text(self, name, text):
-        """设置按钮文本"""
-        element = self.ui_elements.get(name, {}).get('element')
-        if element and isinstance(element, UIButton):
-            element.set_text(text)
-    
-    def hide_element(self, name):
-        """隐藏UI元素"""
-        element = self.ui_elements.get(name, {}).get('element')
-        if element:
-            element.hide()
-    
-    def show_element(self, name):
-        """显示UI元素"""
-        element = self.ui_elements.get(name, {}).get('element')
-        if element:
-            element.show()
-    
-    def remove_element(self, name):
-        """删除UI元素"""
-        if name in self.ui_elements:
-            self.ui_elements[name]['element'].kill()
-            del self.ui_elements[name]
-    
-    def clear_all(self):
-        """清除所有UI元素"""
-        for name in list(self.ui_elements.keys()):
-            self.remove_element(name)
-    
-    def process_events(self, event):
+    def process_events(self, events, pos):
         """处理GUI事件"""
-        if self.ui_manager:
-            self.ui_manager.process_events(event)
-            
-            # 处理按钮点击事件
-            if event.type == pygame.USEREVENT and event.user_type == pygame_gui.UI_BUTTON_PRESSED:
+        self.guis.update(pos=pos, events=events)
+        
+        # 处理按钮点击事件
+        '''
+        for event in events:
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 for name, data in self.ui_elements.items():
-                    if data['element'] == event.ui_element and data['callback']:
+                    if data.get('callback') and data['element'].rect.collidepoint(pos):
                         data['callback']()
-    
-    def update(self, dt):
-        """更新GUI状态"""
-        if self.ui_manager:
-            self.ui_manager.update(dt / 1000.0)  # 转换为秒
+        '''
     
     def draw(self, surface):
         """绘制所有UI元素"""
-        if self.ui_manager:
-            self.ui_manager.draw_ui(surface)
+        self.guis.draw(surface)
 
 class Game:
 
@@ -491,9 +463,6 @@ class Game:
             # 计算时间增量
             dt = self.clock.tick(fps)
             self.current_time = pygame.time.get_ticks()
-            
-            # 更新GUI
-            self.gui.update(dt)
 
             # 保存上一帧的按键状态
             prev_key_down_events = dict(self.key_down_events)
@@ -501,10 +470,9 @@ class Game:
             self.mouse_clicked = False  # 每帧开始时重置点击状态
             self.mouse_released = False  # 每帧开始时重置释放状态
 
-            for event in pygame.event.get():
-                # 先让GUI处理事件
-                self.gui.process_events(event)
-                
+            events = pygame.event.get() # 由于pygame的事件（似乎是迭代器？）只能获取一次，gui部分也要获取，所以放在这里
+
+            for event in events:
                 if event.type == pygame.QUIT:
                     self.running = False
 
@@ -575,9 +543,14 @@ class Game:
             self.screen.fill(self.background_color)
             self.scene.draw(self.screen)
             self.draw_debug_info()
-            
-            # 绘制GUI元素 - 添加这一行
+
+            self.gui.process_events(pos=pygame.mouse.get_pos(), events=events)
+
+            # 绘制GUI
             self.gui.draw(self.screen)
+
+            # 刷新界面
+            pygame.display.update()
 
             pygame.display.flip()
             self.clock.tick(fps)
