@@ -1,4 +1,4 @@
-from pygameGUI import Widget,PG_Error
+from .. import Widget,PG_Error
 
 class Player(Widget):
     """

@@ -220,10 +220,7 @@ def on_mouse_event(mode: str = "pressed", button: int = 1):
 
 # 对GUI的支持部分
 # 需要优化界面，功能与逻辑
-import sys, os
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-# 不优雅的做法，但我会替换掉的！
-import pygameGUI as pg
+from . import pygameGUI as pg
 
 class GUIManager:
     """GUI管理器，使用pygameGUI创建和管理UI元素"""
@@ -232,7 +229,7 @@ class GUIManager:
         self.game = game
         self.guis = pg.Group()  # pygameGUI元素组
         self.ui_elements = {}  # 存储UI元素和回调
-        self.default_font = (get_resource_path("Simhei.ttf"), 20)
+        self.default_font = (get_resource_path("LXGWWenKai-Medium.ttf"), 20)
     
     def round_angle_rect(self, image, color, radius):
         """绘制圆角矩形（参考检测2 - 输入框窗口.py）"""
@@ -348,7 +345,7 @@ class Game:
                  width: int = 800,
                  height: int = 600,
                  title: str = "Scratch-like Game",
-                 font_path: str = get_resource_path("Simhei.ttf"),
+                 font_path: str = get_resource_path("LXGWWenKai-Medium.ttf"),
                  font_size: int = 20,
                  fullscreen: bool = False):
         pygame.init()

@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Widget,Group,PG_Error
+from .. import Widget,Group,PG_Error
 
 class Switch(Widget):
     """

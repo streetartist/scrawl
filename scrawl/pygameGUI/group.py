@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI.error import PG_Error
+from . import PG_Error
 
 class Group:
     """组"""

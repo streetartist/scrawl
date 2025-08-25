@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Group,Frame,Widget,Button
+from .. import Group,Frame,Widget,Button
 
 
 class Window(Widget):

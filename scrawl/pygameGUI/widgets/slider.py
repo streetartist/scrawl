@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Widget,Frame,Group
+from .. import Widget,Frame,Group
 
 
 class Slider(Widget):

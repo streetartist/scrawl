@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Group,Widget,Frame,Button,Slider,PG_Error
+from .. import Group,Widget,Frame,Button,Slider,PG_Error
 
 
 class Scrollbar(Widget):

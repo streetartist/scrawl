@@ -1,7 +1,7 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Group
-from pygameGUI import Group,PG_Error
+from .. import Group
+from .. import Group,PG_Error
 
 class Widget:
     """所有组件的基类"""

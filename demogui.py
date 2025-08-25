@@ -1,6 +1,4 @@
-import pygame
 from scrawl import Game, Scene, Sprite, as_main
-
 
 game = Game()
 
@@ -15,13 +13,9 @@ class GUISprite(Sprite):
     def main1(self):
         # 创建输入框
         self.gui.create_input('name_input', (100, 100, 200, 40), "请输入你的名字")
-
-        
         # 创建按钮
         self.gui.create_button('submit_btn', 100,160, "提交",
                              callback=self.on_submit)
-
-        
         # 创建结果显示标签
         self.gui.create_label('result_label', (100, 220, 300, 40), "点击提交按钮显示结果")
 
@@ -35,7 +29,6 @@ class GUIScene(Scene):
         super().__init__()
         self.guisprite = GUISprite()
         self.add_sprite(self.guisprite)
-
 
 if __name__ == "__main__":
     scene = GUIScene()

@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Widget
+from .. import Widget
 
 
 class Message(Widget):

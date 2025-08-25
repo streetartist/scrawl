@@ -1,6 +1,6 @@
 import pygame, sys, random, os
 from pygame.locals import *
-from pygameGUI import Group,Widget,PG_Error,Label
+from .. import Group,Widget,PG_Error,Label
 
 '''
 目标：

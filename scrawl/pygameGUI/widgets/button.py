@@ -1,6 +1,6 @@
 import pygame, sys, random
 from pygame.locals import *
-from pygameGUI import Widget,Group
+from .. import Widget,Group
 
 
 class Button(Widget):
