@@ -1904,3 +1904,137 @@ class Cat(Sprite):
 
     def walk(self):
         self.next_costume()
+
+import tkinter as tk
+
+class TkGUI:
+    def __init__(self, title="Tkinter GUI", width=1280, height=720):
+        self.title = title
+        self.width = width
+        self.height = height
+        self.root = None
+
+    def start(self):
+        """运行GUI主循环"""
+        try:
+            self.root = tk.Tk()
+            self.root.title(self.title)
+            
+            # 设置窗口居中
+            screen_width = self.root.winfo_screenwidth()
+            screen_height = self.root.winfo_screenheight()
+            x = (screen_width - self.width) // 2
+            y = (screen_height - self.height) // 2
+            self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
+            
+            # 创建主框架，让用户可以使用正常的tkinter组件
+            self.main_frame = tk.Frame(self.root, width=self.width, height=self.height)
+            self.main_frame.pack(fill="both", expand=True)
+            
+            # 调用用户定义的main方法，传递root
+            self.main(self.root)
+            
+            # 添加窗口关闭事件处理
+            self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+            
+            self.root.mainloop()
+        except Exception as e:
+            print(f"GUI错误: {e}")
+
+    def _on_close(self):
+        """窗口关闭事件处理"""
+        if self.root:
+            self.root.quit()
+            self.root.destroy()
+
+    def main(self, root):
+        """用户需要重写此方法来创建UI界面，使用标准的tkinter组件"""
+        pass
+
+    # 可选使用的封装方法
+    def create_text(self, parent, position, text, fontsize=12, anchor="center"):
+        """创建文本标签"""
+        x, y = position
+        label = tk.Label(parent, text=text, font=("Arial", fontsize))
+        label.place(x=x, y=y, anchor=anchor)
+        return label
+    
+    def create_entry(self, parent, position, size, placeholder="", show=""):
+        """创建输入框"""
+        x, y = position
+        width, height = size
+        
+        # 创建输入框
+        entry = tk.Entry(parent, font=("Arial", 12), show=show)
+        entry.place(x=x, y=y, width=width, height=height)
+        
+        # 添加占位符
+        if placeholder:
+            entry.insert(0, placeholder)
+            entry.config(fg="gray")
+            
+            def on_focus_in(event):
+                if entry.get() == placeholder:
+                    entry.delete(0, tk.END)
+                    entry.config(fg="black")
+            
+            def on_focus_out(event):
+                if not entry.get():
+                    entry.insert(0, placeholder)
+                    entry.config(fg="gray")
+            
+            entry.bind("<FocusIn>", on_focus_in)
+            entry.bind("<FocusOut>", on_focus_out)
+        
+        return entry
+    
+    def create_button(self, parent, position, size, text="", command=None):
+        """创建按钮"""
+        x, y = position
+        width, height = size
+        
+        button = tk.Button(parent, text=text, font=("Arial", 12), 
+                          command=command, bg="#64ff64", fg="black")
+        button.place(x=x, y=y, width=width, height=height)
+        
+        return button
+    
+import maliang
+
+class TkGUI:
+    def __init__(self, title="Tkinter GUI", width=1280, height=720, x=640, y=360):
+        self.title = title
+        self.width = width
+        self.height = height
+        self.x = x
+        self.y = y
+        self.root = None
+
+    def start(self):
+        """运行GUI主循环"""
+        try:
+            self.root = maliang.Tk(title=self.title)
+            self.root.center()
+
+            self.canvas = maliang.Canvas(auto_zoom=True, keep_ratio="min", free_anchor=True)
+            self.canvas.place(width=self.width, height=self.height, x=self.x, y=self.y, anchor="center")
+            
+            # 调用用户定义的main方法，传递root
+            self.main(self.canvas)
+            
+            # 添加窗口关闭事件处理
+            self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+            
+            self.root.mainloop()
+        except Exception as e:
+            print(f"GUI错误: {e}")
+
+    def _on_close(self):
+        """窗口关闭事件处理"""
+        if self.root:
+            self.root.quit()
+            self.root.destroy()
+
+    def main(self, canvas):
+        """用户需要重写此方法来创建UI界面，使用标准的tkinter组件"""
+        pass

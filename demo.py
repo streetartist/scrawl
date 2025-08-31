@@ -1,5 +1,4 @@
 from scrawl import *
-import time
 
 # 创建游戏实例
 game = Game()

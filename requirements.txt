@@ -2,3 +2,4 @@ pygame-ce
 requests
 numpy
 pygame_gui
+maliang[opt]
