@@ -365,7 +365,7 @@ class Game:
         self.tasks = deque()
         self.current_time = 0
 
-        # 创建中文字体 - 主要字体
+        # 创建中文字体 - 指定字体
         try:
             self.font = pygame.font.Font(font_path, font_size)
         except:
@@ -1684,7 +1684,7 @@ class Sprite:
     def set_sound_volume(self, volume: float):
         if self.game: self.game.set_sound_volume(volume)
 
-# ... (Particle, ParticleSystem, and PhysicsSprite classes remain unchanged) ...
+
 class Particle:
     """单个粒子"""
 
