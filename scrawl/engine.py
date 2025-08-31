@@ -1999,9 +1999,9 @@ class TkGUI:
         
         return button
     
-import maliang
+# import maliang
 
-class TkGUI:
+class MaliangGUI:
     def __init__(self, title="Tkinter GUI", width=1280, height=720, x=640, y=360):
         self.title = title
         self.width = width
