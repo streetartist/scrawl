@@ -421,6 +421,7 @@ class Game:
                  font_path: str = get_resource_path("LXGWWenKai-Medium.ttf"),
                  font_size: int = 20,
                  fullscreen: bool = False):
+        print("Welcome to Scrawl!")
         pygame.init()
         self.width = width
         self.height = height
