@@ -365,12 +365,8 @@ class Game:
 
         pygame.display.set_caption(title)
         
-        # 窗口置顶并获取焦点
-        tools.focus_and_raise()
-
-        print("\n--- 切换到英文输入法 ---")
-        success_switch = imm.switch_to_english()
-        print(f"切换结果: {'成功' if success_switch else '失败'}")
+        # 设置窗口始终置顶（已经改为首次获得焦点时）
+        # tools.set_always_on_top()
 
         self.clock = pygame.time.Clock()
         self.scene = None
@@ -467,6 +463,8 @@ class Game:
         self.scene.game = self
         # self.scene.setup()
 
+        self.has_focused = False
+
         while self.running:
             # 在每帧开始时清除广播状态
             self.current_frame_broadcasts.clear()
@@ -483,6 +481,16 @@ class Game:
             events = pygame.event.get() # 由于pygame的事件（似乎是迭代器？）只能获取一次，gui部分也要获取，所以放在这里
 
             for event in events:
+                if event.type == pygame.WINDOWFOCUSGAINED and not self.has_focused:
+                        self.has_focused = True
+                        print(">>> 窗口首次获得焦点! <<<")
+
+                        print("\n--- 切换到英文输入法 ---")
+                        success_switch = imm.switch_to_english()
+                        print(f"切换结果: {'成功' if success_switch else '失败'}")
+
+                        tools.set_always_on_top()
+                    
                 if event.type == pygame.QUIT:
                     self.running = False
 
