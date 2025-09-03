@@ -389,3 +389,248 @@ class InputMethodManager:
 # print("\n--- 恢复原始输入法状态 ---")
 # success_restore = imm.restore_original_state()
 # print(f"恢复结果: {'成功' if success_restore else '失败'}")
+
+
+"""
+Pygame Window Utilities
+
+一个用于管理 Pygame 窗口属性（如置顶、获取焦点）的跨平台扩展库。
+支持 Windows, macOS (需 pyobjc), Linux (需 wmctrl)。
+此版本使用 print 输出信息，而非 logging 模块。
+"""
+
+import sys
+import platform
+import subprocess
+
+# --- 平台特定导入和初始化 ---
+try:
+    import pygame
+    PYGAME_AVAILABLE = True
+except ImportError:
+    PYGAME_AVAILABLE = False
+    print("警告: Pygame 未安装。部分功能需要 Pygame。")
+
+# Windows
+if sys.platform == "win32":
+    try:
+        import ctypes
+        from ctypes import wintypes
+        # Windows API 常量
+        _HWND_TOPMOST = -1
+        _SWP_NOMOVE = 0x0002
+        _SWP_NOSIZE = 0x0001
+        _SWP_SHOWWINDOW = 0x0040
+        _GWL_EXSTYLE = -20
+        _WS_EX_TOPMOST = 0x00000008
+        _SW_RESTORE = 9
+
+        # 定义函数原型
+        _SetWindowPos = ctypes.windll.user32.SetWindowPos
+        _SetWindowPos.argtypes = [
+            wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int,
+            ctypes.c_int, ctypes.c_int, wintypes.UINT
+        ]
+        _SetWindowPos.restype = wintypes.BOOL
+
+        _SetForegroundWindow = ctypes.windll.user32.SetForegroundWindow
+        _SetForegroundWindow.argtypes = [wintypes.HWND]
+        _SetForegroundWindow.restype = wintypes.BOOL
+
+        _ShowWindow = ctypes.windll.user32.ShowWindow
+        _ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+        _ShowWindow.restype = wintypes.BOOL
+
+        WIN_API_AVAILABLE = True
+    except (ImportError, AttributeError, OSError) as e:
+        WIN_API_AVAILABLE = False
+        print(f"错误: 无法初始化 Windows API: {e}")
+
+# macOS
+elif sys.platform == "darwin":
+    try:
+        from AppKit import NSApp
+        NS_APP_AVAILABLE = True
+    except ImportError:
+        NS_APP_AVAILABLE = False
+        print("警告: AppKit (pyobjc) 未安装。macOS 置顶/焦点功能受限。请运行 'pip install pyobjc-framework-Cocoa'。")
+
+# Linux (假设使用 X11/Wayland)
+elif sys.platform.startswith("linux"):
+    # Linux 功能依赖外部命令 wmctrl
+    pass
+
+else:
+    print(f"警告: 不支持的平台: {sys.platform}")
+
+
+def _get_hwnd():
+    """安全地获取 Pygame 窗口的 HWND (Windows)"""
+    if not PYGAME_AVAILABLE:
+        print("错误: Pygame 未安装，无法获取窗口句柄。")
+        return None
+    try:
+        wm_info = pygame.display.get_wm_info()
+        hwnd = wm_info.get('window')
+        if hwnd:
+            return hwnd
+        else:
+            print("警告: 无法从 pygame.display.get_wm_info() 获取窗口句柄。")
+            return None
+    except Exception as e:
+        print(f"错误: 获取窗口句柄时出错: {e}")
+        return None
+
+def set_always_on_top():
+    """
+    尝试将当前 Pygame 窗口设置为置顶。
+    成功时返回 True，否则返回 False。
+    """
+    system = platform.system()
+    if system == "Windows":
+        if not WIN_API_AVAILABLE:
+            print("错误: Windows API 不可用，无法设置窗口置顶。")
+            return False
+        hwnd = _get_hwnd()
+        if hwnd:
+            try:
+                # 确保窗口恢复（如果最小化）
+                _ShowWindow(hwnd, _SW_RESTORE)
+                result = _SetWindowPos(
+                    hwnd, _HWND_TOPMOST, 0, 0, 0, 0,
+                    _SWP_NOMOVE | _SWP_NOSIZE | _SWP_SHOWWINDOW
+                )
+                if result:
+                    print("Windows: 窗口已置顶。")
+                    return True
+                else:
+                    print("错误: Windows API 调用 SetWindowPos 失败。")
+                    return False
+            except Exception as e:
+                print(f"错误: Windows: 设置窗口置顶时发生异常: {e}")
+                return False
+        else:
+            return False
+
+    elif system == "Darwin": # macOS
+        if not NS_APP_AVAILABLE:
+             print("警告: AppKit 不可用，跳过 macOS 置顶。")
+             return False
+        try:
+            # 激活应用通常会使窗口前置并可能置顶
+            NSApp().activateIgnoringOtherApps_(True)
+            print("macOS: 已尝试激活应用以置顶窗口。")
+            return True # 假设调用成功
+        except Exception as e:
+            print(f"错误: macOS: 设置窗口置顶时发生异常: {e}")
+            return False
+
+    elif system.startswith("Linux"):
+        # 在 Linux 上，使用 wmctrl 命令
+        try:
+            # 获取当前活动窗口的标题 (需要 wmctrl)
+            caption = pygame.display.get_caption()[0] if PYGAME_AVAILABLE else ""
+            if caption:
+                 # 使用 wmctrl 根据标题设置置顶
+                 subprocess.run(["wmctrl", "-r", caption, "-b", "add,above"], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                 print(f"Linux: 已尝试使用 wmctrl 将窗口 '{caption}' 置顶。")
+                 return True
+            else:
+                 print("警告: 无法获取窗口标题以用于 wmctrl。")
+                 return False
+        except subprocess.CalledProcessError:
+            print("错误: Linux: wmctrl 命令执行失败。请确保 wmctrl 已安装 (e.g., 'sudo apt install wmctrl')。")
+            return False
+        except FileNotFoundError:
+            print("错误: Linux: 未找到 wmctrl 命令。请安装 wmctrl。")
+            return False
+        except Exception as e:
+             print(f"错误: Linux: 设置窗口置顶时发生异常: {e}")
+             return False
+
+    else:
+        print(f"警告: 不支持的平台: {system}，无法设置窗口置顶。")
+        return False
+
+
+def bring_to_front():
+    """
+    尝试将当前 Pygame 窗口带到前台并获取焦点。
+    成功时返回 True，否则返回 False。
+    """
+    system = platform.system()
+    if system == "Windows":
+        if not WIN_API_AVAILABLE:
+            print("错误: Windows API 不可用，无法将窗口前置。")
+            return False
+        hwnd = _get_hwnd()
+        if hwnd:
+            try:
+                # 确保窗口恢复（如果最小化）
+                _ShowWindow(hwnd, _SW_RESTORE)
+                result = _SetForegroundWindow(hwnd)
+                if result:
+                    print("Windows: 窗口已前置并获取焦点。")
+                    return True
+                else:
+                    print("警告: Windows API 调用 SetForegroundWindow 失败。窗口可能未获得焦点。")
+                    # 注意：Windows 有安全策略阻止程序随意夺取焦点
+                    return False
+            except Exception as e:
+                print(f"错误: Windows: 将窗口前置时发生异常: {e}")
+                return False
+        else:
+            return False
+
+    elif system == "Darwin": # macOS
+        if not NS_APP_AVAILABLE:
+             print("警告: AppKit 不可用，跳过 macOS 前置。")
+             return False
+        try:
+            # 激活应用以获取焦点
+            # 注意：macOS 有安全限制，程序不能随意夺取焦点，通常需要用户先交互
+            NSApp().activateIgnoringOtherApps_(True)
+            print("macOS: 已尝试激活应用以获取焦点。")
+            return True # 假设调用成功
+        except Exception as e:
+            print(f"错误: macOS: 将窗口前置时发生异常: {e}")
+            return False
+
+    elif system.startswith("Linux"):
+        # 在 Linux 上，使用 wmctrl 命令
+        try:
+            caption = pygame.display.get_caption()[0] if PYGAME_AVAILABLE else ""
+            if caption:
+                 # 使用 wmctrl 根据标题激活窗口
+                 subprocess.run(["wmctrl", "-a", caption], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                 print(f"Linux: 已尝试使用 wmctrl 将窗口 '{caption}' 前置。")
+                 return True
+            else:
+                 print("警告: 无法获取窗口标题以用于 wmctrl。")
+                 return False
+        except subprocess.CalledProcessError:
+            print("错误: Linux: wmctrl 命令执行失败。请确保 wmctrl 已安装且窗口标题匹配。")
+            return False
+        except FileNotFoundError:
+            print("错误: Linux: 未找到 wmctrl 命令。请安装 wmctrl。")
+            return False
+        except Exception as e:
+             print(f"错误: Linux: 将窗口前置时发生异常: {e}")
+             return False
+
+    else:
+        print(f"警告: 不支持的平台: {system}，无法将窗口前置。")
+        return False
+
+# 为了方便，也可以提供一个组合函数
+def focus_and_raise():
+    """
+    尝试获取焦点并将窗口前置/置顶。
+    在某些系统上，这两个操作可能是同一个。
+    成功时返回 True，否则返回 False。
+    """
+    print("尝试获取焦点并前置/置顶窗口...")
+    res1 = bring_to_front()
+    res2 = set_always_on_top()
+    # 返回部分成功或全部成功
+    return res1 or res2

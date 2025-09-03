@@ -339,8 +339,8 @@ class GUIManager:
         """绘制所有UI元素"""
         self.guis.draw(surface)
 
-from . import input_method_manager
-imm = input_method_manager.InputMethodManager()
+from . import tools
+imm = tools.InputMethodManager()
 imm.save_current_state()
 
 class Game:
@@ -364,6 +364,9 @@ class Game:
             self.screen = pygame.display.set_mode((width, height))
 
         pygame.display.set_caption(title)
+        
+        # 窗口置顶并获取焦点
+        tools.focus_and_raise()
 
         print("\n--- 切换到英文输入法 ---")
         success_switch = imm.switch_to_english()
