@@ -604,6 +604,16 @@ class Game:
                     f"注册鼠标事件: 按钮{button} {mode} -> {obj.__class__.__name__}.{method.__name__}"
                 )
     
+    def is_sprite_clicked(self, name: str) -> bool:
+        if not self.mouse_was_clicked():
+            return False
+    
+        mouse_pos = pygame.math.Vector2(self.mouse_pos)
+        for sprite in self.scene.sprites:
+            if sprite.name == name and sprite.get_rect().collidepoint(mouse_pos):
+                return True
+        return False
+
     def mouse_x(self) -> int:
         """返回鼠标的x坐标"""
         return self.mouse_pos[0]
@@ -1122,6 +1132,9 @@ class Scene:
         """场景设置音效音量"""
         if self.game:
             self.game.set_sound_volume(volume)
+
+    def is_sprite_clicked(self, name: str) -> bool:
+        return self.game.is_sprite_clicked(name) if self.game else False
 
 class Sprite:
 
@@ -1683,6 +1696,9 @@ class Sprite:
     
     def set_sound_volume(self, volume: float):
         if self.game: self.game.set_sound_volume(volume)
+
+    def is_sprite_clicked(self, name: str) -> bool:
+        return self.game.is_sprite_clicked(name) if self.game else False
 
 
 class Particle:
