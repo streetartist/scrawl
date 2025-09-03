@@ -2002,6 +2002,9 @@ class TkGUI:
 # import maliang
 
 class MaliangGUI:
+    '''
+    MaliangGUI类，用于创建基于maliang库的GUI窗口(目前暂不支持)
+    '''
     def __init__(self, title="Tkinter GUI", width=1280, height=720, x=640, y=360):
         self.title = title
         self.width = width
@@ -2036,5 +2039,5 @@ class MaliangGUI:
             self.root.destroy()
 
     def main(self, canvas):
-        """用户需要重写此方法来创建UI界面，使用标准的tkinter组件"""
+        """用户需要重写此方法来创建UI界面，使用maliang库"""
         pass
