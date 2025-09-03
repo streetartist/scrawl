@@ -339,78 +339,9 @@ class GUIManager:
         """绘制所有UI元素"""
         self.guis.draw(surface)
 
-import platform
-import subprocess
-import ctypes
-from ctypes import wintypes
-
-def switch_to_english_input_method():
-    """
-    跨平台切换输入法到英文状态的函数。
-    """
-    system = platform.system()
-
-    try:
-        if system == "Windows":
-            # Windows: 使用 ctypes 调用 Windows API
-            user32 = ctypes.windll.user32
-            kernel32 = ctypes.windll.kernel32
-
-            SetForegroundWindow = user32.SetForegroundWindow
-            SetForegroundWindow.argtypes = [wintypes.HWND]
-            SetForegroundWindow.restype = wintypes.BOOL
-
-            LoadKeyboardLayout = user32.LoadKeyboardLayoutA
-            LoadKeyboardLayout.argtypes = [wintypes.LPCSTR, wintypes.UINT]
-            LoadKeyboardLayout.restype = wintypes.HKL
-
-            ActivateKeyboardLayout = user32.ActivateKeyboardLayout
-            ActivateKeyboardLayout.argtypes = [wintypes.HKL, wintypes.UINT]
-            ActivateKeyboardLayout.restype = wintypes.HKL
-
-            KLF_ACTIVATE = 0x00000001
-            ENGLISH_LAYOUT_ID = "00000409"
-
-            current_thread_id = kernel32.GetCurrentThreadId()
-
-            hkl = LoadKeyboardLayout(ENGLISH_LAYOUT_ID.encode('ascii'), KLF_ACTIVATE)
-            if not hkl:
-                raise OSError("无法加载英文键盘布局。")
-
-            result = ActivateKeyboardLayout(hkl, KLF_ACTIVATE)
-            if not result:
-                raise OSError("无法激活英文键盘布局。")
-
-
-        elif system == "Darwin":  # macOS
-            # macOS: 使用 AppleScript 切换到 'U.S.' 输入源
-            script = '''
-            tell application "System Events"
-                tell process "SystemUIServer"
-                    tell (first menu bar item whose description is "text input") of menu bar 1
-                        click
-                        click menu item "U.S." of menu 1
-                    end tell
-                end tell
-            end tell
-            '''
-            subprocess.run(["osascript", "-e", script], check=True, capture_output=True)
-
-
-        elif system == "Linux":
-            # Linux: 使用 setxkbmap 设置为 'us' 布局
-            subprocess.run(["setxkbmap", "us"], check=True, capture_output=True)
-
-
-        else:
-            print(f"警告: 不支持的操作系统 '{system}'。")
-
-    except subprocess.CalledProcessError:
-        print("错误: 切换输入法失败，命令执行出错。")
-    except OSError as e:
-        print(f"错误: 切换输入法失败。{e}")
-    except Exception as e:
-        print(f"错误: 切换输入法时发生未知错误: {e}")
+from . import input_method_manager
+imm = input_method_manager.InputMethodManager()
+imm.save_current_state()
 
 class Game:
 
@@ -434,7 +365,9 @@ class Game:
 
         pygame.display.set_caption(title)
 
-        switch_to_english_input_method()
+        print("\n--- 切换到英文输入法 ---")
+        success_switch = imm.switch_to_english()
+        print(f"切换结果: {'成功' if success_switch else '失败'}")
 
         self.clock = pygame.time.Clock()
         self.scene = None
@@ -628,7 +561,12 @@ class Game:
 
             pygame.display.flip()
             self.clock.tick(fps)
-        
+
+        # 恢复原始状态
+        print("\n--- 恢复原始输入法状态 ---")
+        success_restore = imm.restore_original_state()
+        print(f"恢复结果: {'成功' if success_restore else '失败'}")
+
         pygame.quit()
         sys.exit()
         
