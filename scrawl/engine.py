@@ -1943,10 +1943,6 @@ class TkGUI:
             y = (screen_height - self.height) // 2
             self.root.geometry(f"{self.width}x{self.height}+{x}+{y}")
             
-            # 创建主框架，让用户可以使用正常的tkinter组件
-            self.main_frame = tk.Frame(self.root, width=self.width, height=self.height)
-            self.main_frame.pack(fill="both", expand=True)
-            
             # 调用用户定义的main方法，传递root
             self.main(self.root)
             
