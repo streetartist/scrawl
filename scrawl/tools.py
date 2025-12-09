@@ -24,14 +24,15 @@ class InputMethodManager:
             try:
                 self._user32 = ctypes.windll.user32
                 self._kernel32 = ctypes.windll.kernel32
+                self._imm32 = ctypes.windll.imm32 # 加载 imm32.dll
 
                 # 定义 Windows API 函数和参数
                 self._GetKeyboardLayout = self._user32.GetKeyboardLayout
                 self._GetKeyboardLayout.argtypes = [wintypes.DWORD]
                 self._GetKeyboardLayout.restype = wintypes.HKL
 
-                self._LoadKeyboardLayout = self._user32.LoadKeyboardLayoutA
-                self._LoadKeyboardLayout.argtypes = [wintypes.LPCSTR, wintypes.UINT]
+                self._LoadKeyboardLayout = self._user32.LoadKeyboardLayoutW # 使用 Unicode 版本
+                self._LoadKeyboardLayout.argtypes = [wintypes.LPCWSTR, wintypes.UINT]
                 self._LoadKeyboardLayout.restype = wintypes.HKL
 
                 self._ActivateKeyboardLayout = self._user32.ActivateKeyboardLayout
@@ -41,22 +42,105 @@ class InputMethodManager:
                 self._GetCurrentThreadId = self._kernel32.GetCurrentThreadId
                 self._GetCurrentThreadId.argtypes = []
                 self._GetCurrentThreadId.restype = wintypes.DWORD
+                
+                # Imm32 API
+                self._ImmGetContext = self._imm32.ImmGetContext
+                self._ImmGetContext.argtypes = [wintypes.HWND]
+                self._ImmGetContext.restype = wintypes.HANDLE
+                
+                self._ImmSetOpenStatus = self._imm32.ImmSetOpenStatus
+                self._ImmSetOpenStatus.argtypes = [wintypes.HANDLE, wintypes.BOOL]
+                self._ImmSetOpenStatus.restype = wintypes.BOOL
+                
+                self._ImmReleaseContext = self._imm32.ImmReleaseContext
+                self._ImmReleaseContext.argtypes = [wintypes.HWND, wintypes.HANDLE]
+                self._ImmReleaseContext.restype = wintypes.BOOL
+
+                self._GetForegroundWindow = self._user32.GetForegroundWindow
+                self._GetForegroundWindow.restype = wintypes.HWND
 
                 self._KLF_ACTIVATE = 0x00000001
                 self._ENGLISH_LAYOUT_ID = "00000409" # US English
+                self._english_hkl_cache = None # 缓存 HKL
 
             except Exception as e:
                 print(f"[错误] Windows API 初始化失败: {e}")
                 self._user32 = None # 标记为不可用
 
         elif self._system == "Darwin": # macOS
-            # macOS 依赖 osascript，无需特殊初始化
-            pass
+            # macOS: 尝试使用 Carbon 框架的 TISSelectInputSource
+            try:
+                self._carbon = ctypes.cdll.LoadLibrary('/System/Library/Frameworks/Carbon.framework/Carbon')
+                
+                # 定义必要的类型和常量
+                self._kTISPropertyInputSourceID = ctypes.c_void_p.in_dll(self._carbon, 'kTISPropertyInputSourceID')
+                self._kTISPropertyInputSourceType = ctypes.c_void_p.in_dll(self._carbon, 'kTISPropertyInputSourceType')
+                self._kTISTypeKeyboardLayout = ctypes.c_void_p.in_dll(self._carbon, 'kTISTypeKeyboardLayout')
+                self._kTISPropertyInputSourceIsSelectCapable = ctypes.c_void_p.in_dll(self._carbon, 'kTISPropertyInputSourceIsSelectCapable')
+                
+                # CFString 相关函数
+                self._CFStringCreateWithCString = self._carbon.CFStringCreateWithCString
+                self._CFStringCreateWithCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_uint32]
+                self._CFStringCreateWithCString.restype = ctypes.c_void_p
+                
+                self._CFStringGetLength = self._carbon.CFStringGetLength
+                self._CFStringGetLength.argtypes = [ctypes.c_void_p]
+                self._CFStringGetLength.restype = ctypes.c_long
+                
+                self._CFStringGetCString = self._carbon.CFStringGetCString
+                self._CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_char_p, ctypes.c_long, ctypes.c_uint32]
+                self._CFStringGetCString.restype = ctypes.c_bool
+                
+                self._CFRelease = self._carbon.CFRelease
+                self._CFRelease.argtypes = [ctypes.c_void_p]
+                
+                # TIS 相关函数
+                self._TISCopyCurrentKeyboardInputSource = self._carbon.TISCopyCurrentKeyboardInputSource
+                self._TISCopyCurrentKeyboardInputSource.restype = ctypes.c_void_p
+                
+                self._TISSelectInputSource = self._carbon.TISSelectInputSource
+                self._TISSelectInputSource.argtypes = [ctypes.c_void_p]
+                self._TISSelectInputSource.restype = ctypes.c_int
+                
+                self._TISCreateInputSourceList = self._carbon.TISCreateInputSourceList
+                self._TISCreateInputSourceList.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+                self._TISCreateInputSourceList.restype = ctypes.c_void_p
+                
+                self._TISGetInputSourceProperty = self._carbon.TISGetInputSourceProperty
+                self._TISGetInputSourceProperty.argtypes = [ctypes.c_void_p, ctypes.c_void_p]
+                self._TISGetInputSourceProperty.restype = ctypes.c_void_p
+                
+                # CFArray 相关
+                self._CFArrayGetCount = self._carbon.CFArrayGetCount
+                self._CFArrayGetCount.argtypes = [ctypes.c_void_p]
+                self._CFArrayGetCount.restype = ctypes.c_long
+                
+                self._CFArrayGetValueAtIndex = self._carbon.CFArrayGetValueAtIndex
+                self._CFArrayGetValueAtIndex.argtypes = [ctypes.c_void_p, ctypes.c_long]
+                self._CFArrayGetValueAtIndex.restype = ctypes.c_void_p
+                
+                self._kCFStringEncodingUTF8 = 0x08000100
+                self._use_carbon = True
+                
+            except Exception as e:
+                print(f"[警告] macOS Carbon 框架加载失败，将回退到 AppleScript: {e}")
+                self._use_carbon = False
         elif self._system == "Linux":
-            # Linux 依赖 setxkbmap 命令，无需特殊初始化
-            pass
+            # 尝试检测 fcitx 或 ibus
+            self._linux_ime_backend = None
+            if self._check_command("fcitx-remote"):
+                self._linux_ime_backend = "fcitx"
+            elif self._check_command("ibus"):
+                self._linux_ime_backend = "ibus"
+            else:
+                print("[信息] Linux 下未检测到 fcitx 或 ibus，输入法切换功能将禁用。")
         else:
             print(f"[警告] 不支持的操作系统: {self._system}")
+
+    def _check_command(self, cmd):
+        """检查命令是否存在"""
+        from shutil import which
+        return which(cmd) is not None
 
     def _get_windows_layout(self):
         """获取当前 Windows 键盘布局 HKL"""
@@ -72,72 +156,100 @@ class InputMethodManager:
             return None
 
     def _get_macos_layout(self):
-        """获取当前 macOS 活动输入源名称"""
-        try:
-            # AppleScript 获取当前活动输入源
-            script_get = '''
-            tell application "System Events"
-                tell process "SystemUIServer"
-                    tell (first menu bar item whose description is "text input") of menu bar 1
-                        return name of first menu item of menu 1 whose (value of attribute "AXMenuItemMarkChar" is "✓")
+        """获取当前 macOS 活动输入源 ID"""
+        if self._use_carbon:
+            try:
+                current_source = self._TISCopyCurrentKeyboardInputSource()
+                if not current_source:
+                    return "Unknown"
+                
+                source_id_ptr = self._TISGetInputSourceProperty(current_source, self._kTISPropertyInputSourceID)
+                if not source_id_ptr:
+                    self._CFRelease(current_source)
+                    return "Unknown"
+                
+                # CFString to Python str
+                length = self._CFStringGetLength(source_id_ptr)
+                buffer_size = length * 4 + 1
+                buffer = ctypes.create_string_buffer(buffer_size)
+                if self._CFStringGetCString(source_id_ptr, buffer, buffer_size, self._kCFStringEncodingUTF8):
+                    result = buffer.value.decode('utf-8')
+                else:
+                    result = "Unknown"
+                
+                self._CFRelease(current_source)
+                return result
+            except Exception as e:
+                print(f"[错误] Carbon 获取布局失败: {e}")
+                return "Unknown"
+        else:
+            # 回退到 AppleScript
+            try:
+                # AppleScript 获取当前活动输入源
+                script_get = '''
+                tell application "System Events"
+                    tell process "SystemUIServer"
+                        tell (first menu bar item whose description is "text input") of menu bar 1
+                            return name of first menu item of menu 1 whose (value of attribute "AXMenuItemMarkChar" is "✓")
+                        end tell
                     end tell
                 end tell
-            end tell
-            '''
-            result = subprocess.run(
-                ["osascript", "-e", script_get],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10 # 添加超时
-            )
-            layout_name = result.stdout.strip()
-            if layout_name:
-                return layout_name
-            else:
-                print("[警告] 无法通过 AppleScript 获取 macOS 活动输入源。")
+                '''
+                result = subprocess.run(
+                    ["osascript", "-e", script_get],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=10 # 添加超时
+                )
+                layout_name = result.stdout.strip()
+                if layout_name:
+                    return layout_name
+                else:
+                    print("[警告] 无法通过 AppleScript 获取 macOS 活动输入源。")
+                    return "Unknown"
+            except subprocess.TimeoutExpired:
+                print("[错误] 获取 macOS 输入源超时。")
                 return "Unknown"
-        except subprocess.TimeoutExpired:
-            print("[错误] 获取 macOS 输入源超时。")
-            return "Unknown"
-        except subprocess.CalledProcessError as e:
-            print(f"[错误] AppleScript 执行失败: {e.stderr}")
-            return "Unknown"
-        except FileNotFoundError:
-            print("[错误] osascript 命令未找到。")
-            return "Unknown"
-        except Exception as e:
-            print(f"[错误] 获取 macOS 布局时发生未知错误: {e}")
-            return "Unknown"
+            except subprocess.CalledProcessError as e:
+                print(f"[错误] AppleScript 执行失败: {e.stderr}")
+                return "Unknown"
+            except FileNotFoundError:
+                print("[错误] osascript 命令未找到。")
+                return "Unknown"
+            except Exception as e:
+                print(f"[错误] 获取 macOS 布局时发生未知错误: {e}")
+                return "Unknown"
 
     def _get_linux_layout(self):
-        """获取当前 Linux 键盘布局"""
-        try:
-            result = subprocess.run(
-                ["setxkbmap", "-query"],
-                capture_output=True,
-                text=True,
-                check=True,
-                timeout=10 # 添加超时
-            )
-            for line in result.stdout.splitlines():
-                if line.startswith("layout:"):
-                    layouts = line.split(":", 1)[1].strip()
-                    # 为了简化，只取第一个布局
-                    return layouts.split(",")[0]
-            print("[警告] setxkbmap -query 输出中未找到 layout 信息。")
-            return "Unknown"
-        except subprocess.TimeoutExpired:
-            print("[错误] setxkbmap -query 命令超时。")
-            return "Unknown"
-        except subprocess.CalledProcessError as e:
-           print(f"[错误] setxkbmap -query 执行失败: {e.stderr}")
-           return "Unknown"
-        except FileNotFoundError:
-            print("[错误] setxkbmap 命令未找到。")
-            return "Unknown"
-        except Exception as e:
-            print(f"[错误] 获取 Linux 布局时发生未知错误: {e}")
+        """获取当前 Linux 输入法状态"""
+        if self._linux_ime_backend == "fcitx":
+            try:
+                # 1: 激活, 2: 非激活 (通常 2 是英文)
+                result = subprocess.run(
+                    ["fcitx-remote"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=2
+                )
+                return result.stdout.strip()
+            except Exception:
+                return "Unknown"
+        elif self._linux_ime_backend == "ibus":
+            try:
+                # 获取当前引擎名称
+                result = subprocess.run(
+                    ["ibus", "engine"],
+                    capture_output=True,
+                    text=True,
+                    check=True,
+                    timeout=2
+                )
+                return result.stdout.strip()
+            except Exception:
+                return "Unknown"
+        else:
             return "Unknown"
 
     def save_current_state(self):
@@ -171,11 +283,10 @@ class InputMethodManager:
                 layout = self._get_linux_layout()
                 if layout != "Unknown":
                     self._original_state['layout'] = layout
-                    print(f"[信息] 已保存 Linux 键盘布局: {layout}")
+                    # print(f"[信息] 已保存 Linux 输入法状态: {layout}")
                     return True
                 self._original_state['layout'] = layout
-                print(f"[信息] 已保存 Linux 键盘布局 (可能未知): {layout}")
-                return True # 认为保存操作本身成功
+                return True 
 
             else:
                 print(f"[警告] 不支持的操作系统 '{self._system}'，无法保存输入法状态。")
@@ -196,20 +307,106 @@ class InputMethodManager:
                 if not self._user32:
                     print("[错误] Windows API 未正确初始化，无法切换。")
                     return False
-                hkl = self._LoadKeyboardLayout(self._ENGLISH_LAYOUT_ID.encode('ascii'), self._KLF_ACTIVATE)
-                if not hkl:
-                    print("[错误] 无法加载英文键盘布局。")
-                    return False
 
-                result = self._ActivateKeyboardLayout(hkl, self._KLF_ACTIVATE)
-                if not result:
-                    print("[错误] 无法激活英文键盘布局。")
-                    return False
-                print("[信息] 已切换到 Windows 英文输入法。")
+                # 1. 检查当前布局，避免重复切换
+                current_hkl = self._get_windows_layout()
+                # 0x0409 (US) 的低 16 位是语言 ID
+                if current_hkl and (current_hkl & 0xFFFF) == 0x0409:
+                     # 已经是英文布局，无需再次 Load/Activate
+                     # print("[信息] 当前已经是英文布局，跳过切换。")
+                     pass
+                else:
+                    # 获取或加载英文 HKL
+                    if not self._english_hkl_cache:
+                        self._english_hkl_cache = self._LoadKeyboardLayout(self._ENGLISH_LAYOUT_ID, self._KLF_ACTIVATE)
+                    
+                    if not self._english_hkl_cache:
+                        print("[错误] 无法加载英文键盘布局。")
+                        return False
+
+                    result = self._ActivateKeyboardLayout(self._english_hkl_cache, self._KLF_ACTIVATE)
+                    if not result:
+                        print("[错误] 无法激活英文键盘布局。")
+                        return False
+                    print("[信息] 已切换到 Windows 英文输入法。")
+                
+                # 2. 双重保险：尝试使用 ImmSetOpenStatus 关闭 IME 窗口
+                try:
+                    hwnd = self._GetForegroundWindow()
+                    if hwnd:
+                        himc = self._ImmGetContext(hwnd)
+                        if himc:
+                            self._ImmSetOpenStatus(himc, False)
+                            self._ImmReleaseContext(hwnd, himc)
+                except Exception as imm_e:
+                    print(f"[警告] 设置 ImmOpenStatus 失败 (非致命): {imm_e}")
+
                 return True
 
 
             elif self._system == "Darwin":  # macOS
+                if self._use_carbon:
+                    try:
+                        current_layout = self._get_macos_layout()
+                        if "com.apple.keylayout.US" in current_layout or "ABC" in current_layout:
+                             # 已经是英文，无需切换
+                             return True
+
+                        # 创建属性字典 (这里简化为直接搜索所有可选的键盘布局)
+                        # 我们需要找到一个英文输入源，通常是 'com.apple.keylayout.US' 或 'com.apple.keylayout.ABC'
+                        
+                        # 创建 input source list
+                        source_list = self._TISCreateInputSourceList(None, False)
+                        if not source_list:
+                            return False
+                        
+                        count = self._CFArrayGetCount(source_list)
+                        target_source = None
+                        
+                        for i in range(count):
+                            source = self._CFArrayGetValueAtIndex(source_list, i)
+                            
+                            # 检查类型是否为键盘布局
+                            source_type = self._TISGetInputSourceProperty(source, self._kTISPropertyInputSourceType)
+                            if source_type != self._kTISTypeKeyboardLayout:
+                                continue
+                            
+                            # 检查是否可选
+                            is_capable = self._TISGetInputSourceProperty(source, self._kTISPropertyInputSourceIsSelectCapable)
+                            # is_capable 是 CFBooleanRef，但在 ctypes 中是指针。这里简化判断，如果指针不为空且值大概为真 (kCFBooleanTrue)
+                            # 更严谨的做法是加载 kCFBooleanTrue 并比较。这里假设能列出的基本都能选。
+
+                            # 获取 ID
+                            source_id_ptr = self._TISGetInputSourceProperty(source, self._kTISPropertyInputSourceID)
+                            if not source_id_ptr: continue
+                            
+                            length = self._CFStringGetLength(source_id_ptr)
+                            buffer_size = length * 4 + 1
+                            buffer = ctypes.create_string_buffer(buffer_size)
+                            if self._CFStringGetCString(source_id_ptr, buffer, buffer_size, self._kCFStringEncodingUTF8):
+                                source_id = buffer.value.decode('utf-8')
+                                if source_id == "com.apple.keylayout.US" or source_id == "com.apple.keylayout.ABC":
+                                    target_source = source
+                                    break
+                        
+                        if target_source:
+                            result = self._TISSelectInputSource(target_source)
+                            self._CFRelease(source_list)
+                            if result == 0:
+                                print("[信息] Carbon: 已切换到 macOS 英文输入源。")
+                                return True
+                            else:
+                                print(f"[错误] Carbon: 切换失败，错误码: {result}")
+                                return False
+                        else:
+                            self._CFRelease(source_list)
+                            print("[警告] Carbon: 未找到英文输入源 (US/ABC)。")
+                            # 没找到，尝试回退到 AppleScript
+                    except Exception as e:
+                        print(f"[错误] Carbon 切换失败: {e}")
+                        # 回退到 AppleScript
+                
+                # AppleScript Fallback
                 # 确保 'U.S.' 在输入源列表中
                 script = '''
                 tell application "System Events"
@@ -232,14 +429,16 @@ class InputMethodManager:
 
 
             elif self._system == "Linux":
-                subprocess.run(
-                    ["setxkbmap", "us"],
-                    check=True,
-                    capture_output=True,
-                    timeout=10 # 添加超时
-                )
-                print("[信息] 已切换到 Linux us 键盘布局。")
-                return True
+                if self._linux_ime_backend == "fcitx":
+                    # 切换到关闭状态 (通常是英文)
+                    subprocess.run(["fcitx-remote", "-c"], check=True, timeout=2)
+                    return True
+                elif self._linux_ime_backend == "ibus":
+                    # 切换到英文 (这里假设 xkb:us::eng 是英文，这可能需要更通用的方法，但 ibus 比较复杂)
+                    subprocess.run(["ibus", "engine", "xkb:us::eng"], check=True, timeout=2)
+                    return True
+                else:
+                    return False
 
 
             else:
@@ -297,6 +496,42 @@ class InputMethodManager:
 
 
             elif self._system == "Darwin": # macOS
+                if self._use_carbon:
+                     if isinstance(layout, str) and layout != "Unknown":
+                         # 尝试查找并切换回 ID
+                         try:
+                             source_list = self._TISCreateInputSourceList(None, False)
+                             if source_list:
+                                 count = self._CFArrayGetCount(source_list)
+                                 target_source = None
+                                 for i in range(count):
+                                     source = self._CFArrayGetValueAtIndex(source_list, i)
+                                     source_id_ptr = self._TISGetInputSourceProperty(source, self._kTISPropertyInputSourceID)
+                                     if not source_id_ptr: continue
+                                     
+                                     length = self._CFStringGetLength(source_id_ptr)
+                                     buffer_size = length * 4 + 1
+                                     buffer = ctypes.create_string_buffer(buffer_size)
+                                     if self._CFStringGetCString(source_id_ptr, buffer, buffer_size, self._kCFStringEncodingUTF8):
+                                         source_id = buffer.value.decode('utf-8')
+                                         if source_id == layout:
+                                             target_source = source
+                                             break
+                                 
+                                 if target_source:
+                                     self._TISSelectInputSource(target_source)
+                                     success = True
+                                     print(f"[信息] Carbon: 已恢复到 macOS 输入源: {layout}")
+                                 
+                                 self._CFRelease(source_list)
+                         except Exception as e:
+                             print(f"[错误] Carbon 恢复失败: {e}")
+                             success = False
+                     
+                     if success:
+                         return True
+                     # 如果 Carbon 失败，尝试 AppleScript
+                
                 if isinstance(layout, str) and layout != "Unknown":
                     # 使用 AppleScript 切换回保存的输入源名称
                     script = f'''
@@ -334,16 +569,18 @@ class InputMethodManager:
 
             elif self._system == "Linux":
                 if isinstance(layout, str) and layout != "Unknown":
-                    subprocess.run(
-                        ["setxkbmap", layout],
-                        check=True,
-                        capture_output=True,
-                        timeout=10 # 添加超时
-                    )
-                    print(f"[信息] 已恢复到 Linux 键盘布局: {layout}")
-                    success = True
+                    if self._linux_ime_backend == "fcitx":
+                        # fcitx-remote -o 打开输入法，-c 关闭。
+                        # 保存的状态如果是 '2' (关闭)，则恢复关闭；如果是 '1' (打开)，则恢复打开
+                        if layout == '1':
+                             subprocess.run(["fcitx-remote", "-o"], check=True, timeout=2)
+                        elif layout == '2':
+                             subprocess.run(["fcitx-remote", "-c"], check=True, timeout=2)
+                        success = True
+                    elif self._linux_ime_backend == "ibus":
+                        subprocess.run(["ibus", "engine", layout], check=True, timeout=2)
+                        success = True
                 else:
-                     print(f"[警告] Linux 状态无效或未知: {layout}")
                      success = False
 
 

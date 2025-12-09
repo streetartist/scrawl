@@ -12,6 +12,7 @@ import time
 import requests
 import json
 from collections import deque
+from . import tools
 
 class CloudVariablesClient:
     def __init__(self, project_id=None, base_url="http://1.117.220.147:5000", sync_interval=100):
@@ -339,9 +340,7 @@ class GUIManager:
         """绘制所有UI元素"""
         self.guis.draw(surface)
 
-from . import tools
-imm = tools.InputMethodManager()
-imm.save_current_state()
+
 
 class Game:
 
@@ -434,6 +433,9 @@ class Game:
         
         # 添加GUI管理器
         self.gui = GUIManager(self)
+        
+        # 初始化输入法管理器
+        self.imm = tools.InputMethodManager()
     
     def toggle_fullscreen(self):
         """切换全屏/窗口模式"""
@@ -465,121 +467,126 @@ class Game:
 
         self.has_focused = False
 
-        while self.running:
-            # 在每帧开始时清除广播状态
-            self.current_frame_broadcasts.clear()
-            # 计算时间增量
-            dt = self.clock.tick(fps)
-            self.current_time = pygame.time.get_ticks()
+        try:
+            while self.running:
+                # 在每帧开始时清除广播状态
+                self.current_frame_broadcasts.clear()
+                # 计算时间增量
+                dt = self.clock.tick(fps)
+                self.current_time = pygame.time.get_ticks()
 
-            # 保存上一帧的按键状态
-            prev_key_down_events = dict(self.key_down_events)
-            
-            self.mouse_clicked = False  # 每帧开始时重置点击状态
-            self.mouse_released = False  # 每帧开始时重置释放状态
+                # 保存上一帧的按键状态
+                prev_key_down_events = dict(self.key_down_events)
+                
+                self.mouse_clicked = False  # 每帧开始时重置点击状态
+                self.mouse_released = False  # 每帧开始时重置释放状态
 
-            events = pygame.event.get() # 由于pygame的事件（似乎是迭代器？）只能获取一次，gui部分也要获取，所以放在这里
+                events = pygame.event.get() # 由于pygame的事件（似乎是迭代器？）只能获取一次，gui部分也要获取，所以放在这里
 
-            for event in events:
-                if event.type == pygame.WINDOWFOCUSGAINED and not self.has_focused:
-                        self.has_focused = True
-                        print(">>> 窗口首次获得焦点! <<<")
+                for event in events:
+                    if event.type == pygame.WINDOWFOCUSGAINED and not self.has_focused:
+                            self.has_focused = True
+                            print(">>> 窗口首次获得焦点! <<<")
 
-                        print("\n--- 切换到英文输入法 ---")
-                        success_switch = imm.switch_to_english()
-                        print(f"切换结果: {'成功' if success_switch else '失败'}")
+                            # 保存当前输入法状态
+                            self.imm.save_current_state()
 
-                        tools.set_always_on_top()
-                    
-                if event.type == pygame.QUIT:
-                    self.running = False
+                            print("\n--- 切换到英文输入法 ---")
+                            success_switch = self.imm.switch_to_english()
+                            print(f"切换结果: {'成功' if success_switch else '失败'}")
 
-                # 处理按键按下事件
-                if event.type == pygame.KEYDOWN:
-                    # 记录按键按下的时间
-                    self.key_down_events[event.key] = self.current_time
-
-                    # 先检查全局按键绑定
-                    if event.key in self.key_bindings:
-                        self.key_bindings[event.key]()
-                    # 再检查场景按键绑定
-                    elif self.scene and event.key in self.scene.key_bindings:
-                        self.scene.key_bindings[event.key]()
+                            tools.set_always_on_top()
+                        
+                    if event.type == pygame.QUIT:
+                        self.running = False
 
                     # 处理按键按下事件
-                    self.process_key_event(event.key, "pressed")
+                    if event.type == pygame.KEYDOWN:
+                        # 记录按键按下的时间
+                        self.key_down_events[event.key] = self.current_time
 
-                # 处理按键释放事件
-                if event.type == pygame.KEYUP:
+                        # 先检查全局按键绑定
+                        if event.key in self.key_bindings:
+                            self.key_bindings[event.key]()
+                        # 再检查场景按键绑定
+                        elif self.scene and event.key in self.scene.key_bindings:
+                            self.scene.key_bindings[event.key]()
+
+                        # 处理按键按下事件
+                        self.process_key_event(event.key, "pressed")
+
                     # 处理按键释放事件
-                    self.process_key_event(event.key, "released")
-                    # 从按键状态中移除
-                    if event.key in self.key_down_events:
-                        del self.key_down_events[event.key]
-                
-                # 处理鼠标移动事件
-                if event.type == pygame.MOUSEMOTION:
-                    self.mouse_pos = event.pos
-                
-                # 处理鼠标按下事件
-                if event.type == pygame.MOUSEBUTTONDOWN:
-                    if event.button == 1:  # 左键
-                        self.mouse_pressed = True
-                        self.mouse_clicked = True
-                        self.mouse_held_time = 0
+                    if event.type == pygame.KEYUP:
+                        # 处理按键释放事件
+                        self.process_key_event(event.key, "released")
+                        # 从按键状态中移除
+                        if event.key in self.key_down_events:
+                            del self.key_down_events[event.key]
                     
-                # 处理鼠标释放事件
-                if event.type == pygame.MOUSEBUTTONUP:
-                    if event.button == 1:  # 左键
-                        self.mouse_pressed = False
-                        self.mouse_released = True
+                    # 处理鼠标移动事件
+                    if event.type == pygame.MOUSEMOTION:
+                        self.mouse_pos = event.pos
+                    
+                    # 处理鼠标按下事件
+                    if event.type == pygame.MOUSEBUTTONDOWN:
+                        if event.button == 1:  # 左键
+                            self.mouse_pressed = True
+                            self.mouse_clicked = True
+                            self.mouse_held_time = 0
+                        
+                    # 处理鼠标释放事件
+                    if event.type == pygame.MOUSEBUTTONUP:
+                        if event.button == 1:  # 左键
+                            self.mouse_pressed = False
+                            self.mouse_released = True
 
-                # 将事件传递给场景和精灵
-                if self.scene:
-                    self.scene.handle_event(event)
-                    for sprite in self.scene.sprites:
-                        sprite.handle_event(event)
+                    # 将事件传递给场景和精灵
+                    if self.scene:
+                        self.scene.handle_event(event)
+                        for sprite in self.scene.sprites:
+                            sprite.handle_event(event)
 
-            # 更新鼠标持续按下时间
-            if self.mouse_pressed:
-                self.mouse_held_time += self.clock.get_time()
-        
-            # 处理鼠标事件
-            self.process_mouse_events()
-        
-            # 处理按住状态的事件
-            self.process_held_keys(prev_key_down_events)
+                # 更新鼠标持续按下时间
+                if self.mouse_pressed:
+                    self.mouse_held_time += self.clock.get_time()
+            
+                # 处理鼠标事件
+                self.process_mouse_events()
+            
+                # 处理按住状态的事件
+                self.process_held_keys(prev_key_down_events)
 
-            self.process_tasks()
+                self.process_tasks()
 
-            self.scene.pre_update()
-            self.scene.update()
-            for sprite in self.scene.sprites:
-                sprite.update()
-            self.scene.post_update()
+                self.scene.pre_update()
+                self.scene.update()
+                for sprite in self.scene.sprites:
+                    sprite.update()
+                self.scene.post_update()
 
-            self.screen.fill(self.background_color)
-            self.scene.draw(self.screen)
-            self.draw_debug_info()
+                self.screen.fill(self.background_color)
+                self.scene.draw(self.screen)
+                self.draw_debug_info()
 
-            self.gui.process_events(pos=pygame.mouse.get_pos(), events=events)
+                self.gui.process_events(pos=pygame.mouse.get_pos(), events=events)
 
-            # 绘制GUI
-            self.gui.draw(self.screen)
+                # 绘制GUI
+                self.gui.draw(self.screen)
 
-            # 刷新界面
-            pygame.display.update()
+                # 刷新界面
+                pygame.display.update()
 
-            pygame.display.flip()
-            self.clock.tick(fps)
+                pygame.display.flip()
+                self.clock.tick(fps)
 
-        # 恢复原始状态
-        print("\n--- 恢复原始输入法状态 ---")
-        success_restore = imm.restore_original_state()
-        print(f"恢复结果: {'成功' if success_restore else '失败'}")
+        finally:
+            # 恢复原始状态
+            print("\n--- 恢复原始输入法状态 ---")
+            success_restore = self.imm.restore_original_state()
+            print(f"恢复结果: {'成功' if success_restore else '失败'}")
 
-        pygame.quit()
-        sys.exit()
+            pygame.quit()
+            sys.exit()
         
     def process_key_event(self, key: int, mode: str):
         """处理单个按键事件"""
