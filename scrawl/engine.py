@@ -496,12 +496,31 @@ class Game:
                             print(f"切换结果: {'成功' if success_switch else '失败'}")
 
                             tools.set_always_on_top()
+
+                            # 标记是否手动恢复了输入法
+                            self.ime_manually_restored = False
                         
                     if event.type == pygame.QUIT:
                         self.running = False
 
                     # 处理按键按下事件
                     if event.type == pygame.KEYDOWN:
+                        # 允许用户通过 Ctrl+Shift 恢复输入法
+                        if ((event.key == pygame.K_LSHIFT and event.mod & pygame.KMOD_CTRL) or
+                            (event.key == pygame.K_RSHIFT and event.mod & pygame.KMOD_CTRL) or
+                            (event.key == pygame.K_LCTRL and event.mod & pygame.KMOD_SHIFT) or
+                            (event.key == pygame.K_RCTRL and event.mod & pygame.KMOD_SHIFT)):
+                            if self.imm.has_saved_state():
+                                if not getattr(self, 'ime_manually_restored', False):
+                                    print("[信息] 检测到 Ctrl+Shift，恢复原始输入法...")
+                                    # 恢复但不清空历史，以便再次切换
+                                    self.imm.restore_original_state(clear_history=False)
+                                    self.ime_manually_restored = True
+                                else:
+                                    print("[信息] 检测到 Ctrl+Shift，切换回英文输入法...")
+                                    self.imm.switch_to_english()
+                                    self.ime_manually_restored = False
+
                         # 记录按键按下的时间
                         self.key_down_events[event.key] = self.current_time
 

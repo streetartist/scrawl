@@ -252,6 +252,10 @@ class InputMethodManager:
         else:
             return "Unknown"
 
+    def has_saved_state(self):
+        """检查是否有已保存的输入法状态"""
+        return bool(self._original_state)
+
     def save_current_state(self):
         """
         保存当前输入法状态。
@@ -458,9 +462,10 @@ class InputMethodManager:
             print(f"[错误] 切换输入法时发生未知错误: {e}")
             return False
 
-    def restore_original_state(self):
+    def restore_original_state(self, clear_history=True):
         """
         跨平台恢复到之前保存的输入法状态。
+        :param clear_history: 是否在恢复后清空保存的状态，默认为 True。
         :return: True if successful, False otherwise.
         """
         if not self._original_state:
@@ -471,8 +476,6 @@ class InputMethodManager:
 
         if layout is None or layout == "Unknown":
              print(f"[警告] 保存的状态中没有有效的布局信息 ('{layout}')，无法恢复。")
-             # 清空状态
-             self._original_state = {}
              return False
 
         success = False
@@ -601,8 +604,9 @@ class InputMethodManager:
             print(f"[错误] 恢复输入法时发生未知错误: {e}")
             success = False
         finally:
-            # 无论恢复成功与否，都清空状态
-            self._original_state = {}
+            # 无论恢复成功与否，都清空状态（如果 clear_history 为 True）
+            if clear_history:
+                self._original_state = {}
 
         return success
 
