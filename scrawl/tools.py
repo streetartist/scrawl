@@ -4,6 +4,86 @@ import platform
 import subprocess
 import ctypes
 from ctypes import wintypes
+import os
+import json
+import tempfile
+import multiprocessing
+import atexit
+
+def _ime_watchdog_process(parent_pid, state_file_path, system_type):
+    """
+    守护进程：监视父进程，当父进程退出（包括崩溃）时恢复输入法。
+    此函数在独立进程中运行。
+    """
+    import time
+    import psutil
+    
+    try:
+        # 等待父进程退出
+        parent = psutil.Process(parent_pid)
+        parent.wait()  # 阻塞直到父进程退出
+    except psutil.NoSuchProcess:
+        # 父进程已经不存在
+        pass
+    except Exception as e:
+        print(f"[守护进程] 监视父进程时出错: {e}")
+    
+    # 父进程已退出，检查是否需要恢复输入法
+    try:
+        if os.path.exists(state_file_path):
+            with open(state_file_path, 'r', encoding='utf-8') as f:
+                state = json.load(f)
+            
+            layout = state.get('layout')
+            if layout is not None and layout != "Unknown":
+                print(f"[守护进程] 检测到程序异常退出，正在恢复输入法...")
+                
+                # 根据系统类型恢复输入法
+                if system_type == "Windows":
+                    try:
+                        user32 = ctypes.windll.user32
+                        KLF_ACTIVATE = 0x00000001
+                        hkl_to_restore = int(layout)
+                        user32.ActivateKeyboardLayout(hkl_to_restore, KLF_ACTIVATE)
+                        print(f"[守护进程] 已恢复 Windows 输入法布局: {layout}")
+                    except Exception as e:
+                        print(f"[守护进程] 恢复 Windows 输入法失败: {e}")
+                
+                elif system_type == "Darwin":  # macOS
+                    try:
+                        script = f'''
+                        tell application "System Events"
+                            tell process "SystemUIServer"
+                                tell (first menu bar item whose description is "text input") of menu bar 1
+                                    click
+                                    click menu item "{layout}" of menu 1
+                                end tell
+                            end tell
+                        end tell
+                        '''
+                        subprocess.run(["osascript", "-e", script], timeout=10)
+                        print(f"[守护进程] 已恢复 macOS 输入法: {layout}")
+                    except Exception as e:
+                        print(f"[守护进程] 恢复 macOS 输入法失败: {e}")
+                
+                elif system_type == "Linux":
+                    try:
+                        if layout == '1':
+                            subprocess.run(["fcitx-remote", "-o"], timeout=2)
+                        elif layout == '2':
+                            subprocess.run(["fcitx-remote", "-c"], timeout=2)
+                        else:
+                            subprocess.run(["ibus", "engine", layout], timeout=2)
+                        print(f"[守护进程] 已恢复 Linux 输入法: {layout}")
+                    except Exception as e:
+                        print(f"[守护进程] 恢复 Linux 输入法失败: {e}")
+            
+            # 删除状态文件
+            os.remove(state_file_path)
+            print("[守护进程] 已清理状态文件")
+    except Exception as e:
+        print(f"[守护进程] 恢复输入法时出错: {e}")
+
 
 class InputMethodManager:
     """
@@ -16,7 +96,12 @@ class InputMethodManager:
         """
         self._original_state = {}
         self._system = platform.system()
+        self._watchdog_process = None
+        self._state_file_path = os.path.join(tempfile.gettempdir(), 'scrawl_ime_state.json')
         self._initialize_platform_specifics()
+        
+        # 注册 atexit 处理器，用于正常退出时清理
+        atexit.register(self._cleanup_on_exit)
 
     def _initialize_platform_specifics(self):
         """根据操作系统初始化特定的 API 或设置。"""
@@ -141,6 +226,116 @@ class InputMethodManager:
         """检查命令是否存在"""
         from shutil import which
         return which(cmd) is not None
+
+    def _start_watchdog(self):
+        """启动守护进程监视主进程"""
+        import sys
+        try:
+            # 如果已有守护进程在运行，先停止它
+            self._stop_watchdog()
+            
+            # 使用 subprocess 启动独立的 Python 进程
+            # 这样可以避免 Windows 上 multiprocessing 的 bootstrapping 问题
+            watchdog_code = f'''
+import os
+import sys
+import json
+import ctypes
+import subprocess
+
+try:
+    import psutil
+    parent = psutil.Process({os.getpid()})
+    parent.wait()
+except:
+    pass
+
+state_file = r"{self._state_file_path}"
+system_type = "{self._system}"
+
+try:
+    if os.path.exists(state_file):
+        with open(state_file, 'r', encoding='utf-8') as f:
+            state = json.load(f)
+        
+        layout = state.get('layout')
+        if layout is not None and layout != "Unknown":
+            if system_type == "Windows":
+                user32 = ctypes.windll.user32
+                user32.ActivateKeyboardLayout(int(layout), 0x00000001)
+            elif system_type == "Linux":
+                if layout == '1':
+                    subprocess.run(["fcitx-remote", "-o"], timeout=2)
+                elif layout == '2':
+                    subprocess.run(["fcitx-remote", "-c"], timeout=2)
+                else:
+                    subprocess.run(["ibus", "engine", layout], timeout=2)
+        
+        os.remove(state_file)
+except:
+    pass
+'''
+            
+            # 启动子进程
+            self._watchdog_process = subprocess.Popen(
+                [sys.executable, '-c', watchdog_code],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW if sys.platform == 'win32' else 0
+            )
+            print(f"[信息] 已启动输入法守护进程 (PID: {self._watchdog_process.pid})")
+        except Exception as e:
+            print(f"[警告] 启动守护进程失败: {e}")
+    
+    def _stop_watchdog(self):
+        """停止守护进程"""
+        if self._watchdog_process is not None:
+            try:
+                # 检查进程是否还在运行
+                if self._watchdog_process.poll() is None:
+                    self._watchdog_process.terminate()
+                    try:
+                        self._watchdog_process.wait(timeout=1)
+                    except subprocess.TimeoutExpired:
+                        self._watchdog_process.kill()
+                    print("[信息] 已停止输入法守护进程")
+            except Exception as e:
+                print(f"[警告] 停止守护进程时出错: {e}")
+        self._watchdog_process = None
+    
+    def _cleanup_on_exit(self):
+        """正常退出时的清理工作"""
+        # 停止守护进程
+        self._stop_watchdog()
+        
+        # 删除状态文件（如果存在）
+        try:
+            if os.path.exists(self._state_file_path):
+                os.remove(self._state_file_path)
+        except Exception as e:
+            print(f"[警告] 清理状态文件失败: {e}")
+    
+    def _save_state_to_file(self):
+        """将输入法状态保存到文件"""
+        try:
+            state_to_save = {
+                'layout': self._original_state.get('layout'),
+                'system': self._system
+            }
+            with open(self._state_file_path, 'w', encoding='utf-8') as f:
+                json.dump(state_to_save, f)
+            return True
+        except Exception as e:
+            print(f"[警告] 保存状态文件失败: {e}")
+            return False
+    
+    def _delete_state_file(self):
+        """删除状态文件"""
+        try:
+            if os.path.exists(self._state_file_path):
+                os.remove(self._state_file_path)
+        except Exception:
+            pass
 
     def _get_windows_layout(self):
         """获取当前 Windows 键盘布局 HKL"""
@@ -268,7 +463,6 @@ class InputMethodManager:
                 if layout is not None:
                     self._original_state['layout'] = layout
                     print(f"[信息] 已保存 Windows 输入法布局: {layout}")
-                    return True
                 else:
                     return False
 
@@ -277,29 +471,31 @@ class InputMethodManager:
                 if layout != "Unknown":
                    self._original_state['layout'] = layout
                    print(f"[信息] 已保存 macOS 输入法布局: {layout}")
-                   return True
-                # 即使是 Unknown 也保存，以便后续处理
-                self._original_state['layout'] = layout
-                print(f"[信息] 已保存 macOS 输入法布局 (可能未知): {layout}")
-                return True # 认为保存操作本身成功
+                else:
+                    # 即使是 Unknown 也保存，以便后续处理
+                    self._original_state['layout'] = layout
+                    print(f"[信息] 已保存 macOS 输入法布局 (可能未知): {layout}")
 
             elif self._system == "Linux":
                 layout = self._get_linux_layout()
-                if layout != "Unknown":
-                    self._original_state['layout'] = layout
-                    # print(f"[信息] 已保存 Linux 输入法状态: {layout}")
-                    return True
                 self._original_state['layout'] = layout
-                return True 
 
             else:
                 print(f"[警告] 不支持的操作系统 '{self._system}'，无法保存输入法状态。")
                 return False
+            
+            # 保存状态到文件并启动守护进程
+            if self._original_state.get('layout'):
+                self._save_state_to_file()
+                self._start_watchdog()
+            
+            return True
 
         except Exception as e:
             print(f"[错误] 保存输入法状态时发生未知错误: {e}")
             self._original_state = {} # 重置状态以防万一
             return False
+
 
     def switch_to_english(self):
         """
@@ -607,6 +803,9 @@ class InputMethodManager:
             # 无论恢复成功与否，都清空状态（如果 clear_history 为 True）
             if clear_history:
                 self._original_state = {}
+                # 停止守护进程并删除状态文件
+                self._stop_watchdog()
+                self._delete_state_file()
 
         return success
 

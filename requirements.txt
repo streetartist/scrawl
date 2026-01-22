@@ -1,3 +1,4 @@
 pygame-ce
 requests
 numpy
+psutil
