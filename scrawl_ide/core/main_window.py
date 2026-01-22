@@ -56,19 +56,9 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(tr("app.name"))
         self.setMinimumSize(1200, 800)
 
-        # Central widget - Scene Editor
-        central_widget = QWidget()
-        central_layout = QVBoxLayout(central_widget)
-        central_layout.setContentsMargins(0, 0, 0, 0)
-        central_layout.setSpacing(0)
-
-        self.scene_toolbar = SceneToolbar()
+        # Central widget - Scene Editor (no toolbar here, moved to main toolbar)
         self.scene_view = SceneView()
-
-        central_layout.addWidget(self.scene_toolbar)
-        central_layout.addWidget(self.scene_view)
-
-        self.setCentralWidget(central_widget)
+        self.setCentralWidget(self.scene_view)
 
         # Status bar
         self.statusBar().showMessage(tr("status.ready"))
@@ -230,6 +220,12 @@ class MainWindow(QMainWindow):
         stop_btn.triggered.connect(self._on_stop_game)
         toolbar.addAction(stop_btn)
 
+        toolbar.addSeparator()
+
+        # Scene toolbar - add as second toolbar on same row
+        self.scene_toolbar = SceneToolbar()
+        self.addToolBar(self.scene_toolbar)
+
     def _setup_docks(self):
         """Set up the dock widgets."""
         # Scene Tree (left)
@@ -258,8 +254,9 @@ class MainWindow(QMainWindow):
         self._view_menu.addAction(self.asset_dock.toggleViewAction())
 
         # Right panel with tabs: Code Editor + Inspector
-        self.right_dock = QDockWidget(tr("dock.code_editor"), self)
+        self.right_dock = QDockWidget(self)
         self.right_dock.setObjectName("RightDock")
+        self.right_dock.setTitleBarWidget(QWidget())  # Hide title bar
 
         # Create tab widget for code editor and inspector
         self.right_tabs = QTabWidget()

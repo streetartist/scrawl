@@ -314,12 +314,14 @@ class PropertyEditor(QWidget):
         bg_image_layout.addWidget(self._bg_image_edit)
 
         browse_bg_btn = QPushButton("...")
-        browse_bg_btn.setMaximumWidth(30)
+        browse_bg_btn.setFixedWidth(40)
+        browse_bg_btn.setStyleSheet("padding: 4px 8px;")
         browse_bg_btn.clicked.connect(self._on_browse_bg_image)
         bg_image_layout.addWidget(browse_bg_btn)
 
-        clear_bg_btn = QPushButton("×")
-        clear_bg_btn.setMaximumWidth(30)
+        clear_bg_btn = QPushButton("X")
+        clear_bg_btn.setFixedWidth(40)
+        clear_bg_btn.setStyleSheet("padding: 4px 8px;")
         clear_bg_btn.clicked.connect(self._on_clear_bg_image)
         bg_image_layout.addWidget(clear_bg_btn)
 

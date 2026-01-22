@@ -245,11 +245,22 @@ QTreeView::item:hover:!selected, QListView::item:hover:!selected {
 QTreeWidget::item {
     padding: 6px 4px;
     color: #E0E0E0;
+    min-height: 20px;
 }
 
 QTreeWidget::item:selected {
     background-color: #0078D4;
     color: #FFFFFF;
+}
+
+/* Tree/List inline editor */
+QTreeView QLineEdit, QTreeWidget QLineEdit {
+    background-color: #3C3C3C;
+    color: #E0E0E0;
+    border: 1px solid #0078D4;
+    padding: 2px 4px;
+    margin: 0px;
+    min-height: 18px;
 }
 
 QHeaderView::section {
