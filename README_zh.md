@@ -147,8 +147,6 @@ game.set_scene(MyScene())
 game.run(fps=60)
 ```
 
-*视频看起来有点慢是因为通过 VNC 录制。当精灵数量少于 200 时，运行相当流畅。*
-
 https://github.com/user-attachments/assets/7398ac8f-689e-4088-9d78-414272c99438
 
 **示例 2：**

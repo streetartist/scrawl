@@ -2,9 +2,15 @@
 
 中文 | [English](README_en.md)
 
-Scrawl QQ 交流群: **1001578435**
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
+</p>
 
-<img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
+<p align="center">
+  <a href="#">
+    <img src="https://img.shields.io/badge/QQ群-1001578435-blue?style=for-the-badge&logo=tencentqq" alt="QQ群" />
+  </a>
+</p>
 
 ---
 
@@ -154,8 +160,6 @@ class MyScene(Scene):
 game.set_scene(MyScene())
 game.run(fps=60)
 ```
-
-*视频因 VNC 录制显得较慢，精灵数量低于 200 时运行相当流畅。*
 
 https://github.com/user-attachments/assets/7398ac8f-689e-4088-9d78-414272c99438
 
