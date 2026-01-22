@@ -1,0 +1,131 @@
+{
+  "name": "1",
+  "version": "1.0",
+  "game": {
+    "width": 800,
+    "height": 600,
+    "title": "1",
+    "fps": 60,
+    "fullscreen": false
+  },
+  "scenes": [
+    {
+      "id": "aa769bb7-72b3-4199-bf29-87937d7dbcb7",
+      "name": "MainScene",
+      "background_color": [
+        100,
+        150,
+        200
+      ],
+      "background_image": null,
+      "code": "class MainScene(Scene):\n    def __init__(self):\n        super().__init__()\n        self.name = \"MainScene\"\n        self.background_color = (100, 150, 200)\n\n        # 精灵会由IDE自动添加，无需手动编写\n        # 可以在这里添加场景初始化逻辑\n\n    @as_main\n    def scene_logic(self):\n        \"\"\"场景主逻辑（可选）\"\"\"\n        while True:\n            yield 0\n",
+      "sprites": [
+        {
+          "id": "e41fd21f-72f8-4ca5-874b-bf5b8893e49f",
+          "name": "Sprite1",
+          "class": "Sprite1",
+          "pos": [
+            531.0039889829554,
+            247.6551831375791
+          ],
+          "direction": 48.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "hippo1-b",
+              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/hippo1-b.svg"
+            }
+          ],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "code": "class Sprite1(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite1\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n            \n    @on_mouse_event(mode=\"pressed\", button=1)\n    def click1(self):\n        self.say(\"你好\")\n",
+          "script": null,
+          "is_physics": false,
+          "properties": {}
+        },
+        {
+          "id": "d3fe81d2-dbb7-4072-81f3-57c10831dd78",
+          "name": "Sprite2",
+          "class": "Sprite2",
+          "pos": [
+            235.71196186834038,
+            248.58213748520097
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "witch",
+              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/witch.svg"
+            },
+            {
+              "name": "bat1-b",
+              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/bat1-b.svg"
+            }
+          ],
+          "current_costume": 1,
+          "default_costume": 1,
+          "visible": true,
+          "code": "class Sprite2(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite2\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
+          "script": null,
+          "is_physics": false,
+          "properties": {}
+        },
+        {
+          "id": "c5614cba-2378-456c-afa0-0b4faee96000",
+          "name": "Sprite3",
+          "class": "Sprite3",
+          "pos": [
+            400.0,
+            300.0
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "bat2-a",
+              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/bat2-a.svg"
+            }
+          ],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "code": "class Sprite3(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite3\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
+          "script": null,
+          "is_physics": false,
+          "properties": {}
+        },
+        {
+          "id": "653bf878-d897-4f81-a289-79699a6e6d93",
+          "name": "Sprite4",
+          "class": "Sprite4",
+          "pos": [
+            399.0,
+            215.0
+          ],
+          "direction": 87.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "bat2-a",
+              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/bat2-a.svg"
+            }
+          ],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "code": "class Sprite4(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite4\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
+          "script": null,
+          "is_physics": false,
+          "properties": {}
+        }
+      ]
+    }
+  ],
+  "scripts": {},
+  "assets": {
+    "images": [],
+    "sounds": []
+  }
+}

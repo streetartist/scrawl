@@ -41,6 +41,11 @@ class SceneView(QGraphicsView):
         self._min_zoom = 0.1
         self._max_zoom = 5.0
 
+        # Tool state
+        self._current_tool = "select"  # "select" or "pan"
+        self._snap_enabled = False
+        self._grid_size = 32
+
         # Pan state
         self._panning = False
         self._pan_start = QPoint()
@@ -140,7 +145,8 @@ class SceneView(QGraphicsView):
     def update_sprite(self, sprite: SpriteModel):
         """Update a sprite item from its model."""
         if sprite.id in self._sprite_items:
-            self._sprite_items[sprite.id].update_from_model()
+            item = self._sprite_items[sprite.id]
+            item.update_from_model()
 
     def get_selected_sprite(self) -> Optional[SpriteModel]:
         """Get the currently selected sprite model."""
@@ -179,6 +185,52 @@ class SceneView(QGraphicsView):
             self._zoom_factor = new_zoom
             self.scale(factor, factor)
 
+    def set_zoom(self, factor: float):
+        """Set absolute zoom level."""
+        if self._min_zoom <= factor <= self._max_zoom:
+            # Reset and apply new zoom
+            self.resetTransform()
+            self._zoom_factor = factor
+            self.scale(factor, factor)
+
+    def get_zoom(self) -> float:
+        """Get current zoom factor."""
+        return self._zoom_factor
+
+    def set_tool(self, tool: str):
+        """Set the current tool (select or pan)."""
+        self._current_tool = tool
+        if tool == "pan":
+            self.setDragMode(QGraphicsView.ScrollHandDrag)
+            self.setCursor(Qt.OpenHandCursor)
+        else:  # select
+            self.setDragMode(QGraphicsView.RubberBandDrag)
+            self.setCursor(Qt.ArrowCursor)
+
+    def set_grid_visible(self, visible: bool):
+        """Show or hide the grid."""
+        if self._grid:
+            self._grid.setVisible(visible)
+
+    def set_snap_enabled(self, enabled: bool):
+        """Enable or disable snap to grid."""
+        self._snap_enabled = enabled
+
+    def set_grid_size(self, size: int):
+        """Set the grid size for snapping."""
+        self._grid_size = size
+        if self._grid:
+            self._grid.grid_size = size
+            self._grid.update()
+
+    def _snap_to_grid(self, pos: QPoint) -> QPoint:
+        """Snap a position to the grid."""
+        if not self._snap_enabled:
+            return pos
+        x = round(pos.x() / self._grid_size) * self._grid_size
+        y = round(pos.y() / self._grid_size) * self._grid_size
+        return QPoint(int(x), int(y))
+
     # Event handlers
     def wheelEvent(self, event: QWheelEvent):
         """Handle mouse wheel for zooming."""
@@ -195,7 +247,9 @@ class SceneView(QGraphicsView):
 
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press."""
-        if event.button() == Qt.MiddleButton:
+        if event.button() == Qt.MiddleButton or (
+            event.button() == Qt.LeftButton and self._current_tool == "pan"
+        ):
             # Start panning
             self._panning = True
             self._pan_start = event.position().toPoint()
@@ -233,17 +287,29 @@ class SceneView(QGraphicsView):
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release."""
-        if event.button() == Qt.MiddleButton and self._panning:
+        if (event.button() == Qt.MiddleButton or
+            (event.button() == Qt.LeftButton and self._current_tool == "pan")) and self._panning:
             self._panning = False
-            self.setCursor(Qt.ArrowCursor)
+            if self._current_tool == "pan":
+                self.setCursor(Qt.OpenHandCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
             event.accept()
         else:
             super().mouseReleaseEvent(event)
 
-            # Emit move signal if item was moved
+            # Emit move signal if item was moved and apply snap
             if self._selected_item:
                 model = self._selected_item.sprite_model
                 pos = self._selected_item.pos()
+
+                # Apply snap to grid if enabled
+                if self._snap_enabled:
+                    snapped_x = round(pos.x() / self._grid_size) * self._grid_size
+                    snapped_y = round(pos.y() / self._grid_size) * self._grid_size
+                    self._selected_item.setPos(snapped_x, snapped_y)
+                    pos = self._selected_item.pos()
+
                 if model.x != pos.x() or model.y != pos.y():
                     self.sprite_moved.emit(model, pos.x(), pos.y())
 
@@ -279,7 +345,7 @@ class SceneView(QGraphicsView):
             urls = event.mimeData().urls()
             for url in urls:
                 path = url.toLocalFile()
-                if path.endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
+                if path.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.svg')):
                     # Create new sprite with this image
                     import os
                     name = os.path.splitext(os.path.basename(path))[0]
@@ -289,7 +355,8 @@ class SceneView(QGraphicsView):
                     scene_pos = self.mapToScene(event.position().toPoint())
                     sprite.x = scene_pos.x()
                     sprite.y = scene_pos.y()
-                    sprite.costumes = [path]
+                    # Use add_costume method for new CostumeData format
+                    sprite.add_costume(name, path)
 
                     # Add to scene
                     self.add_sprite(sprite)

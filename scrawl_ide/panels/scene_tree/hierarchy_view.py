@@ -22,7 +22,13 @@ class HierarchyView(QTreeWidget):
     sprite_selected = Signal(object)  # SpriteModel
     sprite_double_clicked = Signal(object)  # SpriteModel
     scene_selected = Signal(object)  # SceneModel
+    scene_double_clicked = Signal(object)  # SceneModel
+    project_selected = Signal()  # Project root selected
     item_renamed = Signal(object, str)  # model, new_name
+    sprite_added = Signal(object, object)  # SceneModel, SpriteModel
+    sprite_removed = Signal(object, object)  # SceneModel, SpriteModel
+    scene_added = Signal(object)  # SceneModel
+    scene_removed = Signal(object)  # SceneModel
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -102,6 +108,8 @@ class HierarchyView(QTreeWidget):
                 self.sprite_selected.emit(model)
             elif item_type == "scene":
                 self.scene_selected.emit(model)
+            elif item_type == "project":
+                self.project_selected.emit()
 
     def _on_item_double_clicked(self, item: QTreeWidgetItem, column: int):
         """Handle double-click."""
@@ -110,6 +118,8 @@ class HierarchyView(QTreeWidget):
             item_type, model = data
             if item_type == "sprite":
                 self.sprite_double_clicked.emit(model)
+            elif item_type == "scene":
+                self.scene_double_clicked.emit(model)
 
     def _on_item_changed(self, item: QTreeWidgetItem, column: int):
         """Handle item rename."""
@@ -185,6 +195,7 @@ class HierarchyView(QTreeWidget):
             scene = SceneModel.create_default(name)
             self._project.add_scene(scene)
             self.refresh()
+            self.scene_added.emit(scene)
 
     def _add_sprite(self, scene: SceneModel):
         """Add a new sprite to a scene."""
@@ -197,6 +208,7 @@ class HierarchyView(QTreeWidget):
             sprite = SpriteModel.create_default(name)
             scene.add_sprite(sprite)
             self.refresh()
+            self.sprite_added.emit(scene, sprite)
 
     def _delete_scene(self, scene: SceneModel):
         """Delete a scene."""
@@ -219,6 +231,7 @@ class HierarchyView(QTreeWidget):
         if reply == QMessageBox.Yes:
             self._project.remove_scene(scene.id)
             self.refresh()
+            self.scene_removed.emit(scene)
 
     def _delete_sprite(self, sprite: SpriteModel):
         """Delete a sprite."""
@@ -234,8 +247,9 @@ class HierarchyView(QTreeWidget):
         if reply == QMessageBox.Yes:
             for scene in self._project.scenes:
                 if scene.remove_sprite(sprite.id):
+                    self.refresh()
+                    self.sprite_removed.emit(scene, sprite)
                     break
-            self.refresh()
 
     def _duplicate_sprite(self, sprite: SpriteModel):
         """Duplicate a sprite."""
@@ -250,4 +264,5 @@ class HierarchyView(QTreeWidget):
                 new_sprite.y += 50
                 scene.add_sprite(new_sprite)
                 self.refresh()
+                self.sprite_added.emit(scene, new_sprite)
                 break

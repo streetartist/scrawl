@@ -36,6 +36,11 @@ class Settings:
     def load_window_state(self) -> Optional[QByteArray]:
         return self._settings.value("window/state")
 
+    def clear_window_state(self):
+        """Clear saved window geometry and state to reset layout."""
+        self._settings.remove("window/geometry")
+        self._settings.remove("window/state")
+
     # Recent projects
     def get_recent_projects(self) -> list:
         return self._settings.value("projects/recent", []) or []

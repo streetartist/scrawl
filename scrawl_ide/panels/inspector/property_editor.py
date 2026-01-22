@@ -8,11 +8,12 @@ from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QDoubleSpinBox,
     QSpinBox, QCheckBox, QLabel, QGroupBox, QScrollArea,
     QPushButton, QHBoxLayout, QColorDialog, QFileDialog,
-    QListWidget, QListWidgetItem
+    QListWidget, QListWidgetItem, QInputDialog, QMenu, QComboBox
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QColor, QPalette
+from PySide6.QtGui import QColor, QPalette, QAction
 from typing import Optional
+import os
 
 from models import SpriteModel
 from core.i18n import tr
@@ -154,7 +155,19 @@ class PropertyEditor(QWidget):
         # Costumes list
         self._costumes_list = QListWidget()
         self._costumes_list.setMaximumHeight(100)
+        self._costumes_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._costumes_list.customContextMenuRequested.connect(self._on_costume_context_menu)
+        self._costumes_list.itemDoubleClicked.connect(self._on_costume_double_clicked)
         appearance_layout.addRow(tr("inspector.costumes"), self._costumes_list)
+
+        # Default costume selector
+        default_costume_widget = QWidget()
+        default_costume_layout = QHBoxLayout(default_costume_widget)
+        default_costume_layout.setContentsMargins(0, 0, 0, 0)
+        self._default_costume_combo = QComboBox()
+        self._default_costume_combo.currentIndexChanged.connect(self._on_default_costume_changed)
+        default_costume_layout.addWidget(self._default_costume_combo)
+        appearance_layout.addRow(tr("inspector.default_costume"), default_costume_widget)
 
         # Add costume button
         add_costume_btn = QPushButton(tr("inspector.add_costume"))
@@ -203,6 +216,7 @@ class PropertyEditor(QWidget):
         self._size_spin.setEnabled(enabled)
         self._visible_check.setEnabled(enabled)
         self._costumes_list.setEnabled(enabled)
+        self._default_costume_combo.setEnabled(enabled)
         self._script_edit.setEnabled(enabled)
 
     def set_sprite(self, sprite: Optional[SpriteModel]):
@@ -233,10 +247,20 @@ class PropertyEditor(QWidget):
         self._size_spin.setValue(self._sprite.size)
         self._visible_check.setChecked(self._sprite.visible)
 
-        # Costumes
+        # Costumes - now using CostumeData
         self._costumes_list.clear()
-        for costume in self._sprite.costumes:
-            self._costumes_list.addItem(costume)
+        self._default_costume_combo.clear()
+        for i, costume in enumerate(self._sprite.costumes):
+            # Display name with path tooltip
+            item = QListWidgetItem(costume.name)
+            item.setToolTip(costume.path)
+            item.setData(Qt.UserRole, i)  # Store index
+            self._costumes_list.addItem(item)
+            self._default_costume_combo.addItem(costume.name)
+
+        # Set current default costume
+        if self._sprite.costumes:
+            self._default_costume_combo.setCurrentIndex(self._sprite.default_costume)
 
         # Script
         self._script_edit.setText(self._sprite.script_path or "")
@@ -297,8 +321,104 @@ class PropertyEditor(QWidget):
         )
 
         if path:
-            self._sprite.costumes.append(path)
-            self._costumes_list.addItem(path)
+            # Ask for costume name
+            default_name = os.path.splitext(os.path.basename(path))[0]
+            name, ok = QInputDialog.getText(
+                self, tr("inspector.costume_name"), tr("inspector.costume_name_prompt"),
+                text=default_name
+            )
+            if not ok or not name:
+                name = default_name
+
+            idx = self._sprite.add_costume(name, path)
+            # If this is the first costume, set it as current
+            if len(self._sprite.costumes) == 1:
+                self._sprite.current_costume = 0
+                self._sprite.default_costume = 0
+            self.refresh()
+            self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
+
+    def _on_default_costume_changed(self, index: int):
+        if self._updating or not self._sprite or index < 0:
+            return
+        self._sprite.default_costume = index
+        self.property_changed.emit(self._sprite, "default_costume", index)
+
+    def _on_costume_context_menu(self, pos):
+        """Show context menu for costume list."""
+        if not self._sprite:
+            return
+
+        item = self._costumes_list.itemAt(pos)
+        if not item:
+            return
+
+        menu = QMenu(self)
+
+        rename_action = QAction(tr("inspector.rename_costume"), self)
+        rename_action.triggered.connect(lambda: self._rename_costume(item))
+        menu.addAction(rename_action)
+
+        set_default_action = QAction(tr("inspector.set_as_default"), self)
+        set_default_action.triggered.connect(lambda: self._set_costume_as_default(item))
+        menu.addAction(set_default_action)
+
+        delete_action = QAction(tr("inspector.delete_costume"), self)
+        delete_action.triggered.connect(lambda: self._delete_costume(item))
+        menu.addAction(delete_action)
+
+        menu.exec_(self._costumes_list.mapToGlobal(pos))
+
+    def _on_costume_double_clicked(self, item):
+        """Handle double-click on costume to switch to it."""
+        if not self._sprite:
+            return
+        index = item.data(Qt.UserRole)
+        if index is not None:
+            self._sprite.current_costume = index
+            self.property_changed.emit(self._sprite, "current_costume", index)
+
+    def _rename_costume(self, item):
+        """Rename a costume."""
+        if not self._sprite:
+            return
+        index = item.data(Qt.UserRole)
+        if index is None or index >= len(self._sprite.costumes):
+            return
+
+        costume = self._sprite.costumes[index]
+        new_name, ok = QInputDialog.getText(
+            self, tr("inspector.rename_costume"), tr("inspector.rename_costume_prompt"),
+            text=costume.name
+        )
+        if ok and new_name:
+            costume.name = new_name
+            self.refresh()
+            self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
+
+    def _set_costume_as_default(self, item):
+        """Set costume as default."""
+        if not self._sprite:
+            return
+        index = item.data(Qt.UserRole)
+        if index is not None:
+            self._sprite.default_costume = index
+            self._default_costume_combo.setCurrentIndex(index)
+            self.property_changed.emit(self._sprite, "default_costume", index)
+
+    def _delete_costume(self, item):
+        """Delete a costume."""
+        if not self._sprite:
+            return
+        index = item.data(Qt.UserRole)
+        if index is not None and index < len(self._sprite.costumes):
+            del self._sprite.costumes[index]
+            # Adjust indices
+            if self._sprite.current_costume >= len(self._sprite.costumes):
+                self._sprite.current_costume = max(0, len(self._sprite.costumes) - 1)
+            if self._sprite.default_costume >= len(self._sprite.costumes):
+                self._sprite.default_costume = max(0, len(self._sprite.costumes) - 1)
+            self.refresh()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 
     def _on_browse_script(self):

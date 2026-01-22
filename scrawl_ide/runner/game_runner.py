@@ -61,6 +61,16 @@ class GameRunner(QObject):
             self._process = QProcess(self)
             self._process.setWorkingDirectory(project_dir)
 
+            # Set environment to use UTF-8 encoding and unbuffered output
+            env = self._process.processEnvironment()
+            env.insert("PYTHONIOENCODING", "utf-8")
+            env.insert("PYTHONUTF8", "1")
+            env.insert("PYTHONUNBUFFERED", "1")  # Force unbuffered output
+            self._process.setProcessEnvironment(env)
+
+            # Set process channel mode to merge or separate
+            self._process.setProcessChannelMode(QProcess.SeparateChannels)
+
             # Connect signals
             self._process.readyReadStandardOutput.connect(self._on_stdout)
             self._process.readyReadStandardError.connect(self._on_stderr)
@@ -70,8 +80,8 @@ class GameRunner(QObject):
             # Find Python executable
             python_exe = sys.executable
 
-            # Start the game
-            self._process.start(python_exe, [self._temp_file])
+            # Start the game with -u flag for unbuffered output
+            self._process.start(python_exe, ["-u", self._temp_file])
 
             if self._process.waitForStarted(5000):
                 self._running = True
@@ -101,20 +111,30 @@ class GameRunner(QObject):
         """Handle stdout from the game process."""
         if self._process:
             data = self._process.readAllStandardOutput().data()
-            try:
-                text = data.decode('utf-8')
-            except UnicodeDecodeError:
-                text = data.decode('latin-1')
+            # Windows uses GBK encoding for console output
+            for encoding in ['utf-8', 'gbk', 'gb2312', 'latin-1']:
+                try:
+                    text = data.decode(encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                text = data.decode('utf-8', errors='replace')
             self.output_received.emit(text)
 
     def _on_stderr(self):
         """Handle stderr from the game process."""
         if self._process:
             data = self._process.readAllStandardError().data()
-            try:
-                text = data.decode('utf-8')
-            except UnicodeDecodeError:
-                text = data.decode('latin-1')
+            # Windows uses GBK encoding for console output
+            for encoding in ['utf-8', 'gbk', 'gb2312', 'latin-1']:
+                try:
+                    text = data.decode(encoding)
+                    break
+                except UnicodeDecodeError:
+                    continue
+            else:
+                text = data.decode('utf-8', errors='replace')
             self.error_received.emit(text)
 
     def _on_finished(self, exit_code: int, exit_status):

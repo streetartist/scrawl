@@ -21,6 +21,7 @@ class SceneToolbar(QToolBar):
     zoom_changed = Signal(float)  # Zoom factor
     grid_toggled = Signal(bool)
     snap_toggled = Signal(bool)
+    grid_size_changed = Signal(int)  # Grid size in pixels
 
     def __init__(self, parent=None):
         super().__init__("Scene Tools", parent)
@@ -116,6 +117,7 @@ class SceneToolbar(QToolBar):
         self._grid_spin.setRange(8, 128)
         self._grid_spin.setValue(32)
         self._grid_spin.setSuffix(" px")
+        self._grid_spin.valueChanged.connect(self.grid_size_changed.emit)
         self.addWidget(self._grid_spin)
 
         # Spacer

@@ -107,6 +107,7 @@ TRANSLATIONS_ZH = {
     # Menu - View
     "menu.view": "视图(&V)",
     "menu.view.language": "语言(&L)",
+    "menu.view.reset_layout": "重置布局(&R)",
 
     # Menu - Scene
     "menu.scene": "场景(&S)",
@@ -165,7 +166,14 @@ TRANSLATIONS_ZH = {
     "inspector.appearance": "外观",
     "inspector.visible": "可见:",
     "inspector.costumes": "造型:",
+    "inspector.default_costume": "默认造型:",
     "inspector.add_costume": "添加造型...",
+    "inspector.rename_costume": "重命名造型",
+    "inspector.rename_costume_prompt": "新名称:",
+    "inspector.costume_name": "造型名称",
+    "inspector.costume_name_prompt": "输入造型名称:",
+    "inspector.set_as_default": "设为默认",
+    "inspector.delete_costume": "删除造型",
     "inspector.script": "脚本",
     "inspector.script_path": "脚本:",
 
@@ -207,7 +215,7 @@ TRANSLATIONS_ZH = {
     "dialog.open_project": "打开项目",
     "dialog.save_project": "保存项目",
     "dialog.project_filter": "Scrawl 项目 (*.scrawl)",
-    "dialog.image_filter": "图片文件 (*.png *.jpg *.jpeg *.gif *.bmp)",
+    "dialog.image_filter": "图片文件 (*.png *.jpg *.jpeg *.gif *.bmp *.svg)",
     "dialog.python_filter": "Python 文件 (*.py)",
     "dialog.unsaved_title": "未保存的更改",
     "dialog.unsaved_message": "是否在关闭前保存更改?",
@@ -218,6 +226,8 @@ TRANSLATIONS_ZH = {
     "dialog.add_scene_prompt": "场景名称:",
     "dialog.select_costume": "添加造型",
     "dialog.select_script": "选择脚本",
+    "dialog.no_project": "请先创建或打开一个项目。",
+    "dialog.no_scene": "请先选择一个场景。",
 
     # Status messages
     "status.ready": "就绪",
@@ -270,6 +280,7 @@ TRANSLATIONS_EN = {
     # Menu - View
     "menu.view": "&View",
     "menu.view.language": "&Language",
+    "menu.view.reset_layout": "&Reset Layout",
 
     # Menu - Scene
     "menu.scene": "&Scene",
@@ -328,7 +339,14 @@ TRANSLATIONS_EN = {
     "inspector.appearance": "Appearance",
     "inspector.visible": "Visible:",
     "inspector.costumes": "Costumes:",
+    "inspector.default_costume": "Default Costume:",
     "inspector.add_costume": "Add Costume...",
+    "inspector.rename_costume": "Rename Costume",
+    "inspector.rename_costume_prompt": "New name:",
+    "inspector.costume_name": "Costume Name",
+    "inspector.costume_name_prompt": "Enter costume name:",
+    "inspector.set_as_default": "Set as Default",
+    "inspector.delete_costume": "Delete Costume",
     "inspector.script": "Script",
     "inspector.script_path": "Script:",
 
@@ -370,7 +388,7 @@ TRANSLATIONS_EN = {
     "dialog.open_project": "Open Project",
     "dialog.save_project": "Save Project As",
     "dialog.project_filter": "Scrawl Project (*.scrawl)",
-    "dialog.image_filter": "Images (*.png *.jpg *.jpeg *.gif *.bmp)",
+    "dialog.image_filter": "Images (*.png *.jpg *.jpeg *.gif *.bmp *.svg)",
     "dialog.python_filter": "Python Files (*.py)",
     "dialog.unsaved_title": "Unsaved Changes",
     "dialog.unsaved_message": "Do you want to save changes before closing?",
@@ -381,6 +399,8 @@ TRANSLATIONS_EN = {
     "dialog.add_scene_prompt": "Scene name:",
     "dialog.select_costume": "Add Costume",
     "dialog.select_script": "Select Script",
+    "dialog.no_project": "Please create or open a project first.",
+    "dialog.no_scene": "Please select a scene first.",
 
     # Status messages
     "status.ready": "Ready",

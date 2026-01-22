@@ -5,6 +5,7 @@ The main application window with dock-based layout.
 """
 
 import os
+from typing import Optional
 from PySide6.QtWidgets import (
     QMainWindow, QDockWidget, QToolBar, QMenuBar, QMenu,
     QStatusBar, QFileDialog, QMessageBox, QWidget, QVBoxLayout,
@@ -35,6 +36,9 @@ class MainWindow(QMainWindow):
         self.project = Project(self)
         self.game_runner = GameRunner(self)
         self.translator = Translator()
+
+        # Current scene being edited
+        self._current_scene: Optional[SceneModel] = None
 
         # Initialize language from settings
         saved_language = self.settings.get_language()
@@ -151,6 +155,11 @@ class MainWindow(QMainWindow):
 
         view_menu.addSeparator()
 
+        # Reset layout action
+        reset_layout_action = QAction(tr("menu.view.reset_layout"), self)
+        reset_layout_action.triggered.connect(self._on_reset_layout)
+        view_menu.addAction(reset_layout_action)
+
         # Scene menu
         scene_menu = menubar.addMenu(tr("menu.scene"))
 
@@ -231,36 +240,7 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.LeftDockWidgetArea, self.hierarchy_dock)
         self._view_menu.addAction(self.hierarchy_dock.toggleViewAction())
 
-        # Inspector (right)
-        self.inspector_dock = QDockWidget(tr("dock.inspector"), self)
-        self.inspector_dock.setObjectName("InspectorDock")
-        self.property_editor = PropertyEditor()
-        self.inspector_dock.setWidget(self.property_editor)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.inspector_dock)
-        self._view_menu.addAction(self.inspector_dock.toggleViewAction())
-
-        # Code Editor (bottom)
-        self.code_dock = QDockWidget(tr("dock.code_editor"), self)
-        self.code_dock.setObjectName("CodeEditorDock")
-        self.code_tabs = QTabWidget()
-        self.code_tabs.setTabsClosable(True)
-        self.code_tabs.tabCloseRequested.connect(self._on_close_code_tab)
-        self.code_dock.setWidget(self.code_tabs)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.code_dock)
-        self._view_menu.addAction(self.code_dock.toggleViewAction())
-
-        # Console (bottom, tabbed with code editor)
-        self.console_dock = QDockWidget(tr("dock.console"), self)
-        self.console_dock.setObjectName("ConsoleDock")
-        self.console_output = QTextEdit()
-        self.console_output.setReadOnly(True)
-        self.console_output.setFont(self.console_output.font())
-        self.console_dock.setWidget(self.console_output)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
-        self.tabifyDockWidget(self.code_dock, self.console_dock)
-        self._view_menu.addAction(self.console_dock.toggleViewAction())
-
-        # Asset Browser (bottom)
+        # Asset Browser (left, below scene tree)
         self.asset_dock = QDockWidget(tr("dock.asset_browser"), self)
         self.asset_dock.setObjectName("AssetBrowserDock")
         asset_widget = QWidget()
@@ -274,12 +254,53 @@ class MainWindow(QMainWindow):
         asset_layout.addWidget(self.asset_preview, 1)
 
         self.asset_dock.setWidget(asset_widget)
-        self.addDockWidget(Qt.BottomDockWidgetArea, self.asset_dock)
-        self.tabifyDockWidget(self.console_dock, self.asset_dock)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.asset_dock)
         self._view_menu.addAction(self.asset_dock.toggleViewAction())
 
-        # Show code dock by default
-        self.code_dock.raise_()
+        # Right panel with tabs: Code Editor + Inspector
+        self.right_dock = QDockWidget(tr("dock.code_editor"), self)
+        self.right_dock.setObjectName("RightDock")
+
+        # Create tab widget for code editor and inspector
+        self.right_tabs = QTabWidget()
+
+        # Code Editor tab (contains multiple code tabs)
+        self.code_tabs = QTabWidget()
+        self.code_tabs.setTabsClosable(True)
+        self.code_tabs.tabCloseRequested.connect(self._on_close_code_tab)
+        self.right_tabs.addTab(self.code_tabs, tr("dock.code_editor"))
+
+        # Inspector tab
+        self.property_editor = PropertyEditor()
+        self.right_tabs.addTab(self.property_editor, tr("dock.inspector"))
+
+        self.right_dock.setWidget(self.right_tabs)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
+        self._view_menu.addAction(self.right_dock.toggleViewAction())
+
+        # Console (bottom)
+        self.console_dock = QDockWidget(tr("dock.console"), self)
+        self.console_dock.setObjectName("ConsoleDock")
+        self.console_output = QTextEdit()
+        self.console_output.setReadOnly(True)
+        self.console_output.setFont(self.console_output.font())
+        self.console_dock.setWidget(self.console_output)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
+        self._view_menu.addAction(self.console_dock.toggleViewAction())
+
+        # Set initial sizes - make scene and code editor roughly equal
+        # Left docks
+        self.resizeDocks(
+            [self.hierarchy_dock, self.asset_dock],
+            [250, 150],
+            Qt.Vertical
+        )
+
+        # Set right dock width to be roughly equal to central widget
+        self.resizeDocks([self.right_dock], [600], Qt.Horizontal)
+
+        # Show code editor tab by default
+        self.right_tabs.setCurrentIndex(0)
 
     def _setup_connections(self):
         """Set up signal connections."""
@@ -287,13 +308,28 @@ class MainWindow(QMainWindow):
         self.project.project_loaded.connect(self._on_project_loaded)
         self.project.project_modified.connect(self._update_title)
 
+        # Scene toolbar signals
+        self.scene_toolbar.tool_changed.connect(self.scene_view.set_tool)
+        self.scene_toolbar.zoom_changed.connect(self._on_zoom_changed)
+        self.scene_toolbar.grid_toggled.connect(self.scene_view.set_grid_visible)
+        self.scene_toolbar.snap_toggled.connect(self.scene_view.set_snap_enabled)
+        self.scene_toolbar.grid_size_changed.connect(self.scene_view.set_grid_size)
+
         # Scene view signals
         self.scene_view.sprite_selected.connect(self._on_sprite_selected)
         self.scene_view.sprite_moved.connect(self._on_sprite_moved)
+        self.scene_view.sprite_added.connect(self._on_sprite_dropped)
 
         # Hierarchy view signals
         self.hierarchy_view.sprite_selected.connect(self._on_hierarchy_sprite_selected)
         self.hierarchy_view.sprite_double_clicked.connect(self._on_sprite_double_clicked)
+        self.hierarchy_view.scene_selected.connect(self._on_hierarchy_scene_selected)
+        self.hierarchy_view.scene_double_clicked.connect(lambda s: self._open_scene_code(s))
+        self.hierarchy_view.project_selected.connect(self._on_hierarchy_project_selected)
+        self.hierarchy_view.sprite_added.connect(self._on_hierarchy_sprite_added)
+        self.hierarchy_view.sprite_removed.connect(self._on_hierarchy_sprite_removed)
+        self.hierarchy_view.scene_added.connect(self._on_hierarchy_scene_added)
+        self.hierarchy_view.scene_removed.connect(self._on_hierarchy_scene_removed)
 
         # Property editor signals
         self.property_editor.property_changed.connect(self._on_property_changed)
@@ -304,6 +340,7 @@ class MainWindow(QMainWindow):
 
         # Game runner signals
         self.game_runner.output_received.connect(self._on_game_output)
+        self.game_runner.error_received.connect(self._on_game_error)
         self.game_runner.game_started.connect(self._on_game_started)
         self.game_runner.game_stopped.connect(self._on_game_stopped)
 
@@ -342,6 +379,41 @@ class MainWindow(QMainWindow):
             "Language changed. Please restart the application for changes to take full effect.\n"
             "语言已更改。请重新启动应用程序以使更改完全生效。"
         )
+
+    def _on_reset_layout(self):
+        """Reset window layout to default."""
+        # Clear saved state
+        self.settings.clear_window_state()
+
+        # Reset dock positions immediately
+        # Remove all docks first
+        self.removeDockWidget(self.hierarchy_dock)
+        self.removeDockWidget(self.asset_dock)
+        self.removeDockWidget(self.right_dock)
+        self.removeDockWidget(self.console_dock)
+
+        # Re-add docks in default positions
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.hierarchy_dock)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.asset_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
+
+        # Show all docks
+        self.hierarchy_dock.show()
+        self.asset_dock.show()
+        self.right_dock.show()
+        self.console_dock.show()
+
+        # Reset sizes
+        self.resizeDocks(
+            [self.hierarchy_dock, self.asset_dock],
+            [250, 150],
+            Qt.Vertical
+        )
+        self.resizeDocks([self.right_dock], [600], Qt.Horizontal)
+
+        # Show code editor tab
+        self.right_tabs.setCurrentIndex(0)
 
     # Menu actions
     def _on_new_project(self):
@@ -386,21 +458,55 @@ class MainWindow(QMainWindow):
     def _on_add_sprite(self):
         """Add a new sprite to the current scene."""
         if not self.project.model:
+            QMessageBox.warning(
+                self, tr("app.name"),
+                tr("dialog.no_project")
+            )
             return
 
-        sprite = SpriteModel.create_default("NewSprite")
-        if self.project.model.scenes:
-            self.project.model.scenes[0].sprites.append(sprite)
-            self.scene_view.add_sprite(sprite)
-            self.hierarchy_view.refresh()
-            self.project.mark_modified()
+        if not self._current_scene:
+            QMessageBox.warning(
+                self, tr("app.name"),
+                tr("dialog.no_scene")
+            )
+            return
+
+        # Ask for sprite name
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, tr("dialog.add_sprite_title"), tr("dialog.add_sprite_prompt"),
+            text=f"Sprite{len(self._current_scene.sprites) + 1}"
+        )
+
+        if not ok or not name:
+            return
+
+        sprite = SpriteModel.create_default(name)
+        self._current_scene.sprites.append(sprite)
+        self.scene_view.add_sprite(sprite)
+        self.hierarchy_view.refresh()
+        self.project.mark_modified()
 
     def _on_add_scene(self):
         """Add a new scene to the project."""
         if not self.project.model:
+            QMessageBox.warning(
+                self, tr("app.name"),
+                tr("dialog.no_project")
+            )
             return
 
-        scene = SceneModel.create_default(f"Scene{len(self.project.model.scenes) + 1}")
+        # Ask for scene name
+        from PySide6.QtWidgets import QInputDialog
+        name, ok = QInputDialog.getText(
+            self, tr("dialog.add_scene_title"), tr("dialog.add_scene_prompt"),
+            text=f"Scene{len(self.project.model.scenes) + 1}"
+        )
+
+        if not ok or not name:
+            return
+
+        scene = SceneModel.create_default(name)
         self.project.model.scenes.append(scene)
         self.hierarchy_view.refresh()
         self.project.mark_modified()
@@ -427,11 +533,12 @@ class MainWindow(QMainWindow):
         """Handle project loaded."""
         self._update_title()
 
-        # Update scene view
-        self.scene_view.clear()
+        # Set current scene to first scene
         if model.scenes:
-            for sprite in model.scenes[0].sprites:
-                self.scene_view.add_sprite(sprite)
+            self._switch_to_scene(model.scenes[0])
+        else:
+            self._current_scene = None
+            self.scene_view.clear()
 
         # Update hierarchy
         self.hierarchy_view.set_project(model)
@@ -442,10 +549,35 @@ class MainWindow(QMainWindow):
 
         self.statusBar().showMessage(tr("status.opened").format(path=self.project.path))
 
+    def _switch_to_scene(self, scene: SceneModel):
+        """Switch to display a different scene."""
+        self._current_scene = scene
+
+        # Clear current scene view
+        self.scene_view.clear()
+
+        # Add all sprites from this scene
+        for sprite in scene.sprites:
+            self.scene_view.add_sprite(sprite)
+
+        # Update status bar
+        self.statusBar().showMessage(f"场景: {scene.name}")
+
     def _on_sprite_selected(self, sprite: SpriteModel):
         """Handle sprite selection in scene view."""
         self.property_editor.set_sprite(sprite)
         self.hierarchy_view.select_sprite(sprite)
+        # Switch to inspector tab
+        self.right_tabs.setCurrentIndex(1)
+
+    def _on_sprite_dropped(self, sprite: SpriteModel):
+        """Handle sprite added via drag-drop to scene view."""
+        if self._current_scene and self.project.model:
+            # Add to current scene's model if not already there
+            if sprite not in self._current_scene.sprites:
+                self._current_scene.sprites.append(sprite)
+            self.hierarchy_view.refresh()
+            self.project.mark_modified()
 
     def _on_sprite_moved(self, sprite: SpriteModel, x: float, y: float):
         """Handle sprite movement in scene view."""
@@ -456,13 +588,132 @@ class MainWindow(QMainWindow):
 
     def _on_hierarchy_sprite_selected(self, sprite: SpriteModel):
         """Handle sprite selection in hierarchy."""
+        # Find and switch to the scene containing this sprite
+        if self.project.model:
+            for scene in self.project.model.scenes:
+                if sprite in scene.sprites:
+                    if scene != self._current_scene:
+                        self._switch_to_scene(scene)
+                    break
+
         self.scene_view.select_sprite(sprite)
         self.property_editor.set_sprite(sprite)
+        # Open sprite code in editor
+        self._open_sprite_code(sprite)
 
     def _on_sprite_double_clicked(self, sprite: SpriteModel):
         """Handle sprite double-click to open script."""
-        if sprite.script_path:
-            self._open_script(sprite.script_path)
+        # Open sprite code in editor
+        self._open_sprite_code(sprite)
+
+    def _open_sprite_code(self, sprite: SpriteModel):
+        """Open sprite's inline code in the code editor."""
+        tab_id = f"sprite:{sprite.id}"
+
+        # Check if already open
+        for i in range(self.code_tabs.count()):
+            widget = self.code_tabs.widget(i)
+            if hasattr(widget, 'tab_id') and widget.tab_id == tab_id:
+                self.code_tabs.setCurrentIndex(i)
+                return
+
+        # Create new editor
+        editor = CodeEditorWidget()
+        editor.tab_id = tab_id
+        editor.sprite_model = sprite
+        editor.set_text(sprite.code)
+        editor.text_changed.connect(lambda: self._on_sprite_code_changed(editor))
+
+        tab_name = f"🎮 {sprite.name}"
+        self.code_tabs.addTab(editor, tab_name)
+        self.code_tabs.setCurrentWidget(editor)
+        # Switch to code editor tab
+        self.right_tabs.setCurrentIndex(0)
+
+    def _on_sprite_code_changed(self, editor):
+        """Handle sprite code changes."""
+        if hasattr(editor, 'sprite_model'):
+            editor.sprite_model.code = editor.get_text()
+            self.project.mark_modified()
+
+    def _open_scene_code(self, scene: SceneModel):
+        """Open scene's inline code in the code editor."""
+        tab_id = f"scene:{scene.id}"
+
+        # Check if already open
+        for i in range(self.code_tabs.count()):
+            widget = self.code_tabs.widget(i)
+            if hasattr(widget, 'tab_id') and widget.tab_id == tab_id:
+                self.code_tabs.setCurrentIndex(i)
+                return
+
+        # Create new editor
+        editor = CodeEditorWidget()
+        editor.tab_id = tab_id
+        editor.scene_model = scene
+        editor.set_text(scene.code)
+        editor.text_changed.connect(lambda: self._on_scene_code_changed(editor))
+
+        tab_name = f"🎬 {scene.name}"
+        self.code_tabs.addTab(editor, tab_name)
+        self.code_tabs.setCurrentWidget(editor)
+        # Switch to code editor tab
+        self.right_tabs.setCurrentIndex(0)
+
+    def _on_scene_code_changed(self, editor):
+        """Handle scene code changes."""
+        if hasattr(editor, 'scene_model'):
+            editor.scene_model.code = editor.get_text()
+            self.project.mark_modified()
+
+    def _on_hierarchy_scene_selected(self, scene: SceneModel):
+        """Handle scene selection in hierarchy."""
+        # Switch to this scene
+        self._switch_to_scene(scene)
+        # Clear sprite selection in property editor
+        self.property_editor.set_sprite(None)
+        # Open scene code in editor
+        self._open_scene_code(scene)
+
+    def _on_hierarchy_project_selected(self):
+        """Handle project root selection in hierarchy."""
+        self.property_editor.set_sprite(None)
+        # Could open game settings panel here
+        self._show_game_settings()
+
+    def _on_hierarchy_sprite_added(self, scene: SceneModel, sprite: SpriteModel):
+        """Handle sprite added from hierarchy view."""
+        # If the sprite was added to the current scene, add it to scene view
+        if scene == self._current_scene:
+            self.scene_view.add_sprite(sprite)
+        self.project.mark_modified()
+
+    def _on_hierarchy_sprite_removed(self, scene: SceneModel, sprite: SpriteModel):
+        """Handle sprite removed from hierarchy view."""
+        # If the sprite was in the current scene, remove it from scene view
+        if scene == self._current_scene:
+            self.scene_view.remove_sprite(sprite.id)
+        self.project.mark_modified()
+
+    def _on_hierarchy_scene_added(self, scene: SceneModel):
+        """Handle scene added from hierarchy view."""
+        self.project.mark_modified()
+
+    def _on_hierarchy_scene_removed(self, scene: SceneModel):
+        """Handle scene removed from hierarchy view."""
+        # If the removed scene was current, switch to first available scene
+        if scene == self._current_scene and self.project.model and self.project.model.scenes:
+            self._switch_to_scene(self.project.model.scenes[0])
+        self.project.mark_modified()
+
+    def _show_game_settings(self):
+        """Show game settings in a dialog or panel."""
+        # For now, just show in status bar
+        if self.project.model:
+            game = self.project.model.game
+            self.statusBar().showMessage(
+                f"游戏设置: {game.width}x{game.height}, {game.fps}FPS, {game.title}"
+            )
 
     def _on_property_changed(self, sprite: SpriteModel, prop: str, value):
         """Handle property change in inspector."""
@@ -485,9 +736,42 @@ class MainWindow(QMainWindow):
         """Close a code editor tab."""
         self.code_tabs.removeTab(index)
 
+    def _on_zoom_changed(self, factor: float):
+        """Handle zoom change from toolbar."""
+        if factor == -1:
+            # Fit to view
+            self.scene_view.zoom_fit()
+        else:
+            self.scene_view.set_zoom(factor)
+        # Update toolbar display
+        self.scene_toolbar.set_zoom(self.scene_view.get_zoom())
+
     def _on_game_output(self, text: str):
         """Handle game output."""
-        self.console_output.append(text)
+        # Move cursor to end and insert text
+        cursor = self.console_output.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.console_output.setTextCursor(cursor)
+        self.console_output.insertPlainText(text)
+        # Scroll to bottom
+        self.console_output.verticalScrollBar().setValue(
+            self.console_output.verticalScrollBar().maximum()
+        )
+
+    def _on_game_error(self, text: str):
+        """Handle game error output."""
+        # Move cursor to end and insert red text
+        cursor = self.console_output.textCursor()
+        cursor.movePosition(cursor.MoveOperation.End)
+        self.console_output.setTextCursor(cursor)
+        # Insert with red color
+        self.console_output.insertHtml(
+            f'<span style="color: #ff6b6b;">{text.replace(chr(10), "<br>")}</span>'
+        )
+        # Scroll to bottom
+        self.console_output.verticalScrollBar().setValue(
+            self.console_output.verticalScrollBar().maximum()
+        )
 
     def _on_game_started(self):
         """Handle game started."""
@@ -513,7 +797,8 @@ class MainWindow(QMainWindow):
         name = os.path.basename(path)
         self.code_tabs.addTab(editor, name)
         self.code_tabs.setCurrentWidget(editor)
-        self.code_dock.raise_()
+        # Switch to code editor tab
+        self.right_tabs.setCurrentIndex(0)
 
     def closeEvent(self, event):
         """Handle window close."""

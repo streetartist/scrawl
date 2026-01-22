@@ -1,6 +1,5 @@
 """Code Editor panel components."""
 
-from .editor_widget import CodeEditorWidget
-from .python_lexer import PythonLexerConfig
+from .editor_widget import CodeEditorWidget, CodeEditor, PythonHighlighter
 
-__all__ = ['CodeEditorWidget', 'PythonLexerConfig']
+__all__ = ['CodeEditorWidget', 'CodeEditor', 'PythonHighlighter']

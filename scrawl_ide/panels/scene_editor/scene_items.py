@@ -12,6 +12,7 @@ from PySide6.QtCore import Qt, QRectF, QPointF
 from PySide6.QtGui import (
     QPainter, QPen, QBrush, QColor, QPixmap, QTransform
 )
+from PySide6.QtSvg import QSvgRenderer
 from typing import Optional
 import os
 
@@ -29,6 +30,8 @@ class SpriteItem(QGraphicsItem):
 
         self.sprite_model = sprite_model
         self._pixmap: Optional[QPixmap] = None
+        self._svg_renderer: Optional[QSvgRenderer] = None
+        self._is_svg = False
         self._selected = False
         self._resizing = False
         self._resize_handle = None
@@ -42,6 +45,9 @@ class SpriteItem(QGraphicsItem):
         self.setFlag(QGraphicsItem.ItemIsSelectable, True)
         self.setFlag(QGraphicsItem.ItemSendsGeometryChanges, True)
 
+        # Ensure sprite is above grid background
+        self.setZValue(100)
+
         # Set position from model
         self.setPos(sprite_model.x, sprite_model.y)
 
@@ -50,14 +56,31 @@ class SpriteItem(QGraphicsItem):
 
     def _load_costume(self):
         """Load the sprite's current costume."""
-        if self.sprite_model.costumes:
-            costume_path = self.sprite_model.costumes[self.sprite_model.current_costume]
-            if os.path.exists(costume_path):
+        self._pixmap = None
+        self._svg_renderer = None
+        self._is_svg = False
+
+        # Use the new get_current_costume_path method
+        costume_path = self.sprite_model.get_current_costume_path()
+        if costume_path and os.path.exists(costume_path):
+            if costume_path.lower().endswith('.svg'):
+                # Load SVG
+                self._svg_renderer = QSvgRenderer(costume_path)
+                if self._svg_renderer.isValid():
+                    self._is_svg = True
+                else:
+                    self._svg_renderer = None
+            else:
+                # Load raster image
                 self._pixmap = QPixmap(costume_path)
 
     def boundingRect(self) -> QRectF:
         """Return the bounding rectangle."""
-        if self._pixmap and not self._pixmap.isNull():
+        if self._is_svg and self._svg_renderer:
+            size = self._svg_renderer.defaultSize()
+            w = size.width() * self.sprite_model.size
+            h = size.height() * self.sprite_model.size
+        elif self._pixmap and not self._pixmap.isNull():
             w = self._pixmap.width() * self.sprite_model.size
             h = self._pixmap.height() * self.sprite_model.size
         else:
@@ -73,7 +96,11 @@ class SpriteItem(QGraphicsItem):
         painter.setRenderHint(QPainter.Antialiasing)
 
         # Calculate dimensions
-        if self._pixmap and not self._pixmap.isNull():
+        if self._is_svg and self._svg_renderer:
+            size = self._svg_renderer.defaultSize()
+            w = size.width() * self.sprite_model.size
+            h = size.height() * self.sprite_model.size
+        elif self._pixmap and not self._pixmap.isNull():
             w = self._pixmap.width() * self.sprite_model.size
             h = self._pixmap.height() * self.sprite_model.size
         else:
@@ -85,7 +112,11 @@ class SpriteItem(QGraphicsItem):
         painter.rotate(90 - self.sprite_model.direction)
 
         # Draw the sprite
-        if self._pixmap and not self._pixmap.isNull():
+        if self._is_svg and self._svg_renderer:
+            # Draw SVG
+            rect = QRectF(-w/2, -h/2, w, h)
+            self._svg_renderer.render(painter, rect)
+        elif self._pixmap and not self._pixmap.isNull():
             # Draw scaled pixmap
             scaled = self._pixmap.scaled(
                 int(w), int(h),
@@ -98,15 +129,32 @@ class SpriteItem(QGraphicsItem):
                 scaled
             )
         else:
-            # Draw placeholder rectangle
+            # Draw placeholder - a visible icon when no costume
             rect = QRectF(-w/2, -h/2, w, h)
-            painter.setPen(QPen(QColor(100, 100, 100), 2))
-            painter.setBrush(QBrush(QColor(200, 200, 200, 150)))
-            painter.drawRect(rect)
 
-            # Draw sprite name
-            painter.setPen(QColor(50, 50, 50))
-            painter.drawText(rect, Qt.AlignCenter, self.sprite_model.name)
+            # Background with gradient-like effect
+            painter.setPen(QPen(QColor(80, 80, 80), 2))
+            painter.setBrush(QBrush(QColor(120, 120, 120, 200)))
+            painter.drawRoundedRect(rect, 8, 8)
+
+            # Draw a sprite icon (simple person shape)
+            icon_color = QColor(200, 200, 200)
+            painter.setPen(QPen(icon_color, 2))
+            painter.setBrush(QBrush(icon_color))
+
+            # Head (circle)
+            head_size = min(w, h) * 0.25
+            painter.drawEllipse(QRectF(-head_size/2, -h/4 - head_size/2, head_size, head_size))
+
+            # Body (rectangle)
+            body_width = min(w, h) * 0.3
+            body_height = min(w, h) * 0.35
+            painter.drawRect(QRectF(-body_width/2, -h/4 + head_size/2 + 2, body_width, body_height))
+
+            # Draw sprite name below
+            painter.setPen(QColor(255, 255, 255))
+            name_rect = QRectF(-w/2, h/4, w, h/4)
+            painter.drawText(name_rect, Qt.AlignCenter, self.sprite_model.name)
 
         painter.restore()
 
@@ -156,17 +204,28 @@ class SpriteItem(QGraphicsItem):
 
     def update_from_model(self):
         """Update the item from its model."""
+        self.prepareGeometryChange()
         self.setPos(self.sprite_model.x, self.sprite_model.y)
         self._load_costume()
         self.update()
 
-    def set_costume(self, path: str):
+    def set_costume(self, name: str, path: str):
         """Set the sprite's costume."""
         if os.path.exists(path):
-            self._pixmap = QPixmap(path)
-            if path not in self.sprite_model.costumes:
-                self.sprite_model.costumes.append(path)
-            self.sprite_model.current_costume = self.sprite_model.costumes.index(path)
+            # Check if costume with this path already exists
+            existing_idx = None
+            for i, costume in enumerate(self.sprite_model.costumes):
+                if costume.path == path:
+                    existing_idx = i
+                    break
+
+            if existing_idx is not None:
+                self.sprite_model.current_costume = existing_idx
+            else:
+                idx = self.sprite_model.add_costume(name, path)
+                self.sprite_model.current_costume = idx
+
+            self._load_costume()
             self.prepareGeometryChange()
             self.update()
 
