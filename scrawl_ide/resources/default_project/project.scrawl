@@ -1,0 +1,25 @@
+{
+  "name": "New Project",
+  "version": "1.0",
+  "game": {
+    "width": 800,
+    "height": 600,
+    "title": "My Scrawl Game",
+    "fps": 60,
+    "fullscreen": false
+  },
+  "scenes": [
+    {
+      "id": "main-scene",
+      "name": "MainScene",
+      "background_color": [100, 150, 200],
+      "background_image": null,
+      "sprites": []
+    }
+  ],
+  "scripts": {},
+  "assets": {
+    "images": [],
+    "sounds": []
+  }
+}

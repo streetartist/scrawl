@@ -1,0 +1,2 @@
+PySide6>=6.6.0
+QScintilla>=2.14.0
