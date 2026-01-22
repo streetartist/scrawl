@@ -1,21 +1,22 @@
 """
 Property Editor
 
-Inspector panel for editing sprite and scene properties.
+Inspector panel for editing sprite, scene, and game properties.
 """
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QFormLayout, QLineEdit, QDoubleSpinBox,
     QSpinBox, QCheckBox, QLabel, QGroupBox, QScrollArea,
     QPushButton, QHBoxLayout, QColorDialog, QFileDialog,
-    QListWidget, QListWidgetItem, QInputDialog, QMenu, QComboBox
+    QListWidget, QListWidgetItem, QInputDialog, QMenu, QComboBox,
+    QStackedWidget
 )
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QPalette, QAction
 from typing import Optional
 import os
 
-from models import SpriteModel
+from models import SpriteModel, ProjectModel, GameSettings
 from core.i18n import tr
 
 
@@ -56,14 +57,17 @@ class ColorButton(QPushButton):
 
 
 class PropertyEditor(QWidget):
-    """Property editor for sprites and other objects."""
+    """Property editor for sprites and game settings."""
 
     property_changed = Signal(object, str, object)  # model, property_name, value
+    game_property_changed = Signal(str, object)  # property_name, value
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._sprite: Optional[SpriteModel] = None
+        self._game_settings: Optional[GameSettings] = None
+        self._project: Optional[ProjectModel] = None
         self._updating = False
 
         self._setup_ui()
@@ -73,19 +77,41 @@ class PropertyEditor(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
 
-        # Scroll area for properties
+        # Title
+        self._title_label = QLabel(tr("inspector.no_selection"))
+        self._title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
+        layout.addWidget(self._title_label)
+
+        # Stacked widget for different property panels
+        self._stack = QStackedWidget()
+        layout.addWidget(self._stack)
+
+        # Empty panel (index 0)
+        empty_widget = QWidget()
+        empty_layout = QVBoxLayout(empty_widget)
+        empty_layout.addStretch()
+        self._stack.addWidget(empty_widget)
+
+        # Sprite panel (index 1)
+        self._sprite_panel = self._create_sprite_panel()
+        self._stack.addWidget(self._sprite_panel)
+
+        # Game settings panel (index 2)
+        self._game_panel = self._create_game_panel()
+        self._stack.addWidget(self._game_panel)
+
+        # Initially show empty
+        self._stack.setCurrentIndex(0)
+
+    def _create_sprite_panel(self) -> QWidget:
+        """Create the sprite properties panel."""
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
         content = QWidget()
-        self._content_layout = QVBoxLayout(content)
-        self._content_layout.setAlignment(Qt.AlignTop)
-
-        # Title
-        self._title_label = QLabel(tr("inspector.no_selection"))
-        self._title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #FFFFFF;")
-        self._content_layout.addWidget(self._title_label)
+        content_layout = QVBoxLayout(content)
+        content_layout.setAlignment(Qt.AlignTop)
 
         # Identity group
         identity_group = QGroupBox(tr("inspector.identity"))
@@ -99,7 +125,7 @@ class PropertyEditor(QWidget):
         self._class_edit.textChanged.connect(self._on_class_changed)
         identity_layout.addRow(tr("inspector.class"), self._class_edit)
 
-        self._content_layout.addWidget(identity_group)
+        content_layout.addWidget(identity_group)
 
         # Transform group
         transform_group = QGroupBox(tr("inspector.transform"))
@@ -142,7 +168,7 @@ class PropertyEditor(QWidget):
         self._size_spin.valueChanged.connect(self._on_size_changed)
         transform_layout.addRow(tr("inspector.size"), self._size_spin)
 
-        self._content_layout.addWidget(transform_group)
+        content_layout.addWidget(transform_group)
 
         # Appearance group
         appearance_group = QGroupBox(tr("inspector.appearance"))
@@ -174,65 +200,103 @@ class PropertyEditor(QWidget):
         add_costume_btn.clicked.connect(self._on_add_costume)
         appearance_layout.addRow("", add_costume_btn)
 
-        self._content_layout.addWidget(appearance_group)
-
-        # Script group
-        script_group = QGroupBox(tr("inspector.script"))
-        script_layout = QFormLayout(script_group)
-
-        script_widget = QWidget()
-        script_h_layout = QHBoxLayout(script_widget)
-        script_h_layout.setContentsMargins(0, 0, 0, 0)
-
-        self._script_edit = QLineEdit()
-        self._script_edit.setReadOnly(True)
-        script_h_layout.addWidget(self._script_edit)
-
-        browse_btn = QPushButton("...")
-        browse_btn.setMaximumWidth(30)
-        browse_btn.clicked.connect(self._on_browse_script)
-        script_h_layout.addWidget(browse_btn)
-
-        script_layout.addRow(tr("inspector.script_path"), script_widget)
-
-        self._content_layout.addWidget(script_group)
+        content_layout.addWidget(appearance_group)
 
         # Spacer
-        self._content_layout.addStretch()
+        content_layout.addStretch()
 
         scroll.setWidget(content)
-        layout.addWidget(scroll)
+        return scroll
 
-        # Initially disabled
-        self._set_enabled(False)
+    def _create_game_panel(self) -> QWidget:
+        """Create the game settings panel."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
 
-    def _set_enabled(self, enabled: bool):
-        """Enable or disable all controls."""
-        self._name_edit.setEnabled(enabled)
-        self._class_edit.setEnabled(enabled)
-        self._x_spin.setEnabled(enabled)
-        self._y_spin.setEnabled(enabled)
-        self._direction_spin.setEnabled(enabled)
-        self._size_spin.setEnabled(enabled)
-        self._visible_check.setEnabled(enabled)
-        self._costumes_list.setEnabled(enabled)
-        self._default_costume_combo.setEnabled(enabled)
-        self._script_edit.setEnabled(enabled)
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setAlignment(Qt.AlignTop)
+
+        # Game info group
+        info_group = QGroupBox(tr("inspector.game_info"))
+        info_layout = QFormLayout(info_group)
+
+        self._game_title_edit = QLineEdit()
+        self._game_title_edit.textChanged.connect(self._on_game_title_changed)
+        info_layout.addRow(tr("inspector.game_title"), self._game_title_edit)
+
+        content_layout.addWidget(info_group)
+
+        # Resolution group
+        resolution_group = QGroupBox(tr("inspector.resolution"))
+        resolution_layout = QFormLayout(resolution_group)
+
+        self._width_spin = QSpinBox()
+        self._width_spin.setRange(320, 7680)
+        self._width_spin.setSingleStep(10)
+        self._width_spin.valueChanged.connect(self._on_width_changed)
+        resolution_layout.addRow(tr("inspector.width"), self._width_spin)
+
+        self._height_spin = QSpinBox()
+        self._height_spin.setRange(240, 4320)
+        self._height_spin.setSingleStep(10)
+        self._height_spin.valueChanged.connect(self._on_height_changed)
+        resolution_layout.addRow(tr("inspector.height"), self._height_spin)
+
+        self._fullscreen_check = QCheckBox()
+        self._fullscreen_check.toggled.connect(self._on_fullscreen_changed)
+        resolution_layout.addRow(tr("inspector.fullscreen"), self._fullscreen_check)
+
+        content_layout.addWidget(resolution_group)
+
+        # Runtime group
+        runtime_group = QGroupBox(tr("inspector.runtime"))
+        runtime_layout = QFormLayout(runtime_group)
+
+        self._fps_spin = QSpinBox()
+        self._fps_spin.setRange(1, 240)
+        self._fps_spin.setSingleStep(1)
+        self._fps_spin.valueChanged.connect(self._on_fps_changed)
+        runtime_layout.addRow(tr("inspector.fps"), self._fps_spin)
+
+        self._debug_check = QCheckBox()
+        self._debug_check.toggled.connect(self._on_debug_changed)
+        runtime_layout.addRow(tr("inspector.debug"), self._debug_check)
+
+        content_layout.addWidget(runtime_group)
+
+        # Spacer
+        content_layout.addStretch()
+
+        scroll.setWidget(content)
+        return scroll
 
     def set_sprite(self, sprite: Optional[SpriteModel]):
         """Set the sprite to edit."""
         self._sprite = sprite
+        self._game_settings = None
 
         if sprite is None:
             self._title_label.setText(tr("inspector.no_selection"))
-            self._set_enabled(False)
+            self._stack.setCurrentIndex(0)
             return
 
-        self._set_enabled(True)
-        self.refresh()
+        self._stack.setCurrentIndex(1)
+        self._refresh_sprite()
 
-    def refresh(self):
-        """Refresh the display from the current sprite."""
+    def set_game_settings(self, project: ProjectModel):
+        """Set the game settings to edit."""
+        self._sprite = None
+        self._project = project
+        self._game_settings = project.game
+
+        self._title_label.setText(tr("inspector.game_settings"))
+        self._stack.setCurrentIndex(2)
+        self._refresh_game_settings()
+
+    def _refresh_sprite(self):
+        """Refresh the sprite display."""
         if not self._sprite:
             return
 
@@ -247,27 +311,45 @@ class PropertyEditor(QWidget):
         self._size_spin.setValue(self._sprite.size)
         self._visible_check.setChecked(self._sprite.visible)
 
-        # Costumes - now using CostumeData
+        # Costumes
         self._costumes_list.clear()
         self._default_costume_combo.clear()
         for i, costume in enumerate(self._sprite.costumes):
-            # Display name with path tooltip
             item = QListWidgetItem(costume.name)
             item.setToolTip(costume.path)
-            item.setData(Qt.UserRole, i)  # Store index
+            item.setData(Qt.UserRole, i)
             self._costumes_list.addItem(item)
             self._default_costume_combo.addItem(costume.name)
 
-        # Set current default costume
         if self._sprite.costumes:
             self._default_costume_combo.setCurrentIndex(self._sprite.default_costume)
 
-        # Script
-        self._script_edit.setText(self._sprite.script_path or "")
+        self._updating = False
+
+    def _refresh_game_settings(self):
+        """Refresh the game settings display."""
+        if not self._game_settings:
+            return
+
+        self._updating = True
+
+        self._game_title_edit.setText(self._game_settings.title)
+        self._width_spin.setValue(self._game_settings.width)
+        self._height_spin.setValue(self._game_settings.height)
+        self._fullscreen_check.setChecked(self._game_settings.fullscreen)
+        self._fps_spin.setValue(self._game_settings.fps)
+        self._debug_check.setChecked(self._game_settings.debug)
 
         self._updating = False
 
-    # Property change handlers
+    def refresh(self):
+        """Refresh the current display."""
+        if self._sprite:
+            self._refresh_sprite()
+        elif self._game_settings:
+            self._refresh_game_settings()
+
+    # Sprite property change handlers
     def _on_name_changed(self, text: str):
         if self._updating or not self._sprite:
             return
@@ -321,7 +403,6 @@ class PropertyEditor(QWidget):
         )
 
         if path:
-            # Ask for costume name
             default_name = os.path.splitext(os.path.basename(path))[0]
             name, ok = QInputDialog.getText(
                 self, tr("inspector.costume_name"), tr("inspector.costume_name_prompt"),
@@ -331,11 +412,10 @@ class PropertyEditor(QWidget):
                 name = default_name
 
             idx = self._sprite.add_costume(name, path)
-            # If this is the first costume, set it as current
             if len(self._sprite.costumes) == 1:
                 self._sprite.current_costume = 0
                 self._sprite.default_costume = 0
-            self.refresh()
+            self._refresh_sprite()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 
     def _on_default_costume_changed(self, index: int):
@@ -345,7 +425,6 @@ class PropertyEditor(QWidget):
         self.property_changed.emit(self._sprite, "default_costume", index)
 
     def _on_costume_context_menu(self, pos):
-        """Show context menu for costume list."""
         if not self._sprite:
             return
 
@@ -370,7 +449,6 @@ class PropertyEditor(QWidget):
         menu.exec_(self._costumes_list.mapToGlobal(pos))
 
     def _on_costume_double_clicked(self, item):
-        """Handle double-click on costume to switch to it."""
         if not self._sprite:
             return
         index = item.data(Qt.UserRole)
@@ -379,7 +457,6 @@ class PropertyEditor(QWidget):
             self.property_changed.emit(self._sprite, "current_costume", index)
 
     def _rename_costume(self, item):
-        """Rename a costume."""
         if not self._sprite:
             return
         index = item.data(Qt.UserRole)
@@ -393,11 +470,10 @@ class PropertyEditor(QWidget):
         )
         if ok and new_name:
             costume.name = new_name
-            self.refresh()
+            self._refresh_sprite()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 
     def _set_costume_as_default(self, item):
-        """Set costume as default."""
         if not self._sprite:
             return
         index = item.data(Qt.UserRole)
@@ -407,30 +483,51 @@ class PropertyEditor(QWidget):
             self.property_changed.emit(self._sprite, "default_costume", index)
 
     def _delete_costume(self, item):
-        """Delete a costume."""
         if not self._sprite:
             return
         index = item.data(Qt.UserRole)
         if index is not None and index < len(self._sprite.costumes):
             del self._sprite.costumes[index]
-            # Adjust indices
             if self._sprite.current_costume >= len(self._sprite.costumes):
                 self._sprite.current_costume = max(0, len(self._sprite.costumes) - 1)
             if self._sprite.default_costume >= len(self._sprite.costumes):
                 self._sprite.default_costume = max(0, len(self._sprite.costumes) - 1)
-            self.refresh()
+            self._refresh_sprite()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 
-    def _on_browse_script(self):
-        if not self._sprite:
+    # Game settings property change handlers
+    def _on_game_title_changed(self, text: str):
+        if self._updating or not self._game_settings:
             return
+        self._game_settings.title = text
+        self.game_property_changed.emit("title", text)
 
-        path, _ = QFileDialog.getOpenFileName(
-            self, tr("dialog.select_script"), "",
-            tr("dialog.python_filter")
-        )
+    def _on_width_changed(self, value: int):
+        if self._updating or not self._game_settings:
+            return
+        self._game_settings.width = value
+        self.game_property_changed.emit("width", value)
 
-        if path:
-            self._sprite.script_path = path
-            self._script_edit.setText(path)
-            self.property_changed.emit(self._sprite, "script_path", path)
+    def _on_height_changed(self, value: int):
+        if self._updating or not self._game_settings:
+            return
+        self._game_settings.height = value
+        self.game_property_changed.emit("height", value)
+
+    def _on_fullscreen_changed(self, checked: bool):
+        if self._updating or not self._game_settings:
+            return
+        self._game_settings.fullscreen = checked
+        self.game_property_changed.emit("fullscreen", checked)
+
+    def _on_fps_changed(self, value: int):
+        if self._updating or not self._game_settings:
+            return
+        self._game_settings.fps = value
+        self.game_property_changed.emit("fps", value)
+
+    def _on_debug_changed(self, checked: bool):
+        if self._updating or not self._game_settings:
+            return
+        self._game_settings.debug = checked
+        self.game_property_changed.emit("debug", checked)

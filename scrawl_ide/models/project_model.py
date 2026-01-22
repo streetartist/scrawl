@@ -19,6 +19,7 @@ class GameSettings:
     title: str = "My Game"
     fps: int = 60
     fullscreen: bool = False
+    debug: bool = False
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -26,7 +27,8 @@ class GameSettings:
             "height": self.height,
             "title": self.title,
             "fps": self.fps,
-            "fullscreen": self.fullscreen
+            "fullscreen": self.fullscreen,
+            "debug": self.debug
         }
 
     @classmethod
@@ -36,7 +38,8 @@ class GameSettings:
             height=data.get("height", 600),
             title=data.get("title", "My Game"),
             fps=data.get("fps", 60),
-            fullscreen=data.get("fullscreen", False)
+            fullscreen=data.get("fullscreen", False),
+            debug=data.get("debug", False)
         )
 
 

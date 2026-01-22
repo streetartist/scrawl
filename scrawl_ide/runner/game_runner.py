@@ -57,6 +57,9 @@ class GameRunner(QObject):
             generator.save_generated_code(self._temp_file)
             self.output_received.emit(tr("runner.generated").format(path=self._temp_file))
 
+            # Check if debug mode is enabled (for console message)
+            debug_mode = project.model.game.debug
+
             # Start process
             self._process = QProcess(self)
             self._process.setWorkingDirectory(project_dir)
@@ -81,6 +84,8 @@ class GameRunner(QObject):
             python_exe = sys.executable
 
             # Start the game with -u flag for unbuffered output
+            if debug_mode:
+                self.output_received.emit(tr("runner.debug_mode"))
             self._process.start(python_exe, ["-u", self._temp_file])
 
             if self._process.waitForStarted(5000):

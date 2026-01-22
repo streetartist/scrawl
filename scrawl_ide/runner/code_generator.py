@@ -96,7 +96,9 @@ class CodeGenerator:
             scene_class_name = self._get_scene_class_name(first_scene)
             code_parts.append(f'    game.set_scene({scene_class_name}())')
 
-        code_parts.append(f'    game.run(fps=GAME_FPS)')
+        # Debug mode
+        debug_mode = self.project.game.debug
+        code_parts.append(f'    game.run(fps=GAME_FPS, debug={debug_mode})')
         code_parts.append('')
 
         return '\n'.join(code_parts)

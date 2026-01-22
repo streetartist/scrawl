@@ -333,6 +333,7 @@ class MainWindow(QMainWindow):
 
         # Property editor signals
         self.property_editor.property_changed.connect(self._on_property_changed)
+        self.property_editor.game_property_changed.connect(self._on_game_property_changed)
 
         # Asset browser signals
         self.asset_tree.file_selected.connect(self._on_asset_selected)
@@ -533,6 +534,9 @@ class MainWindow(QMainWindow):
         """Handle project loaded."""
         self._update_title()
 
+        # Set scene view size from game settings
+        self.scene_view.set_scene_size(model.game.width, model.game.height)
+
         # Set current scene to first scene
         if model.scenes:
             self._switch_to_scene(model.scenes[0])
@@ -677,9 +681,10 @@ class MainWindow(QMainWindow):
 
     def _on_hierarchy_project_selected(self):
         """Handle project root selection in hierarchy."""
-        self.property_editor.set_sprite(None)
-        # Could open game settings panel here
-        self._show_game_settings()
+        if self.project.model:
+            self.property_editor.set_game_settings(self.project.model)
+            # Switch to inspector tab
+            self.right_tabs.setCurrentIndex(1)
 
     def _on_hierarchy_sprite_added(self, scene: SceneModel, sprite: SpriteModel):
         """Handle sprite added from hierarchy view."""
@@ -718,6 +723,15 @@ class MainWindow(QMainWindow):
     def _on_property_changed(self, sprite: SpriteModel, prop: str, value):
         """Handle property change in inspector."""
         self.scene_view.update_sprite(sprite)
+        self.project.mark_modified()
+
+    def _on_game_property_changed(self, prop: str, value):
+        """Handle game property change in inspector."""
+        if prop in ("width", "height"):
+            # Update scene view size
+            if self.project.model:
+                game = self.project.model.game
+                self.scene_view.set_scene_size(game.width, game.height)
         self.project.mark_modified()
 
     def _on_asset_selected(self, path: str):
