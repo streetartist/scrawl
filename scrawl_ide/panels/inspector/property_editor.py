@@ -16,7 +16,7 @@ from PySide6.QtGui import QColor, QPalette, QAction
 from typing import Optional
 import os
 
-from models import SpriteModel, ProjectModel, GameSettings
+from models import SpriteModel, ProjectModel, GameSettings, SceneModel
 from core.i18n import tr
 
 
@@ -61,11 +61,13 @@ class PropertyEditor(QWidget):
 
     property_changed = Signal(object, str, object)  # model, property_name, value
     game_property_changed = Signal(str, object)  # property_name, value
+    scene_property_changed = Signal(object, str, object)  # scene, property_name, value
 
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._sprite: Optional[SpriteModel] = None
+        self._scene: Optional[SceneModel] = None
         self._game_settings: Optional[GameSettings] = None
         self._project: Optional[ProjectModel] = None
         self._updating = False
@@ -96,7 +98,11 @@ class PropertyEditor(QWidget):
         self._sprite_panel = self._create_sprite_panel()
         self._stack.addWidget(self._sprite_panel)
 
-        # Game settings panel (index 2)
+        # Scene panel (index 2)
+        self._scene_panel = self._create_scene_panel()
+        self._stack.addWidget(self._scene_panel)
+
+        # Game settings panel (index 3)
         self._game_panel = self._create_game_panel()
         self._stack.addWidget(self._game_panel)
 
@@ -202,6 +208,125 @@ class PropertyEditor(QWidget):
 
         content_layout.addWidget(appearance_group)
 
+        # Collision group
+        collision_group = QGroupBox(tr("inspector.collision"))
+        collision_layout = QFormLayout(collision_group)
+
+        self._collision_type_combo = QComboBox()
+        self._collision_type_combo.addItems(["rect", "circle", "mask"])
+        self._collision_type_combo.currentTextChanged.connect(self._on_collision_type_changed)
+        collision_layout.addRow(tr("inspector.collision_type"), self._collision_type_combo)
+
+        content_layout.addWidget(collision_group)
+
+        # Physics group
+        physics_group = QGroupBox(tr("inspector.physics"))
+        physics_layout = QFormLayout(physics_group)
+
+        self._is_physics_check = QCheckBox()
+        self._is_physics_check.toggled.connect(self._on_is_physics_changed)
+        physics_layout.addRow(tr("inspector.is_physics"), self._is_physics_check)
+
+        # Gravity
+        gravity_widget = QWidget()
+        gravity_layout = QHBoxLayout(gravity_widget)
+        gravity_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._gravity_x_spin = QDoubleSpinBox()
+        self._gravity_x_spin.setRange(-10, 10)
+        self._gravity_x_spin.setDecimals(2)
+        self._gravity_x_spin.setSingleStep(0.1)
+        self._gravity_x_spin.valueChanged.connect(self._on_gravity_x_changed)
+        gravity_layout.addWidget(QLabel("X:"))
+        gravity_layout.addWidget(self._gravity_x_spin)
+
+        self._gravity_y_spin = QDoubleSpinBox()
+        self._gravity_y_spin.setRange(-10, 10)
+        self._gravity_y_spin.setDecimals(2)
+        self._gravity_y_spin.setSingleStep(0.1)
+        self._gravity_y_spin.valueChanged.connect(self._on_gravity_y_changed)
+        gravity_layout.addWidget(QLabel("Y:"))
+        gravity_layout.addWidget(self._gravity_y_spin)
+
+        physics_layout.addRow(tr("inspector.gravity"), gravity_widget)
+
+        # Friction
+        self._friction_spin = QDoubleSpinBox()
+        self._friction_spin.setRange(0, 1)
+        self._friction_spin.setDecimals(2)
+        self._friction_spin.setSingleStep(0.01)
+        self._friction_spin.valueChanged.connect(self._on_friction_changed)
+        physics_layout.addRow(tr("inspector.friction"), self._friction_spin)
+
+        # Elasticity
+        self._elasticity_spin = QDoubleSpinBox()
+        self._elasticity_spin.setRange(0, 1)
+        self._elasticity_spin.setDecimals(2)
+        self._elasticity_spin.setSingleStep(0.1)
+        self._elasticity_spin.valueChanged.connect(self._on_elasticity_changed)
+        physics_layout.addRow(tr("inspector.elasticity"), self._elasticity_spin)
+
+        content_layout.addWidget(physics_group)
+
+        # Spacer
+        content_layout.addStretch()
+
+        scroll.setWidget(content)
+        return scroll
+
+    def _create_scene_panel(self) -> QWidget:
+        """Create the scene properties panel."""
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+
+        content = QWidget()
+        content_layout = QVBoxLayout(content)
+        content_layout.setAlignment(Qt.AlignTop)
+
+        # Identity group
+        identity_group = QGroupBox(tr("inspector.identity"))
+        identity_layout = QFormLayout(identity_group)
+
+        self._scene_name_edit = QLineEdit()
+        self._scene_name_edit.textChanged.connect(self._on_scene_name_changed)
+        identity_layout.addRow(tr("inspector.name"), self._scene_name_edit)
+
+        content_layout.addWidget(identity_group)
+
+        # Background group
+        background_group = QGroupBox(tr("inspector.background"))
+        background_layout = QFormLayout(background_group)
+
+        # Background color
+        self._bg_color_btn = ColorButton()
+        self._bg_color_btn.color_changed.connect(self._on_bg_color_changed)
+        background_layout.addRow(tr("inspector.bg_color"), self._bg_color_btn)
+
+        # Background image
+        bg_image_widget = QWidget()
+        bg_image_layout = QHBoxLayout(bg_image_widget)
+        bg_image_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._bg_image_edit = QLineEdit()
+        self._bg_image_edit.setReadOnly(True)
+        self._bg_image_edit.setPlaceholderText(tr("inspector.no_bg_image"))
+        bg_image_layout.addWidget(self._bg_image_edit)
+
+        browse_bg_btn = QPushButton("...")
+        browse_bg_btn.setMaximumWidth(30)
+        browse_bg_btn.clicked.connect(self._on_browse_bg_image)
+        bg_image_layout.addWidget(browse_bg_btn)
+
+        clear_bg_btn = QPushButton("×")
+        clear_bg_btn.setMaximumWidth(30)
+        clear_bg_btn.clicked.connect(self._on_clear_bg_image)
+        bg_image_layout.addWidget(clear_bg_btn)
+
+        background_layout.addRow(tr("inspector.bg_image"), bg_image_widget)
+
+        content_layout.addWidget(background_group)
+
         # Spacer
         content_layout.addStretch()
 
@@ -285,14 +410,30 @@ class PropertyEditor(QWidget):
         self._stack.setCurrentIndex(1)
         self._refresh_sprite()
 
+    def set_scene(self, scene: Optional[SceneModel]):
+        """Set the scene to edit."""
+        self._sprite = None
+        self._scene = scene
+        self._game_settings = None
+
+        if scene is None:
+            self._title_label.setText(tr("inspector.no_selection"))
+            self._stack.setCurrentIndex(0)
+            return
+
+        self._title_label.setText(f"🎬 {scene.name}")
+        self._stack.setCurrentIndex(2)
+        self._refresh_scene()
+
     def set_game_settings(self, project: ProjectModel):
         """Set the game settings to edit."""
         self._sprite = None
+        self._scene = None
         self._project = project
         self._game_settings = project.game
 
         self._title_label.setText(tr("inspector.game_settings"))
-        self._stack.setCurrentIndex(2)
+        self._stack.setCurrentIndex(3)
         self._refresh_game_settings()
 
     def _refresh_sprite(self):
@@ -324,6 +465,29 @@ class PropertyEditor(QWidget):
         if self._sprite.costumes:
             self._default_costume_combo.setCurrentIndex(self._sprite.default_costume)
 
+        # Collision
+        self._collision_type_combo.setCurrentText(self._sprite.collision_type)
+
+        # Physics
+        self._is_physics_check.setChecked(self._sprite.is_physics)
+        self._gravity_x_spin.setValue(self._sprite.gravity_x)
+        self._gravity_y_spin.setValue(self._sprite.gravity_y)
+        self._friction_spin.setValue(self._sprite.friction)
+        self._elasticity_spin.setValue(self._sprite.elasticity)
+
+        self._updating = False
+
+    def _refresh_scene(self):
+        """Refresh the scene display."""
+        if not self._scene:
+            return
+
+        self._updating = True
+
+        self._scene_name_edit.setText(self._scene.name)
+        self._bg_color_btn.color = self._scene.background_color
+        self._bg_image_edit.setText(self._scene.background_image or "")
+
         self._updating = False
 
     def _refresh_game_settings(self):
@@ -346,6 +510,8 @@ class PropertyEditor(QWidget):
         """Refresh the current display."""
         if self._sprite:
             self._refresh_sprite()
+        elif self._scene:
+            self._refresh_scene()
         elif self._game_settings:
             self._refresh_game_settings()
 
@@ -423,6 +589,42 @@ class PropertyEditor(QWidget):
             return
         self._sprite.default_costume = index
         self.property_changed.emit(self._sprite, "default_costume", index)
+
+    def _on_collision_type_changed(self, text: str):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.collision_type = text
+        self.property_changed.emit(self._sprite, "collision_type", text)
+
+    def _on_is_physics_changed(self, checked: bool):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.is_physics = checked
+        self.property_changed.emit(self._sprite, "is_physics", checked)
+
+    def _on_gravity_x_changed(self, value: float):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.gravity_x = value
+        self.property_changed.emit(self._sprite, "gravity_x", value)
+
+    def _on_gravity_y_changed(self, value: float):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.gravity_y = value
+        self.property_changed.emit(self._sprite, "gravity_y", value)
+
+    def _on_friction_changed(self, value: float):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.friction = value
+        self.property_changed.emit(self._sprite, "friction", value)
+
+    def _on_elasticity_changed(self, value: float):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.elasticity = value
+        self.property_changed.emit(self._sprite, "elasticity", value)
 
     def _on_costume_context_menu(self, pos):
         if not self._sprite:
@@ -531,3 +733,38 @@ class PropertyEditor(QWidget):
             return
         self._game_settings.debug = checked
         self.game_property_changed.emit("debug", checked)
+
+    # Scene property change handlers
+    def _on_scene_name_changed(self, text: str):
+        if self._updating or not self._scene:
+            return
+        self._scene.name = text
+        self._title_label.setText(f"🎬 {text}")
+        self.scene_property_changed.emit(self._scene, "name", text)
+
+    def _on_bg_color_changed(self, color: tuple):
+        if self._updating or not self._scene:
+            return
+        self._scene.background_color = color
+        self.scene_property_changed.emit(self._scene, "background_color", color)
+
+    def _on_browse_bg_image(self):
+        if not self._scene:
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("dialog.select_bg_image"), "",
+            tr("dialog.image_filter")
+        )
+
+        if path:
+            self._scene.background_image = path
+            self._bg_image_edit.setText(path)
+            self.scene_property_changed.emit(self._scene, "background_image", path)
+
+    def _on_clear_bg_image(self):
+        if not self._scene:
+            return
+        self._scene.background_image = None
+        self._bg_image_edit.setText("")
+        self.scene_property_changed.emit(self._scene, "background_image", None)

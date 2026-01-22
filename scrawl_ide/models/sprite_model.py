@@ -63,15 +63,23 @@ class SpriteModel:
     current_costume: int = 0
     default_costume: int = 0  # Index of the default costume
     visible: bool = True
+    color: tuple = (255, 100, 100)  # Default sprite color (RGB)
+
+    # Collision
+    collision_type: str = "rect"  # "rect", "circle", "mask"
+
+    # Physics properties
+    is_physics: bool = False
+    gravity_x: float = 0.0
+    gravity_y: float = 0.2
+    friction: float = 0.98
+    elasticity: float = 0.8
 
     # Inline code (the class definition)
     code: str = ""
 
     # Script path (legacy, for external scripts)
     script_path: Optional[str] = None
-
-    # Use physics sprite
-    is_physics: bool = False
 
     # Custom properties
     properties: Dict[str, Any] = field(default_factory=dict)
@@ -123,9 +131,14 @@ class SpriteModel:
             "current_costume": self.current_costume,
             "default_costume": self.default_costume,
             "visible": self.visible,
+            "color": list(self.color),
+            "collision_type": self.collision_type,
+            "is_physics": self.is_physics,
+            "gravity": [self.gravity_x, self.gravity_y],
+            "friction": self.friction,
+            "elasticity": self.elasticity,
             "code": self.code,
             "script": self.script_path,
-            "is_physics": self.is_physics,
             "properties": self.properties
         }
 
@@ -139,6 +152,14 @@ class SpriteModel:
         raw_costumes = data.get("costumes", [])
         costumes = [CostumeData.from_dict(c) for c in raw_costumes]
 
+        # Handle color
+        color = data.get("color", [255, 100, 100])
+        if isinstance(color, list):
+            color = tuple(color)
+
+        # Handle gravity
+        gravity = data.get("gravity", [0.0, 0.2])
+
         return cls(
             id=data.get("id", str(uuid.uuid4())),
             name=data.get("name", "Sprite"),
@@ -151,9 +172,15 @@ class SpriteModel:
             current_costume=data.get("current_costume", 0),
             default_costume=data.get("default_costume", 0),
             visible=data.get("visible", True),
+            color=color,
+            collision_type=data.get("collision_type", "rect"),
+            is_physics=data.get("is_physics", False),
+            gravity_x=float(gravity[0]) if len(gravity) > 0 else 0.0,
+            gravity_y=float(gravity[1]) if len(gravity) > 1 else 0.2,
+            friction=float(data.get("friction", 0.98)),
+            elasticity=float(data.get("elasticity", 0.8)),
             code=data.get("code", _default_sprite_code(class_name)),
             script_path=data.get("script"),
-            is_physics=data.get("is_physics", False),
             properties=data.get("properties", {})
         )
 

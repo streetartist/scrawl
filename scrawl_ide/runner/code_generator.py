@@ -116,10 +116,25 @@ class CodeGenerator:
         self.name = "{sprite.name}"
 '''
 
-        # Inject costume loading into __init__ if costumes exist
+        # Inject costume loading and physics setup into __init__ if needed
+        inject_parts = []
+
         if sprite.costumes:
-            costume_code = self._generate_costume_code(sprite)
-            code = self._inject_into_init(code, costume_code)
+            inject_parts.append(self._generate_costume_code(sprite))
+
+        # Inject collision type if not default
+        if sprite.collision_type != "rect":
+            inject_parts.append(f'        self.set_collision_type("{sprite.collision_type}")')
+
+        # Inject physics properties if physics sprite
+        if sprite.is_physics:
+            inject_parts.append(f'        self.set_gravity({sprite.gravity_x}, {sprite.gravity_y})')
+            inject_parts.append(f'        self.set_friction({sprite.friction})')
+            inject_parts.append(f'        self.set_elasticity({sprite.elasticity})')
+
+        if inject_parts:
+            inject_code = '\n'.join(inject_parts)
+            code = self._inject_into_init(code, inject_code)
 
         return code
 
@@ -166,7 +181,7 @@ class CodeGenerator:
             # Inject after super().__init__()
             if in_init and not injected and 'super().__init__()' in line:
                 result.append('')
-                result.append('        # 造型（由IDE自动生成）')
+                result.append('        # IDE自动生成的初始化代码')
                 result.append(inject_code)
                 injected = True
                 continue
@@ -194,10 +209,21 @@ class CodeGenerator:
         self.background_color = ({bg[0]}, {bg[1]}, {bg[2]})
 '''
 
-        # Inject sprite creation into __init__
+        # Build inject code
+        inject_parts = []
+
+        # Background image
+        if scene.background_image:
+            rel_path = scene.background_image.replace('\\', '/')
+            inject_parts.append(f'        self.set_background_image(r"{rel_path}")')
+
+        # Sprite creation
         if scene.sprites:
-            sprite_code = self._generate_sprite_creation_code(scene)
-            code = self._inject_into_init(code, sprite_code)
+            inject_parts.append(self._generate_sprite_creation_code(scene))
+
+        if inject_parts:
+            inject_code = '\n'.join(inject_parts)
+            code = self._inject_into_init(code, inject_code)
 
         return code
 

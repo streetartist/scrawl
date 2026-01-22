@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         # Property editor signals
         self.property_editor.property_changed.connect(self._on_property_changed)
         self.property_editor.game_property_changed.connect(self._on_game_property_changed)
+        self.property_editor.scene_property_changed.connect(self._on_scene_property_changed)
 
         # Asset browser signals
         self.asset_tree.file_selected.connect(self._on_asset_selected)
@@ -674,10 +675,10 @@ class MainWindow(QMainWindow):
         """Handle scene selection in hierarchy."""
         # Switch to this scene
         self._switch_to_scene(scene)
-        # Clear sprite selection in property editor
-        self.property_editor.set_sprite(None)
-        # Open scene code in editor
-        self._open_scene_code(scene)
+        # Show scene properties in inspector
+        self.property_editor.set_scene(scene)
+        # Switch to inspector tab
+        self.right_tabs.setCurrentIndex(1)
 
     def _on_hierarchy_project_selected(self):
         """Handle project root selection in hierarchy."""
@@ -732,6 +733,13 @@ class MainWindow(QMainWindow):
             if self.project.model:
                 game = self.project.model.game
                 self.scene_view.set_scene_size(game.width, game.height)
+        self.project.mark_modified()
+
+    def _on_scene_property_changed(self, scene: SceneModel, prop: str, value):
+        """Handle scene property change in inspector."""
+        if prop == "name":
+            # Refresh hierarchy to show new name
+            self.hierarchy_view.refresh()
         self.project.mark_modified()
 
     def _on_asset_selected(self, path: str):

@@ -185,6 +185,23 @@ TRANSLATIONS_ZH = {
     "inspector.fps": "帧率 (FPS):",
     "inspector.debug": "调试模式:",
 
+    # Collision
+    "inspector.collision": "碰撞",
+    "inspector.collision_type": "碰撞类型:",
+
+    # Physics
+    "inspector.physics": "物理",
+    "inspector.is_physics": "物理精灵:",
+    "inspector.gravity": "重力:",
+    "inspector.friction": "摩擦力:",
+    "inspector.elasticity": "弹性:",
+
+    # Background
+    "inspector.background": "背景",
+    "inspector.bg_color": "背景颜色:",
+    "inspector.bg_image": "背景图片:",
+    "inspector.no_bg_image": "无背景图片",
+
     # Hierarchy
     "hierarchy.header": "场景树",
     "hierarchy.add_scene": "添加场景",
@@ -234,6 +251,7 @@ TRANSLATIONS_ZH = {
     "dialog.add_scene_prompt": "场景名称:",
     "dialog.select_costume": "添加造型",
     "dialog.select_script": "选择脚本",
+    "dialog.select_bg_image": "选择背景图片",
     "dialog.no_project": "请先创建或打开一个项目。",
     "dialog.no_scene": "请先选择一个场景。",
 
@@ -367,6 +385,23 @@ TRANSLATIONS_EN = {
     "inspector.fps": "Frame Rate (FPS):",
     "inspector.debug": "Debug Mode:",
 
+    # Collision
+    "inspector.collision": "Collision",
+    "inspector.collision_type": "Collision Type:",
+
+    # Physics
+    "inspector.physics": "Physics",
+    "inspector.is_physics": "Physics Sprite:",
+    "inspector.gravity": "Gravity:",
+    "inspector.friction": "Friction:",
+    "inspector.elasticity": "Elasticity:",
+
+    # Background
+    "inspector.background": "Background",
+    "inspector.bg_color": "Background Color:",
+    "inspector.bg_image": "Background Image:",
+    "inspector.no_bg_image": "No background image",
+
     # Hierarchy
     "hierarchy.header": "Scene Tree",
     "hierarchy.add_scene": "Add Scene",
@@ -416,6 +451,7 @@ TRANSLATIONS_EN = {
     "dialog.add_scene_prompt": "Scene name:",
     "dialog.select_costume": "Add Costume",
     "dialog.select_script": "Select Script",
+    "dialog.select_bg_image": "Select Background Image",
     "dialog.no_project": "Please create or open a project first.",
     "dialog.no_scene": "Please select a scene first.",
 
