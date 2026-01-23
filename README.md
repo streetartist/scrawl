@@ -24,6 +24,11 @@ Scrawl 提供了一个**类 Godot 的可视化 IDE**，让游戏开发更加直�
 - 🔧 **属性检查器** - 可视化调整精灵和场景属性
 - 🤖 **AI 编程助手** - 配置 API Key 后，AI 可以帮你编写和修改游戏代码！
 
+<p align="center">
+  <img src="demo/image/image1.png" width="45%" />
+  <img src="demo/image/image2.png" width="45%" />
+</p>
+
 ### 🤖 AI 助手功能（新功能！）
 
 在设置中配置 OpenAI 兼容的 API Key 后，即可使用 AI 编程助手：
@@ -33,10 +38,13 @@ Scrawl 提供了一个**类 Godot 的可视化 IDE**，让游戏开发更加直�
 - 🎛️ **属性调整** - AI 可以修改精灵位置、大小等属性
 - 📋 **一键应用** - 点击"应用"按钮即可将 AI 生成的代码更新到项目中
 
-<p align="center">
-  <img src="demo/image/image1.png" width="45%" />
-  <img src="demo/image/image2.png" width="45%" />
-</p>
+第一次AI对话：
+
+https://github.com/user-attachments/assets/f58c2f57-b0d3-4aa7-a38b-742ec3046761
+
+四次AI对话后成品：
+
+https://github.com/user-attachments/assets/9d1c0071-3832-4b30-aa36-729c271c6749
 
 ---
 
