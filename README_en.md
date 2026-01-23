@@ -104,15 +104,15 @@ class Bat(Sprite):
             # Add bat
             self.clone()
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         self.delete_self()
 
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def hit_fireball(self, other):
         self.delete_self()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
 
@@ -131,7 +131,7 @@ class FireBall(Sprite):
             self.move(10)
             yield 100
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         self.delete_self()
 
@@ -233,7 +233,7 @@ class Ball(Sprite):
             self.change_color_random()
             yield 1000
 
-    @handle_broadcast("event")
+    @on_broadcast("event")
     def event1(self):
         self.say("hello")
 
@@ -298,12 +298,19 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 2.  **Decorator System**
     -   `@as_main` - Marks main behavior coroutine
     -   `@as_clones` - Marks clone behavior
-    -   `@handle_broadcast` - Broadcast handler
+    -   `@on_key` - Key event handler
+    -   `@on_mouse` - Mouse event handler
+    -   `@on_sprite_clicked` - Sprite click handler
+    -   `@on_broadcast` - Broadcast handler
+    -   `@on_edge_collision` - Edge collision handler
+    -   `@on_sprite_collision` - Sprite collision handler
 3.  **Advanced Features**
     -   Particle Systems
     -   Drawing Tools
     -   Collision Detection
     -   Physics System
+    -   Sound System
+    -   Cloud Variables
 
 ## Installation
 
@@ -341,6 +348,8 @@ pip install --upgrade scrawl-engine
   - Physics Sprites
   - Particle Systems
   - Pen Effects
+  - Sound System
+  - Cloud Variables
 - Debugging Tools
   - Debug Mode
   - Performance Monitoring
@@ -415,11 +424,11 @@ def left_held(self):
 Handle collisions between sprites and with boundaries:
 ```python
 # Edge collision detection
-@handle_edge_collision("left")  # Collide with left edge
+@on_edge_collision("left")  # Collide with left edge
 def hit_left(self):
     self.say("Hit left wall")
 # Sprite collision detection
-@handle_sprite_collision("Enemy")  # Collide with sprite named "Enemy"
+@on_sprite_collision("Enemy")  # Collide with sprite named "Enemy"
 def hit_enemy(self, other):
     self.delete_self()
 ```
@@ -430,7 +439,7 @@ Communication mechanism between sprites and scenes:
 # Broadcast event
 self.broadcast("gameover")
 # Handle broadcast event
-@handle_broadcast("gameover")
+@on_broadcast("gameover")
 def on_gameover(self):
     self.visible = True
 ```

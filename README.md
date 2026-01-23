@@ -106,15 +106,15 @@ class Bat(Sprite):
             # 添加蝙蝠
             self.clone()
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         self.delete_self()
 
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def hit_fireball(self, other):
         self.delete_self()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
 
@@ -133,7 +133,7 @@ class FireBall(Sprite):
             self.move(10)
             yield 100
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         self.delete_self()
 
@@ -235,7 +235,7 @@ class Ball(Sprite):
             self.change_color_random()
             yield 1000
 
-    @handle_broadcast("event")
+    @on_broadcast("event")
     def event1(self):
         self.say("hello")
 
@@ -399,16 +399,39 @@ def left_held(self):
     self.turn_left(2)
 ```
 
+#### 鼠标事件
+处理鼠标点击事件：
+```python
+@on_mouse("clicked", 1)  # 鼠标左键点击
+def on_click(self):
+    print("鼠标点击")
+
+@on_sprite_clicked  # 精灵被点击时触发
+def on_self_clicked(self):
+    self.say("你点击了我！")
+```
+
 #### 碰撞检测
 处理精灵之间和边界的碰撞：
 ```python
-# 边缘碰撞检测
-@handle_edge_collision("left")  # 与左边缘碰撞
+# 设置碰撞类型（rect/circle/mask）
+self.set_collision_type("circle")
+
+# 检测是否与其他精灵碰撞
+if self.is_colliding_with(other_sprite):
+    print("碰撞了！")
+
+# 检测是否触碰指定颜色
+if self.is_touching_color((255, 0, 0)):
+    print("碰到红色了！")
+
+# 边缘碰撞检测（装饰器）
+@on_edge_collision("left")  # 可选：left/right/top/bottom/any
 def hit_left(self):
     self.say("碰到左墙")
 
-# 精灵碰撞检测
-@handle_sprite_collision("Enemy")  # 与名为 "Enemy" 的精灵碰撞
+# 精灵碰撞检测（装饰器）
+@on_sprite_collision("Enemy")  # 与名为 "Enemy" 的精灵碰撞
 def hit_enemy(self, other):
     self.delete_self()
 ```
@@ -420,7 +443,7 @@ def hit_enemy(self, other):
 self.broadcast("gameover")
 
 # 处理广播事件
-@handle_broadcast("gameover")
+@on_broadcast("gameover")
 def on_gameover(self):
     self.visible = True
 ```
@@ -486,6 +509,21 @@ class PhysicsBall(PhysicsSprite):
         self.velocity = pygame.Vector2(0, 5)
         self.gravity = pygame.Vector2(0, 0.2)
         self.elasticity = 0.8  # 弹性系数
+        self.friction = 0.02   # 摩擦力
+
+    @as_main
+    def main(self):
+        # 设置物理属性
+        self.set_gravity(0, 0.5)
+        self.set_elasticity(0.9)
+        self.set_friction(0.1)
+
+        while True:
+            # 施加力
+            self.apply_force(1, 0)
+            # 施加冲量
+            self.apply_impulse(0, -10)
+            yield 0
 ```
 
 #### 粒子系统
@@ -506,16 +544,69 @@ self.scene.add_particles(
 实现绘图功能：
 ```python
 # 启用画笔
-self.pen_down = True
-self.pen_color = (255, 0, 0)
-self.pen_size = 3
+self.put_pen_down()
+self.set_pen_color((255, 0, 0))
+self.set_pen_size(3)
 
 # 移动时自动记录路径
 self.move(100)
 
+# 抬起画笔
+self.put_pen_up()
+
 # 清除画笔轨迹
 self.clear_pen()
 ```
+
+#### 声音系统
+播放音效和背景音乐：
+```python
+# 在场景中加载音效和音乐
+self.game.load_sound("jump", "sounds/jump.ogg")
+self.game.load_music("bgm", "sounds/background.mp3")
+
+# 播放音效
+self.play_sound("jump")
+
+# 播放背景音乐（循环）
+self.play_music("bgm", loops=-1)
+
+# 播放音符（C4-C5）
+self.play_note("C4", 500)
+
+# 播放鼓声（bass/snare/hihat/cymbal）
+self.play_drum("snare", 100)
+
+# 停止音乐
+self.stop_music()
+```
+
+#### 云变量
+支持多人游戏的云变量同步：
+```python
+from scrawl import CloudVariablesClient
+
+# 方式1：自动注册新项目（获取新的project_id）
+cloud = CloudVariablesClient()
+print(f"项目ID: {cloud.project_id}")  # 保存此ID以便下次使用
+
+# 方式2：使用已有的项目ID
+cloud = CloudVariablesClient(project_id="your-project-uuid")
+
+# 设置变量
+cloud.set_variable("score", 100)
+
+# 获取变量
+score = cloud.get_variable("score", default=0)
+
+# 获取所有变量
+all_vars = cloud.get_all_variables()
+
+# 关闭连接
+cloud.close()
+```
+
+> 注意：首次使用会自动注册项目并返回project_id，请保存此ID以便后续使用同一项目。
 
 ---
 
