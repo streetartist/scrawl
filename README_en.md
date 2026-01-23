@@ -22,6 +22,16 @@ Scrawl provides a **Godot-like visual IDE** for intuitive game development!
 - 📝 **Built-in Code Editor** - Syntax highlighting, instant editing
 - 🎮 **One-click Run** - Test your game directly in the IDE
 - 🔧 **Property Inspector** - Visually adjust sprite and scene properties
+- 🤖 **AI Programming Assistant** - Configure API Key to let AI help you write and modify game code!
+
+### 🤖 AI Assistant (New Feature!)
+
+After configuring an OpenAI-compatible API Key in settings, you can use the AI programming assistant:
+
+- 💬 **Smart Chat** - Describe your needs in natural language, AI generates code automatically
+- ✏️ **Code Modification** - AI can directly modify sprite and scene code
+- 🎛️ **Property Adjustment** - AI can modify sprite position, size and other properties
+- 📋 **One-click Apply** - Click "Apply" button to update AI-generated code to your project
 
 <p align="center">
   <img src="demo/image/image1.png" width="45%" />

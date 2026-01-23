@@ -18,7 +18,7 @@ class ScrawlApplication(QApplication):
         super().__init__(argv)
 
         self.setApplicationName("Scrawl IDE")
-        self.setApplicationVersion("0.1.0")
+        self.setApplicationVersion("0.2.1")
         self.setOrganizationName("Scrawl")
         self.setOrganizationDomain("scrawl.dev")
 

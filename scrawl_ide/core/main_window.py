@@ -15,6 +15,7 @@ from PySide6.QtCore import Qt, QSize
 from PySide6.QtGui import QAction, QKeySequence, QIcon, QActionGroup
 
 from .settings import Settings
+from .settings_dialog import SettingsDialog
 from .project import Project
 from .i18n import Translator, tr
 from panels.scene_editor import SceneView, SceneToolbar
@@ -22,6 +23,7 @@ from panels.scene_tree import HierarchyView
 from panels.inspector import PropertyEditor
 from panels.code_editor import CodeEditorWidget
 from panels.asset_browser import AssetTreeView, AssetPreview
+from panels.ai_chat import AIChatPanel
 from models import ProjectModel, SceneModel, SpriteModel
 from runner import GameRunner
 
@@ -123,6 +125,13 @@ class MainWindow(QMainWindow):
         paste_action = QAction(tr("menu.edit.paste"), self)
         paste_action.setShortcut(QKeySequence.Paste)
         edit_menu.addAction(paste_action)
+
+        edit_menu.addSeparator()
+
+        settings_action = QAction(tr("menu.edit.settings"), self)
+        settings_action.setShortcut("Ctrl+,")
+        settings_action.triggered.connect(self._on_settings)
+        edit_menu.addAction(settings_action)
 
         # View menu
         view_menu = menubar.addMenu(tr("menu.view"))
@@ -285,6 +294,15 @@ class MainWindow(QMainWindow):
         self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
         self._view_menu.addAction(self.console_dock.toggleViewAction())
 
+        # AI Chat (bottom, tabbed with console)
+        self.ai_dock = QDockWidget(tr("dock.ai_chat"), self)
+        self.ai_dock.setObjectName("AIChatDock")
+        self.ai_panel = AIChatPanel()
+        self.ai_dock.setWidget(self.ai_panel)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.ai_dock)
+        self.tabifyDockWidget(self.console_dock, self.ai_dock)
+        self._view_menu.addAction(self.ai_dock.toggleViewAction())
+
         # Set initial sizes - make scene and code editor roughly equal
         # Left docks
         self.resizeDocks(
@@ -390,18 +408,22 @@ class MainWindow(QMainWindow):
         self.removeDockWidget(self.asset_dock)
         self.removeDockWidget(self.right_dock)
         self.removeDockWidget(self.console_dock)
+        self.removeDockWidget(self.ai_dock)
 
         # Re-add docks in default positions
         self.addDockWidget(Qt.LeftDockWidgetArea, self.hierarchy_dock)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.asset_dock)
         self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.ai_dock)
+        self.tabifyDockWidget(self.console_dock, self.ai_dock)
 
         # Show all docks
         self.hierarchy_dock.show()
         self.asset_dock.show()
         self.right_dock.show()
         self.console_dock.show()
+        self.ai_dock.show()
 
         # Reset sizes
         self.resizeDocks(
@@ -527,6 +549,35 @@ class MainWindow(QMainWindow):
             tr("app.about.text")
         )
 
+    def _on_settings(self):
+        """Show the settings dialog."""
+        dialog = SettingsDialog(self)
+        dialog.settings_changed.connect(self._apply_editor_settings)
+        dialog.exec_()
+
+    def _apply_editor_settings(self):
+        """Apply editor settings to all open code editors."""
+        from PySide6.QtGui import QFont, QFontMetrics
+        font_family = self.settings.get_font_family()
+        font_size = self.settings.get_font_size()
+
+        # Update all open code editor tabs using stylesheet
+        for i in range(self.code_tabs.count()):
+            widget = self.code_tabs.widget(i)
+            if hasattr(widget, '_editor'):
+                editor = widget._editor
+                editor.setStyleSheet(f"""
+                    QPlainTextEdit {{
+                        background-color: #1E1E1E;
+                        color: #E0E0E0;
+                        selection-background-color: #264F78;
+                        selection-color: #FFFFFF;
+                        border: none;
+                        font-family: "{font_family}";
+                        font-size: {font_size}pt;
+                    }}
+                """)
+
     # Event handlers
     def _on_project_loaded(self, model: ProjectModel):
         """Handle project loaded."""
@@ -534,6 +585,11 @@ class MainWindow(QMainWindow):
 
         # Set scene view size from game settings
         self.scene_view.set_scene_size(model.game.width, model.game.height)
+
+        # Load engine source for AI
+        engine_path = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "scrawl", "engine.py")
+        if os.path.exists(engine_path):
+            self.ai_panel.load_engine_source(engine_path)
 
         # Set current scene to first scene
         if model.scenes:
@@ -548,6 +604,9 @@ class MainWindow(QMainWindow):
         # Update asset browser
         if self.project.project_dir:
             self.asset_tree.set_root_path(self.project.project_dir)
+
+        # Update AI context with full project
+        self._build_full_project_context()
 
         self.statusBar().showMessage(tr("status.opened").format(path=self.project.path))
 
@@ -571,6 +630,8 @@ class MainWindow(QMainWindow):
         self.hierarchy_view.select_sprite(sprite)
         # Switch to inspector tab
         self.right_tabs.setCurrentIndex(1)
+        # Update AI context
+        self._update_ai_context(sprite=sprite)
 
     def _on_sprite_dropped(self, sprite: SpriteModel):
         """Handle sprite added via drag-drop to scene view."""
@@ -600,6 +661,8 @@ class MainWindow(QMainWindow):
 
         self.scene_view.select_sprite(sprite)
         self.property_editor.set_sprite(sprite)
+        # Update AI context
+        self._update_ai_context(sprite=sprite)
         # Open sprite code in editor
         self._open_sprite_code(sprite)
 
@@ -676,6 +739,8 @@ class MainWindow(QMainWindow):
         self.property_editor.set_scene(scene)
         # Switch to inspector tab
         self.right_tabs.setCurrentIndex(1)
+        # Update AI context
+        self._update_ai_context(scene=scene)
 
     def _on_hierarchy_project_selected(self):
         """Handle project root selection in hierarchy."""
@@ -844,6 +909,60 @@ class MainWindow(QMainWindow):
         self.code_tabs.setCurrentWidget(editor)
         # Switch to code editor tab
         self.right_tabs.setCurrentIndex(0)
+
+    def _update_ai_context(self, sprite: SpriteModel = None, scene: SceneModel = None):
+        """Update AI context with current selection."""
+        self._build_full_project_context(sprite, scene)
+
+    def _build_full_project_context(self, current_sprite: SpriteModel = None, current_scene: SceneModel = None):
+        """Build full project context for AI."""
+        if not self.project.model:
+            self.ai_panel.set_context("")
+            return
+
+        context_parts = []
+        model = self.project.model
+
+        # Game settings
+        context_parts.append("=== 游戏设置 ===")
+        context_parts.append(f"标题: {model.game.title}")
+        context_parts.append(f"分辨率: {model.game.width}x{model.game.height}")
+        context_parts.append(f"帧率: {model.game.fps}")
+        context_parts.append("")
+
+        # All scenes and sprites
+        context_parts.append("=== 项目结构 ===")
+        for scene in model.scenes:
+            is_current = scene == current_scene or scene == self._current_scene
+            marker = " [当前]" if is_current else ""
+            context_parts.append(f"场景: {scene.name}{marker} (id: {scene.id})")
+
+            if scene.code:
+                context_parts.append(f"  场景代码:")
+                context_parts.append(f"  ```python")
+                context_parts.append(f"  {scene.code}")
+                context_parts.append(f"  ```")
+
+            for sprite in scene.sprites:
+                is_selected = sprite == current_sprite
+                s_marker = " [选中]" if is_selected else ""
+                context_parts.append(f"  精灵: {sprite.name}{s_marker} (id: {sprite.id})")
+                context_parts.append(f"    类名: {sprite.class_name}")
+                context_parts.append(f"    位置: ({sprite.x}, {sprite.y})")
+                context_parts.append(f"    缩放: {sprite.size}")
+                context_parts.append(f"    方向: {sprite.direction}")
+                context_parts.append(f"    物理: {sprite.is_physics}")
+
+                if sprite.code:
+                    context_parts.append(f"    代码:")
+                    context_parts.append(f"    ```python")
+                    for line in sprite.code.split('\n'):
+                        context_parts.append(f"    {line}")
+                    context_parts.append(f"    ```")
+            context_parts.append("")
+
+        self.ai_panel.set_context("\n".join(context_parts))
+        self.ai_panel.set_project(self.project.model, self)
 
     def closeEvent(self, event):
         """Handle window close."""

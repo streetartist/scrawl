@@ -7,7 +7,10 @@ Python code editor with syntax highlighting using PySide6.
 import os
 from typing import Optional
 
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QPlainTextEdit, QMessageBox
+from PySide6.QtWidgets import (
+    QWidget, QVBoxLayout, QPlainTextEdit, QMessageBox,
+    QMenu, QToolBar, QToolButton
+)
 from PySide6.QtCore import Signal, Qt, QRect, QSize
 from PySide6.QtGui import (
     QFont, QColor, QPainter, QTextFormat, QSyntaxHighlighter,
@@ -15,6 +18,11 @@ from PySide6.QtGui import (
 )
 
 from core.settings import Settings
+from .snippets import (
+    DECORATOR_SNIPPETS, FUNCTION_SNIPPETS,
+    get_decorator_categories, get_function_categories,
+    get_decorators_by_category, get_functions_by_category
+)
 
 
 class PythonHighlighter(QSyntaxHighlighter):
@@ -158,26 +166,19 @@ class LineNumberArea(QWidget):
 class CodeEditor(QPlainTextEdit):
     """Code editor with line numbers and syntax highlighting."""
 
+    # Font size limits
+    MIN_FONT_SIZE = 8
+    MAX_FONT_SIZE = 32
+
     def __init__(self, parent=None):
         super().__init__(parent)
 
         self._settings = Settings()
+        self._font_family = self._settings.get_font_family()
+        self._font_size = self._settings.get_font_size()
 
-        # Setup font
-        font = QFont(self._settings.get_font_family(), self._settings.get_font_size())
-        font.setFixedPitch(True)
-        self.setFont(font)
-
-        # Setup colors
-        self.setStyleSheet("""
-            QPlainTextEdit {
-                background-color: #1E1E1E;
-                color: #E0E0E0;
-                selection-background-color: #264F78;
-                selection-color: #FFFFFF;
-                border: none;
-            }
-        """)
+        # Setup font and colors via stylesheet
+        self._apply_font_stylesheet()
 
         # Line number area
         self._line_number_area = LineNumberArea(self)
@@ -194,9 +195,41 @@ class CodeEditor(QPlainTextEdit):
         # Syntax highlighter
         self._highlighter = PythonHighlighter(self.document())
 
-        # Tab settings
+        # Tab settings - use fontMetrics() after stylesheet is applied
         tab_width = self._settings.get_tab_width()
-        self.setTabStopDistance(QFontMetrics(font).horizontalAdvance(' ') * tab_width)
+        self.setTabStopDistance(self.fontMetrics().horizontalAdvance(' ') * tab_width)
+
+    def _apply_font_stylesheet(self):
+        """Apply font settings via stylesheet."""
+        self.setStyleSheet(f"""
+            QPlainTextEdit {{
+                background-color: #1E1E1E;
+                color: #E0E0E0;
+                selection-background-color: #264F78;
+                selection-color: #FFFFFF;
+                border: none;
+                font-family: "{self._font_family}";
+                font-size: {self._font_size}pt;
+            }}
+        """)
+
+    def set_font_size(self, size: int):
+        """Set font size and update display."""
+        self._font_size = max(self.MIN_FONT_SIZE, min(self.MAX_FONT_SIZE, size))
+        self._apply_font_stylesheet()
+        self._update_line_number_area_width(0)
+
+    def wheelEvent(self, event):
+        """Handle mouse wheel - Ctrl+wheel to zoom."""
+        if event.modifiers() & Qt.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta > 0:
+                self.set_font_size(self._font_size + 1)
+            elif delta < 0:
+                self.set_font_size(self._font_size - 1)
+            event.accept()
+        else:
+            super().wheelEvent(event)
 
     def line_number_area_width(self) -> int:
         """Calculate the width needed for line numbers."""
@@ -283,30 +316,213 @@ class CodeEditor(QPlainTextEdit):
 
     def keyPressEvent(self, event):
         """Handle key press for auto-indent."""
-        if event.key() == Qt.Key_Return or event.key() == Qt.Key_Enter:
-            # Auto-indent
-            cursor = self.textCursor()
-            line = cursor.block().text()
+        # Dedent keywords
+        dedent_keywords = ('return', 'break', 'continue', 'pass', 'raise')
 
-            # Get current indentation
-            indent = ""
-            for char in line:
-                if char in ' \t':
-                    indent += char
-                else:
-                    break
-
-            # Add extra indent after colon
-            if line.rstrip().endswith(':'):
-                indent += "    "
-
-            super().keyPressEvent(event)
-            self.insertPlainText(indent)
+        if event.key() in (Qt.Key_Return, Qt.Key_Enter):
+            self._handle_enter_key()
         elif event.key() == Qt.Key_Tab:
-            # Insert spaces instead of tab
-            self.insertPlainText("    ")
+            if event.modifiers() & Qt.ShiftModifier:
+                self._handle_dedent()
+            else:
+                self._handle_indent()
+        elif event.key() == Qt.Key_Backtab:
+            self._handle_dedent()
+        elif event.key() == Qt.Key_Backspace:
+            if not self._handle_smart_backspace():
+                super().keyPressEvent(event)
         else:
             super().keyPressEvent(event)
+            # Auto-dedent after typing dedent keywords
+            if event.text() and event.text().isalpha():
+                self._check_auto_dedent(dedent_keywords)
+
+    def _get_line_indent(self, line: str) -> str:
+        """Get the indentation of a line."""
+        indent = ""
+        for char in line:
+            if char in ' \t':
+                indent += char
+            else:
+                break
+        return indent
+
+    def _handle_enter_key(self):
+        """Handle Enter key with smart indentation."""
+        cursor = self.textCursor()
+        line = cursor.block().text()
+        indent = self._get_line_indent(line)
+        line_stripped = line.strip()
+
+        # Increase indent after colon
+        if line_stripped.endswith(':'):
+            indent += "    "
+        # Decrease indent after dedent keywords
+        elif line_stripped in ('return', 'break', 'continue', 'pass') or \
+             line_stripped.startswith(('return ', 'raise ')):
+            if len(indent) >= 4:
+                indent = indent[:-4]
+
+        # Check for unclosed brackets
+        text_before = line[:cursor.positionInBlock()]
+        open_brackets = text_before.count('(') - text_before.count(')')
+        open_brackets += text_before.count('[') - text_before.count(']')
+        open_brackets += text_before.count('{') - text_before.count('}')
+        if open_brackets > 0:
+            indent += "    "
+
+        # Insert newline and indent
+        cursor.insertText('\n' + indent)
+        self.setTextCursor(cursor)
+
+    def _handle_indent(self):
+        """Handle Tab key - indent current line or selection."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            # Indent all selected lines
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.StartOfBlock)
+            cursor.setPosition(end, QTextCursor.KeepAnchor)
+            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+
+            text = cursor.selectedText()
+            # QTextCursor uses \u2029 as paragraph separator
+            lines = text.split('\u2029')
+            indented = ['    ' + line for line in lines]
+            cursor.insertText('\u2029'.join(indented))
+        else:
+            # Insert 4 spaces at cursor
+            cursor.insertText("    ")
+
+    def _handle_dedent(self):
+        """Handle Shift+Tab - dedent current line or selection."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            # Dedent all selected lines
+            start = cursor.selectionStart()
+            end = cursor.selectionEnd()
+            cursor.setPosition(start)
+            cursor.movePosition(QTextCursor.StartOfBlock)
+            cursor.setPosition(end, QTextCursor.KeepAnchor)
+            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+
+            text = cursor.selectedText()
+            lines = text.split('\u2029')
+            dedented = []
+            for line in lines:
+                if line.startswith('    '):
+                    dedented.append(line[4:])
+                elif line.startswith('\t'):
+                    dedented.append(line[1:])
+                else:
+                    dedented.append(line.lstrip(' \t') if line.startswith((' ', '\t')) else line)
+            cursor.insertText('\u2029'.join(dedented))
+        else:
+            # Dedent current line
+            cursor.movePosition(QTextCursor.StartOfBlock)
+            cursor.movePosition(QTextCursor.EndOfBlock, QTextCursor.KeepAnchor)
+            line = cursor.selectedText()
+            if line.startswith('    '):
+                cursor.insertText(line[4:])
+            elif line.startswith('\t'):
+                cursor.insertText(line[1:])
+
+    def _handle_smart_backspace(self) -> bool:
+        """Handle Backspace with smart indent deletion. Returns True if handled."""
+        cursor = self.textCursor()
+        if cursor.hasSelection():
+            return False
+
+        # Check if cursor is at the start of indentation
+        pos_in_block = cursor.positionInBlock()
+        line = cursor.block().text()
+
+        # If we're in the indentation area and it's all spaces
+        if pos_in_block > 0 and line[:pos_in_block].strip() == '':
+            # Delete up to 4 spaces backwards
+            spaces_before = pos_in_block
+            delete_count = min(4, spaces_before)
+            # Align to 4-space boundary
+            delete_count = spaces_before % 4 or 4
+            for _ in range(delete_count):
+                cursor.deletePreviousChar()
+            return True
+        return False
+
+    def _check_auto_dedent(self, dedent_keywords):
+        """Check if current line should be auto-dedented after typing a keyword."""
+        cursor = self.textCursor()
+        line = cursor.block().text()
+        stripped = line.strip()
+
+        # Check if line is exactly a dedent keyword
+        if stripped in dedent_keywords:
+            indent = self._get_line_indent(line)
+            if len(indent) >= 4:
+                # Already at correct indent, no change needed
+                pass
+
+    def contextMenuEvent(self, event):
+        """Show context menu with snippet insertion options."""
+        menu = self.createStandardContextMenu()
+        menu.addSeparator()
+
+        # Insert Decorator submenu
+        decorator_menu = menu.addMenu("插入装饰器")
+        for category in get_decorator_categories():
+            cat_menu = decorator_menu.addMenu(category)
+            for snippet in get_decorators_by_category(category):
+                action = cat_menu.addAction(snippet["name"])
+                action.setToolTip(snippet["description"])
+                action.triggered.connect(
+                    lambda checked, s=snippet: self._insert_snippet(s["template"])
+                )
+
+        # Insert Function submenu
+        function_menu = menu.addMenu("插入函数")
+        for category in get_function_categories():
+            cat_menu = function_menu.addMenu(category)
+            for snippet in get_functions_by_category(category):
+                action = cat_menu.addAction(snippet["name"])
+                action.setToolTip(snippet["description"])
+                action.triggered.connect(
+                    lambda checked, s=snippet: self._insert_snippet(s["template"])
+                )
+
+        menu.exec_(event.globalPos())
+
+    def _insert_snippet(self, template: str):
+        """Insert a code snippet at the current cursor position."""
+        cursor = self.textCursor()
+
+        # Get current line indentation
+        current_line = cursor.block().text()
+        indent = ""
+        for char in current_line:
+            if char in ' \t':
+                indent += char
+            else:
+                break
+
+        # Adjust template indentation
+        lines = template.split('\n')
+        adjusted_lines = []
+        for i, line in enumerate(lines):
+            if i == 0:
+                adjusted_lines.append(line)
+            elif line.strip():
+                adjusted_lines.append(indent + line)
+            else:
+                adjusted_lines.append(line)
+
+        adjusted_template = '\n'.join(adjusted_lines)
+
+        # Insert at cursor
+        cursor.insertText(adjusted_template)
+        self.setTextCursor(cursor)
+        self.setFocus()
 
 
 class CodeEditorWidget(QWidget):
@@ -336,11 +552,87 @@ class CodeEditorWidget(QWidget):
         """Set up the editor UI."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
+        # Toolbar for insert buttons
+        self._toolbar = QToolBar()
+        self._toolbar.setMovable(False)
+        self._toolbar.setStyleSheet("""
+            QToolBar {
+                background-color: #2D2D2D;
+                border: none;
+                padding: 2px;
+                spacing: 4px;
+            }
+            QToolButton {
+                background-color: #3C3C3C;
+                color: #E0E0E0;
+                border: 1px solid #555;
+                border-radius: 3px;
+                padding: 4px 8px;
+            }
+            QToolButton:hover {
+                background-color: #4A4A4A;
+            }
+            QToolButton::menu-indicator {
+                image: none;
+            }
+        """)
+        self._setup_toolbar()
+        layout.addWidget(self._toolbar)
+
+        # Code editor
         self._editor = CodeEditor(self)
         self._editor.textChanged.connect(self._on_text_changed)
-
         layout.addWidget(self._editor)
+
+    def _setup_toolbar(self):
+        """Set up the insert toolbar."""
+        # Insert Decorator button
+        decorator_btn = QToolButton()
+        decorator_btn.setText("插入装饰器 ▼")
+        decorator_btn.setPopupMode(QToolButton.InstantPopup)
+        decorator_menu = self._create_decorator_menu()
+        decorator_btn.setMenu(decorator_menu)
+        self._toolbar.addWidget(decorator_btn)
+
+        # Insert Function button
+        function_btn = QToolButton()
+        function_btn.setText("插入函数 ▼")
+        function_btn.setPopupMode(QToolButton.InstantPopup)
+        function_menu = self._create_function_menu()
+        function_btn.setMenu(function_menu)
+        self._toolbar.addWidget(function_btn)
+
+    def _create_decorator_menu(self) -> QMenu:
+        """Create the decorator insertion menu."""
+        menu = QMenu(self)
+        for category in get_decorator_categories():
+            cat_menu = menu.addMenu(category)
+            for snippet in get_decorators_by_category(category):
+                action = cat_menu.addAction(snippet["name"])
+                action.setToolTip(snippet["description"])
+                action.triggered.connect(
+                    lambda checked, s=snippet: self._insert_snippet(s["template"])
+                )
+        return menu
+
+    def _create_function_menu(self) -> QMenu:
+        """Create the function insertion menu."""
+        menu = QMenu(self)
+        for category in get_function_categories():
+            cat_menu = menu.addMenu(category)
+            for snippet in get_functions_by_category(category):
+                action = cat_menu.addAction(snippet["name"])
+                action.setToolTip(snippet["description"])
+                action.triggered.connect(
+                    lambda checked, s=snippet: self._insert_snippet(s["template"])
+                )
+        return menu
+
+    def _insert_snippet(self, template: str):
+        """Insert a code snippet at the current cursor position."""
+        self._editor._insert_snippet(template)
 
     def _on_text_changed(self):
         """Handle text changes."""

@@ -86,7 +86,7 @@ TRANSLATIONS_ZH = {
     # Application
     "app.name": "Scrawl IDE",
     "app.about.title": "关于 Scrawl IDE",
-    "app.about.text": "Scrawl IDE v0.1.0\n\n一个用于 Scrawl 游戏引擎的可视化 IDE。\n\n基于 PySide6 构建。",
+    "app.about.text": "Scrawl IDE v0.2.1\n\n一个用于 Scrawl 游戏引擎的可视化 IDE。\n\n作者: UESTC streetartist\n基于 PySide6 构建。",
 
     # Menu - File
     "menu.file": "文件(&F)",
@@ -276,6 +276,25 @@ TRANSLATIONS_ZH = {
     # Code editor
     "editor.could_not_open": "无法打开文件: {error}",
     "editor.could_not_save": "无法保存文件: {error}",
+
+    # Settings dialog
+    "menu.edit.settings": "设置(&S)...",
+    "dialog.settings.title": "设置",
+    "dialog.settings.editor": "编辑器",
+    "dialog.settings.font_family": "字体:",
+    "dialog.settings.font_size": "字号:",
+    "dialog.settings.preview": "预览:",
+    "dialog.settings.ai": "AI 助手",
+    "dialog.settings.ai_key": "API Key:",
+    "dialog.settings.ai_endpoint": "端点:",
+    "dialog.settings.ai_model": "模型:",
+
+    # AI Chat
+    "dock.ai_chat": "AI 助手",
+    "ai.input_placeholder": "输入消息，让 AI 帮助你编写代码...",
+    "ai.send": "发送",
+    "ai.apply": "应用",
+    "ai.clear": "清空",
 }
 
 
@@ -286,7 +305,7 @@ TRANSLATIONS_EN = {
     # Application
     "app.name": "Scrawl IDE",
     "app.about.title": "About Scrawl IDE",
-    "app.about.text": "Scrawl IDE v0.1.0\n\nA visual IDE for the Scrawl game engine.\n\nBuilt with PySide6.",
+    "app.about.text": "Scrawl IDE v0.2.1\n\nA visual IDE for the Scrawl game engine.\n\nAuthor: UESTC streetartist\nBuilt with PySide6.",
 
     # Menu - File
     "menu.file": "&File",
@@ -476,4 +495,23 @@ TRANSLATIONS_EN = {
     # Code editor
     "editor.could_not_open": "Could not open file: {error}",
     "editor.could_not_save": "Could not save file: {error}",
+
+    # Settings dialog
+    "menu.edit.settings": "&Settings...",
+    "dialog.settings.title": "Settings",
+    "dialog.settings.editor": "Editor",
+    "dialog.settings.font_family": "Font:",
+    "dialog.settings.font_size": "Font Size:",
+    "dialog.settings.preview": "Preview:",
+    "dialog.settings.ai": "AI Assistant",
+    "dialog.settings.ai_key": "API Key:",
+    "dialog.settings.ai_endpoint": "Endpoint:",
+    "dialog.settings.ai_model": "Model:",
+
+    # AI Chat
+    "dock.ai_chat": "AI Assistant",
+    "ai.input_placeholder": "Type a message to get AI help with your code...",
+    "ai.send": "Send",
+    "ai.apply": "Apply",
+    "ai.clear": "Clear",
 }

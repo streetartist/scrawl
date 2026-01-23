@@ -67,7 +67,39 @@ class Settings:
         self._settings.setValue("editor/font_size", size)
 
     def get_font_family(self) -> str:
-        return self._settings.value("editor/font_family", "Consolas")
+        # Default to good cross-platform monospace fonts
+        from PySide6.QtGui import QFontDatabase
+
+        # Preferred fonts in order (good for code, compatible with DirectWrite)
+        preferred = [
+            "Cascadia Code",    # Modern, ligatures support
+            "Cascadia Mono",    # Cascadia without ligatures
+            "JetBrains Mono",   # Great for coding
+            "Fira Code",        # Popular with ligatures
+            "Source Code Pro",  # Adobe's coding font
+            "Consolas",         # Windows default
+            "Monaco",           # macOS
+            "DejaVu Sans Mono", # Linux
+            "Courier New",      # Fallback
+        ]
+
+        # Fonts known to have issues with DirectWrite
+        problematic_fonts = {"Fixedsys", "Terminal", "System"}
+
+        # Check saved setting
+        saved = self._settings.value("editor/font_family")
+        if saved and saved not in problematic_fonts:
+            # Verify font exists and is usable
+            if saved in QFontDatabase.families():
+                return saved
+
+        # Find best available font
+        available = set(QFontDatabase.families())
+        for font in preferred:
+            if font in available:
+                return font
+
+        return "Consolas"
 
     def set_font_family(self, family: str):
         self._settings.setValue("editor/font_family", family)
@@ -99,3 +131,22 @@ class Settings:
 
     def set(self, key: str, value: Any):
         self._settings.setValue(key, value)
+
+    # AI settings
+    def get_ai_api_key(self) -> str:
+        return self._settings.value("ai/api_key", "")
+
+    def set_ai_api_key(self, key: str):
+        self._settings.setValue("ai/api_key", key)
+
+    def get_ai_endpoint(self) -> str:
+        return self._settings.value("ai/endpoint", "https://api.openai.com/v1")
+
+    def set_ai_endpoint(self, endpoint: str):
+        self._settings.setValue("ai/endpoint", endpoint)
+
+    def get_ai_model(self) -> str:
+        return self._settings.value("ai/model", "gpt-4o-mini")
+
+    def set_ai_model(self, model: str):
+        self._settings.setValue("ai/model", model)

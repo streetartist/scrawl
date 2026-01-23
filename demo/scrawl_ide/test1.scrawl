@@ -19,15 +19,15 @@
         40
       ],
       "background_image": null,
-      "code": "class MainScene(Scene):\n    def __init__(self):\n        super().__init__()\n        self.name = \"MainScene\"\n        self.background_color = (100, 150, 200)\n\n        # 精灵会由IDE自动添加，无需手动编写\n        # 可以在这里添加场景初始化逻辑\n\n    @as_main\n    def scene_logic(self):\n        \"\"\"场景主逻辑（可选）\"\"\"\n        while True:\n            yield 0\n",
+      "code": "import random\n\nclass MainScene(Scene):\n    def __init__(self):\n        super().__init__()\n        self.name = \"MainScene\"\n        self.background_color = (100, 150, 200)\n        \n        # 游戏状态变量\n        self.game_started = False\n        self.start_time = 0\n        self.game_over = False\n        self.win = False\n\n    @as_main\n    def scene_logic(self):\n        \"\"\"场景主逻辑 - 控制游戏流程\"\"\"\n        while True:\n            # 如果游戏还没开始，等待开始信号\n            if not self.game_started:\n                # 这里可以添加开始游戏的触发条件\n                # 例如：按下空格键开始\n                keys = pygame.key.get_pressed()\n                if keys[pygame.K_SPACE]:\n                    self.start_game()\n                yield 0\n                continue\n            \n            # 游戏进行中\n            if not self.game_over:\n                # 检查是否超过5秒\n                current_time = self.game.current_time\n                elapsed_time = current_time - self.start_time\n                \n                if elapsed_time >= 5000:  # 5秒 = 5000毫秒\n                    # 5秒内没被撞到，胜利！\n                    self.win_game()\n                \n                # 检查Sprite1是否被撞到\n                sprite1 = None\n                for sprite in self.sprites:\n                    if sprite.name == \"Sprite1\":\n                        sprite1 = sprite\n                        break\n                \n                if sprite1:\n                    for sprite in self.sprites:\n                        if sprite.name in [\"Sprite2\", \"Sprite3\"]:\n                            if sprite1.is_colliding_with(sprite):\n                                self.lose_game()\n                                break\n                \n                # 显示剩余时间\n                remaining = max(0, 5000 - elapsed_time)\n                seconds = remaining / 1000\n                self.game.log_debug(f\"剩余时间: {seconds:.1f}秒\")\n            \n            yield 0\n    \n    def start_game(self):\n        \"\"\"开始游戏\"\"\"\n        self.game_started = True\n        self.start_time = self.game.current_time\n        self.game_over = False\n        self.win = False\n        \n        # 重置Sprite2和Sprite3的位置到边缘，确保距离Sprite1足够远\n        sprite1 = None\n        for sprite in self.sprites:\n            if sprite.name == \"Sprite1\":\n                sprite1 = sprite\n                break\n        \n        if sprite1:\n            for sprite in self.sprites:\n                if sprite.name in [\"Sprite2\", \"Sprite3\"]:\n                    self.position_at_edge_far_from(sprite, sprite1)\n        \n        self.game.log_debug(\"游戏开始！躲避5秒即可胜利！\")\n    \n    def position_at_edge_far_from(self, sprite, target_sprite):\n        \"\"\"将精灵放置在画面边缘，确保距离目标精灵足够远\"\"\"\n        # 尝试几次找到合适的位置\n        for _ in range(10):\n            edge = random.choice([\"left\", \"right\", \"top\", \"bottom\"])\n            \n            if edge == \"left\":\n                sprite.pos.x = 0\n                sprite.pos.y = random.randint(0, self.game.height)\n            elif edge == \"right\":\n                sprite.pos.x = self.game.width\n                sprite.pos.y = random.randint(0, self.game.height)\n            elif edge == \"top\":\n                sprite.pos.x = random.randint(0, self.game.width)\n                sprite.pos.y = 0\n            elif edge == \"bottom\":\n                sprite.pos.x = random.randint(0, self.game.width)\n                sprite.pos.y = self.game.height\n            \n            # 检查距离是否足够远（至少屏幕宽度的1/3）\n            distance = pygame.Vector2(sprite.pos.x - target_sprite.pos.x,\n                                     sprite.pos.y - target_sprite.pos.y).length()\n            \n            min_distance = min(self.game.width, self.game.height) / 3\n            \n            if distance >= min_distance:\n                return  # 找到合适位置\n        \n        # 如果没找到足够远的位置，至少确保不在同一区域\n        # 将屏幕分为4个象限，确保在不同象限\n        sprite_quadrant = self.get_quadrant(sprite.pos.x, sprite.pos.y)\n        target_quadrant = self.get_quadrant(target_sprite.pos.x, target_sprite.pos.y)\n        \n        while sprite_quadrant == target_quadrant:\n            edge = random.choice([\"left\", \"right\", \"top\", \"bottom\"])\n            \n            if edge == \"left\":\n                sprite.pos.x = 0\n                sprite.pos.y = random.randint(0, self.game.height)\n            elif edge == \"right\":\n                sprite.pos.x = self.game.width\n                sprite.pos.y = random.randint(0, self.game.height)\n            elif edge == \"top\":\n                sprite.pos.x = random.randint(0, self.game.width)\n                sprite.pos.y = 0\n            elif edge == \"bottom\":\n                sprite.pos.x = random.randint(0, self.game.width)\n                sprite.pos.y = self.game.height\n            \n            sprite_quadrant = self.get_quadrant(sprite.pos.x, sprite.pos.y)\n    \n    def get_quadrant(self, x, y):\n        \"\"\"获取坐标所在的象限（将屏幕分为4个象限）\"\"\"\n        center_x = self.game.width / 2\n        center_y = self.game.height / 2\n        \n        if x < center_x:\n            if y < center_y:\n                return 1  # 左上\n            else:\n                return 3  # 左下\n        else:\n            if y < center_y:\n                return 2  # 右上\n            else:\n                return 4  # 右下\n    \n    def win_game(self):\n        \"\"\"胜利\"\"\"\n        self.game_over = True\n        self.win = True\n        self.game.log_debug(\"胜利！你成功躲避了5秒！\")\n        \n        # 显示胜利消息\n        for sprite in self.sprites:\n            if sprite.name == \"Sprite1\":\n                sprite.say(\"胜利！\", 3000)\n                break\n    \n    def lose_game(self):\n        \"\"\"失败\"\"\"\n        self.game_over = True\n        self.win = False\n        self.game.log_debug(\"失败！被撞到了！\")\n        \n        # 显示失败消息\n        for sprite in self.sprites:\n            if sprite.name == \"Sprite1\":\n                sprite.say(\"被撞到了！\", 3000)\n                break\n    \n    @on_key(pygame.K_SPACE, \"pressed\")\n    def restart_game(self):\n        \"\"\"按空格键重新开始游戏\"\"\"\n        if self.game_over:\n            self.start_game()",
       "sprites": [
         {
           "id": "e41fd21f-72f8-4ca5-874b-bf5b8893e49f",
           "name": "Sprite1",
           "class": "Sprite1",
           "pos": [
-            402.0,
-            228.65518313757912
+            411.66910531931103,
+            288.09734134516947
           ],
           "direction": 50.0,
           "size": 1.0,
@@ -45,15 +45,15 @@
             100,
             100
           ],
-          "collision_type": "rect",
-          "is_physics": true,
+          "collision_type": "mask",
+          "is_physics": false,
           "gravity": [
-            0.0,
+            -0.4,
             0.2
           ],
           "friction": 0.98,
           "elasticity": 0.8,
-          "code": "class Sprite1(PhysicsSprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite1\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n            \n    @on_mouse_event(mode=\"pressed\", button=1)\n    def click1(self):\n        self.say(\"你好\")",
+          "code": "class Sprite1(PhysicsSprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite1\"\n        self.speed = 5\n        \n    @as_main\n    def main_loop(self):\n        \"\"\"主循环 - 处理方向键控制\"\"\"\n        while True:\n            # 只在游戏进行中时才允许移动\n            if self.game.scene.game_started and not self.game.scene.game_over:\n                # 获取键盘状态\n                keys = pygame.key.get_pressed()\n                \n                # 根据方向键移动精灵\n                if keys[pygame.K_LEFT]:\n                    self.pos.x -= self.speed\n                if keys[pygame.K_RIGHT]:\n                    self.pos.x += self.speed\n                if keys[pygame.K_UP]:\n                    self.pos.y -= self.speed\n                if keys[pygame.K_DOWN]:\n                    self.pos.y += self.speed\n                \n                # 限制在屏幕内\n                self.pos.x = max(0, min(self.game.width, self.pos.x))\n                self.pos.y = max(0, min(self.game.height, self.pos.y))\n            \n            yield 0  # 每帧执行一次\n                    \n    @on_mouse(mode=\"pressed\", button=1)\n    def click1(self):\n        if not self.game.scene.game_started:\n            self.say(\"按空格键开始游戏！\")\n        elif self.game.scene.game_over:\n            if self.game.scene.win:\n                self.say(\"胜利！按空格键再玩一次\")\n            else:\n                self.say(\"失败！按空格键再试一次\")",
           "script": null,
           "properties": {}
         },
@@ -62,8 +62,8 @@
           "name": "Sprite2",
           "class": "Sprite2",
           "pos": [
-            209.71196186834038,
-            380.582137485201
+            721.8290171952721,
+            517.7563487334862
           ],
           "direction": 100.0,
           "size": 1.0,
@@ -86,24 +86,24 @@
             100
           ],
           "collision_type": "mask",
-          "is_physics": true,
+          "is_physics": false,
           "gravity": [
             0.0,
             0.2
           ],
           "friction": 0.98,
           "elasticity": 0.8,
-          "code": "class Sprite2(PhysicsSprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite2\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0",
+          "code": "class Sprite2(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite2\"\n        self.speed = 2  # 移动速度\n        self.target = None  # 目标精灵（Sprite1）\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环 - 向Sprite1移动\"\"\"\n        while True:\n            # 只在游戏进行中且未结束时才移动\n            if self.game.scene.game_started and not self.game.scene.game_over:\n                # 查找Sprite1作为目标\n                if self.target is None:\n                    for sprite in self.game.scene.sprites:\n                        if sprite.name == \"Sprite1\":\n                            self.target = sprite\n                            break\n                \n                # 如果找到目标，向目标移动\n                if self.target:\n                    # 计算方向向量\n                    direction = pygame.Vector2(self.target.pos.x - self.pos.x,\n                                              self.target.pos.y - self.pos.y)\n                    \n                    # 归一化并移动\n                    if direction.length() > 0:\n                        direction.normalize_ip()\n                        self.pos.x += direction.x * self.speed\n                        self.pos.y += direction.y * self.speed\n            \n            yield 0",
           "script": null,
           "properties": {}
         },
         {
-          "id": "c5614cba-2378-456c-afa0-0b4faee96000",
+          "id": "653bf878-d897-4f81-a289-79699a6e6d93",
           "name": "Sprite3",
           "class": "Sprite3",
           "pos": [
-            587.0,
-            274.0
+            76.30163084895597,
+            67.54320987654324
           ],
           "direction": 90.0,
           "size": 1.0,
@@ -121,7 +121,7 @@
             100,
             100
           ],
-          "collision_type": "rect",
+          "collision_type": "mask",
           "is_physics": false,
           "gravity": [
             0.0,
@@ -129,43 +129,7 @@
           ],
           "friction": 0.98,
           "elasticity": 0.8,
-          "code": "class Sprite3(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite3\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
-          "script": null,
-          "properties": {}
-        },
-        {
-          "id": "653bf878-d897-4f81-a289-79699a6e6d93",
-          "name": "Sprite4",
-          "class": "Sprite4",
-          "pos": [
-            215.0,
-            191.0
-          ],
-          "direction": 87.0,
-          "size": 1.0,
-          "costumes": [
-            {
-              "name": "bat2-a",
-              "path": "D:/Project/scrawl/scrawl/demo_project/scrawl_demo_witch-main-main/bat2-a.svg"
-            }
-          ],
-          "current_costume": 0,
-          "default_costume": 0,
-          "visible": true,
-          "color": [
-            255,
-            100,
-            100
-          ],
-          "collision_type": "rect",
-          "is_physics": false,
-          "gravity": [
-            0.0,
-            0.2
-          ],
-          "friction": 0.98,
-          "elasticity": 0.8,
-          "code": "class Sprite4(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite4\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
+          "code": "class Sprite3(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite3\"\n        self.speed = 3  # 移动速度\n        self.target = None  # 目标精灵（Sprite1）\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环 - 向Sprite1移动\"\"\"\n        while True:\n            # 只在游戏进行中且未结束时才移动\n            if self.game.scene.game_started and not self.game.scene.game_over:\n                # 查找Sprite1作为目标\n                if self.target is None:\n                    for sprite in self.game.scene.sprites:\n                        if sprite.name == \"Sprite1\":\n                            self.target = sprite\n                            break\n                \n                # 如果找到目标，向目标移动\n                if self.target:\n                    # 计算方向向量\n                    direction = pygame.Vector2(self.target.pos.x - self.pos.x,\n                                              self.target.pos.y - self.pos.y)\n                    \n                    # 归一化并移动\n                    if direction.length() > 0:\n                        direction.normalize_ip()\n                        self.pos.x += direction.x * self.speed\n                        self.pos.y += direction.y * self.speed\n            \n            yield 0",
           "script": null,
           "properties": {}
         }
