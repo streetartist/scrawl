@@ -26,10 +26,10 @@
           "name": "Sprite1",
           "class": "Sprite1",
           "pos": [
-            403.00398898295543,
+            402.0,
             228.65518313757912
           ],
-          "direction": 48.0,
+          "direction": 50.0,
           "size": 1.0,
           "costumes": [
             {
@@ -46,14 +46,14 @@
             100
           ],
           "collision_type": "rect",
-          "is_physics": false,
+          "is_physics": true,
           "gravity": [
             0.0,
             0.2
           ],
           "friction": 0.98,
           "elasticity": 0.8,
-          "code": "class Sprite1(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite1\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n            \n    @on_mouse_event(mode=\"pressed\", button=1)\n    def click1(self):\n        self.say(\"你好\")\n",
+          "code": "class Sprite1(PhysicsSprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite1\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n            \n    @on_mouse_event(mode=\"pressed\", button=1)\n    def click1(self):\n        self.say(\"你好\")",
           "script": null,
           "properties": {}
         },
@@ -85,15 +85,15 @@
             100,
             100
           ],
-          "collision_type": "rect",
-          "is_physics": false,
+          "collision_type": "mask",
+          "is_physics": true,
           "gravity": [
             0.0,
             0.2
           ],
           "friction": 0.98,
           "elasticity": 0.8,
-          "code": "class Sprite2(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite2\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0\n",
+          "code": "class Sprite2(PhysicsSprite):\n    def __init__(self):\n        super().__init__()\n        self.name = \"Sprite2\"\n\n    @as_main\n    def main_loop(self):\n        \"\"\"主循环\"\"\"\n        while True:\n            # 在这里添加逻辑\n            yield 0",
           "script": null,
           "properties": {}
         },
@@ -103,7 +103,7 @@
           "class": "Sprite3",
           "pos": [
             587.0,
-            275.0
+            274.0
           ],
           "direction": 90.0,
           "size": 1.0,

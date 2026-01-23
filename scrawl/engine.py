@@ -192,19 +192,19 @@ def as_clones(func):
     func._is_clones = True
     return func
 
-def handle_broadcast(event_name: str):
+def on_broadcast(event_name: str):
     def decorator(func):
         func._broadcast_event = event_name
         return func
     return decorator
 
-def handle_edge_collision(edge: str = "any"):
+def on_edge_collision(edge: str = "any"):
     def decorator(func):
         func._edge_collision = edge
         return func
     return decorator
 
-def handle_sprite_collision(target: type|str):
+def on_sprite_collision(target: type|str):
 
     def decorator(func):
         if not hasattr(func, '_sprite_collisions'):
@@ -213,11 +213,16 @@ def handle_sprite_collision(target: type|str):
         return func
     return decorator
 
-def on_mouse_event(mode: str = "pressed", button: int = 1):
+def on_mouse(mode: str = "pressed", button: int = 1):
     def decorator(func):
         func._mouse_event = (button, mode)
         return func
     return decorator
+
+def on_sprite_clicked(func):
+    """装饰器：当精灵被点击时触发"""
+    func._on_sprite_clicked = True
+    return func
 
 # 对GUI的支持部分
 # 需要优化界面，功能与逻辑
@@ -376,7 +381,7 @@ class Game:
         # 创建中文字体 - 指定字体
         try:
             self.font = pygame.font.Font(font_path, font_size)
-        except:
+        except (FileNotFoundError, pygame.error, OSError):
             # 无法加载指定字体时尝试使用系统默认字体
             print(f"警告: 无法加载字体 {font_path}, 将尝试使用系统字体")
             try:
@@ -391,13 +396,13 @@ class Game:
                         self.font = pygame.font.Font(f, font_size)
                         loaded = True
                         break
-                    except:
+                    except (FileNotFoundError, pygame.error, OSError):
                         continue
 
                 if not loaded:
                     self.font = pygame.font.SysFont(None, font_size)
                     print("警告: 无法找到适合的中文字体, 使用系统默认字体")
-            except:
+            except Exception:
                 self.font = pygame.font.SysFont(None, font_size)
                 print("警告: 字体初始化失败, 使用系统默认字体")
 
@@ -428,6 +433,7 @@ class Game:
         self.mouse_released = False  # 鼠标是否刚刚释放
         self.mouse_held_time = 0  # 鼠标持续按下的时间
         self.mouse_events = []  # 存储鼠标事件处理函数
+        self.sprite_click_events = []  # 存储精灵点击事件处理函数
         
         self.is_fullscreen = fullscreen
         
@@ -632,13 +638,18 @@ class Game:
             for obj, method, button, mode in self.mouse_events:
                 if button == 1 and mode == "pressed":
                     self.add_task(method)
-        
+            # 处理精灵点击事件
+            mouse_pos = pygame.math.Vector2(self.mouse_pos)
+            for obj, method in self.sprite_click_events:
+                if hasattr(obj, 'get_rect') and obj.get_rect().collidepoint(mouse_pos):
+                    self.add_task(method)
+
         # 处理释放事件
         if self.mouse_released:
             for obj, method, button, mode in self.mouse_events:
                 if button == 1 and mode == "released":
                     self.add_task(method)
-        
+
         # 处理按住事件（如果鼠标按住超过一帧）
         if self.mouse_pressed and self.mouse_held_time > 1000 / self.fps:
             for obj, method, button, mode in self.mouse_events:
@@ -655,9 +666,15 @@ class Game:
                 self.log_debug(
                     f"注册鼠标事件: 按钮{button} {mode} -> {obj.__class__.__name__}.{method.__name__}"
                 )
+            # 注册精灵点击事件
+            if callable(method) and hasattr(method, '_on_sprite_clicked'):
+                self.sprite_click_events.append((obj, method))
+                self.log_debug(
+                    f"注册精灵点击事件: {obj.__class__.__name__}.{method.__name__}"
+                )
     
     def is_sprite_clicked(self, name: str) -> bool:
-        if not self.mouse_was_clicked():
+        if not self.is_mouse_clicked():
             return False
     
         mouse_pos = pygame.math.Vector2(self.mouse_pos)
@@ -673,16 +690,16 @@ class Game:
     def mouse_y(self) -> int:
         """返回鼠标的y坐标"""
         return self.mouse_pos[1]
-    
-    def mouse_is_down(self) -> bool:
+
+    def is_mouse_down(self) -> bool:
         """检查鼠标是否按下"""
         return self.mouse_pressed
     
-    def mouse_was_clicked(self) -> bool:
+    def is_mouse_clicked(self) -> bool:
         """检查鼠标是否刚刚点击"""
         return self.mouse_clicked
-    
-    def mouse_was_released(self) -> bool:
+
+    def is_mouse_released(self) -> bool:
         """检查鼠标是否刚刚释放"""
         return self.mouse_released
     
@@ -1082,20 +1099,20 @@ class Scene:
         if self.game:
             return self.game.mouse_y()
         return 0
-    
-    def mouse_is_down(self) -> bool:
+
+    def is_mouse_down(self) -> bool:
         if self.game:
-            return self.game.mouse_is_down()
+            return self.game.is_mouse_down()
         return False
-    
-    def mouse_was_clicked(self) -> bool:
+
+    def is_mouse_clicked(self) -> bool:
         if self.game:
-            return self.game.mouse_was_clicked()
+            return self.game.is_mouse_clicked()
         return False
-    
-    def mouse_was_released(self) -> bool:
+
+    def is_mouse_released(self) -> bool:
         if self.game:
-            return self.game.mouse_was_released()
+            return self.game.is_mouse_released()
         return False
     
     def mouse_held_duration(self) -> int:
@@ -1397,7 +1414,7 @@ class Sprite:
             current_frame_collisions = set()
             for other in self.scene.sprites:
                 if other is self or not other.visible: continue
-                if self.collides_with(other):
+                if self.is_colliding_with(other):
                     current_frame_collisions.add(id(other))
                     if id(other) not in self._collided_sprites:
                         for handler, target in self.sprite_collision_handlers:
@@ -1410,12 +1427,12 @@ class Sprite:
 
     def mouse_x(self) -> int: return self.game.mouse_x() if self.game else 0
     def mouse_y(self) -> int: return self.game.mouse_y() if self.game else 0
-    def mouse_is_down(self) -> bool: return self.game.mouse_is_down() if self.game else False
-    def mouse_was_clicked(self) -> bool: return self.game.mouse_was_clicked() if self.game else False
-    def mouse_was_released(self) -> bool: return self.game.mouse_was_released() if self.game else False
+    def is_mouse_down(self) -> bool: return self.game.is_mouse_down() if self.game else False
+    def is_mouse_clicked(self) -> bool: return self.game.is_mouse_clicked() if self.game else False
+    def is_mouse_released(self) -> bool: return self.game.is_mouse_released() if self.game else False
     def mouse_held_duration(self) -> int: return self.game.mouse_held_duration() if self.game else 0
 
-    def touches_mouse(self) -> bool:
+    def is_touching_mouse(self) -> bool:
         if not self.game or not self.visible: return False
         mouse_x, mouse_y = self.game.mouse_pos
         distance_sq = (self.pos.x - mouse_x)**2 + (self.pos.y - mouse_y)**2
@@ -1469,7 +1486,7 @@ class Sprite:
         return temp_mask.overlap(mask, offset) is not None
 
 
-    def collides_with(self, other: "Sprite") -> bool:
+    def is_colliding_with(self, other: "Sprite") -> bool:
         if not self.visible or not other.visible:
             return False
 
@@ -1522,7 +1539,7 @@ class Sprite:
         task_to_add = (lambda: handler(other)) if 'other' in sig.parameters else handler
         self.game.add_task(task_to_add,obj=self)
 
-    def touches_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
+    def is_touching_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
         if not self.game or not self.visible: return False
         edge_points = self._get_edge_points()
         for point in edge_points:
@@ -1628,17 +1645,17 @@ class Sprite:
     def glide_up(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(90, distance, duration, easing)
     def glide_down(self, distance: float, duration: float = 1000, easing: str = "linear"): yield from self.glide_in_direction(270, distance, duration, easing)
 
-    def goto(self, x: float, y: float): self.pos.update(x, y)
+    def go_to(self, x: float, y: float): self.pos.update(x, y)
 
-    def goto_random_position(self):
+    def go_to_random_position(self):
         if not self.game: return
         r = self.collision_radius * self.size
         self.pos.x, self.pos.y = random.uniform(r, self.game.width - r), random.uniform(r, self.game.height - r)
 
     def say(self, text: str, duration: int = 2000): self.speech, self.speech_timer = text, duration
     def think(self, text: str, duration: int = 2000): self.say(text, duration)
-    def change_color_to(self, color: Tuple[int, int, int]): self.color = color
-    def change_color_random(self): self.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
+    def set_color(self, color: Tuple[int, int, int]): self.color = color
+    def set_color_random(self): self.color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
 
     def clone(self, other_sprite: 'Sprite' = None):
         if not self.scene or not self.game or len(self.scene.sprites) >= 500: return
@@ -1656,9 +1673,9 @@ class Sprite:
         self.pen_path.append(self.pos.xy)
     def put_pen_up(self):
         self.pen_down = False
-    def change_pen_color(self, color: Tuple[int, int, int]): self.pen_color = color
+    def set_pen_color(self, color: Tuple[int, int, int]): self.pen_color = color
     def set_pen_color_random(self): self.pen_color = (random.randint(0, 255), random.randint(0, 255), random.randint(0, 255))
-    def change_pen_size(self, size: int): self.pen_size = max(1, size)
+    def set_pen_size(self, size: int): self.pen_size = max(1, size)
     def clear_pen(self): self.pen_path = []
 
     def face_towards(self, target: Any):
@@ -1836,7 +1853,7 @@ class PhysicsSprite(Sprite):
         # 物理属性
         self.velocity = pygame.Vector2(0, 0)  # 速度向量
         self.angular_velocity = 0  # 角速度（度/帧）
-        self.friction = 0.98  # 摩擦力系数
+        self.friction = 0.02  # 摩擦力系数 (0=无摩擦, 1=最大摩擦)
         self.gravity = pygame.Vector2(0, 0.2)  # 重力向量
         self.elasticity = 0.8  # 弹性系数
         self.show_speed_surf = False
@@ -1857,8 +1874,8 @@ class PhysicsSprite(Sprite):
         # 应用重力
         self.velocity += self.gravity
 
-        # 应用摩擦力
-        self.velocity *= self.friction
+        # 应用摩擦力 (friction=0无摩擦, friction=1完全停止)
+        self.velocity *= (1 - self.friction)
 
         # 应用角速度
         self.direction = (self.direction + self.angular_velocity) % 360

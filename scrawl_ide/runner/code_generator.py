@@ -37,8 +37,8 @@ class CodeGenerator:
         code_parts.append('import pygame')
         code_parts.append('from scrawl import (')
         code_parts.append('    Game, Scene, Sprite, PhysicsSprite,')
-        code_parts.append('    on_key, on_mouse_event, as_main, as_clones,')
-        code_parts.append('    handle_sprite_collision, handle_edge_collision, handle_broadcast')
+        code_parts.append('    on_key, on_mouse, as_main, as_clones,')
+        code_parts.append('    on_sprite_collision, on_edge_collision, on_broadcast, on_sprite_clicked')
         code_parts.append(')')
         code_parts.append('')
         code_parts.append(f'# 项目目录')
@@ -106,15 +106,18 @@ class CodeGenerator:
     def _get_sprite_code(self, sprite: SpriteModel) -> str:
         """Get the sprite class code, with costume setup injected."""
         code = sprite.code.strip()
+        target_base = "PhysicsSprite" if sprite.is_physics else "Sprite"
 
         if not code:
             # Generate default code if none exists
-            base_class = "PhysicsSprite" if sprite.is_physics else "Sprite"
-            code = f'''class {sprite.class_name}({base_class}):
+            code = f'''class {sprite.class_name}({target_base}):
     def __init__(self):
         super().__init__()
         self.name = "{sprite.name}"
 '''
+        else:
+            # Replace base class if it doesn't match is_physics setting
+            code = self._replace_base_class(code, sprite.class_name, target_base)
 
         # Inject costume loading and physics setup into __init__ if needed
         inject_parts = []
@@ -137,6 +140,13 @@ class CodeGenerator:
             code = self._inject_into_init(code, inject_code)
 
         return code
+
+    def _replace_base_class(self, code: str, class_name: str, target_base: str) -> str:
+        """Replace the base class in a class declaration to match is_physics setting."""
+        # Match: class ClassName(Sprite): or class ClassName(PhysicsSprite):
+        pattern = rf'(class\s+{re.escape(class_name)}\s*\(\s*)(Sprite|PhysicsSprite)(\s*\)\s*:)'
+        replacement = rf'\g<1>{target_base}\g<3>'
+        return re.sub(pattern, replacement, code)
 
     def _generate_costume_code(self, sprite: SpriteModel) -> str:
         """Generate costume loading code."""
@@ -303,7 +313,7 @@ class CodeGenerator:
     #     pass
 
     # 碰撞事件示例:
-    # @handle_sprite_collision("OtherSprite")
+    # @on_sprite_collision("OtherSprite")
     # def on_collision(self, other):
     #     pass
 '''

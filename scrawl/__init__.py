@@ -1,4 +1,4 @@
 from .engine import Game, Sprite, PhysicsSprite, Scene,\
-    as_main, as_clones, handle_broadcast, handle_edge_collision, handle_sprite_collision, on_key, \
-        Cat, ParticleSystem, CloudVariablesClient, on_mouse_event, \
+    as_main, as_clones, on_broadcast, on_edge_collision, on_sprite_collision, on_key, \
+        Cat, ParticleSystem, CloudVariablesClient, on_mouse, on_sprite_clicked, \
             TkGUI, get_resource_path

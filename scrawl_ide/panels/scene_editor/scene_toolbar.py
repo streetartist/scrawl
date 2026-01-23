@@ -25,6 +25,7 @@ class SceneToolbar(QToolBar):
 
     def __init__(self, parent=None):
         super().__init__("Scene Tools", parent)
+        self.setObjectName("SceneToolbar")
 
         self._current_tool = "select"
         self._setup_ui()

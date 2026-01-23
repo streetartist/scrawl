@@ -72,7 +72,7 @@ class SpriteModel:
     is_physics: bool = False
     gravity_x: float = 0.0
     gravity_y: float = 0.2
-    friction: float = 0.98
+    friction: float = 0.02  # 摩擦力系数 (0=无摩擦, 1=最大摩擦)
     elasticity: float = 0.8
 
     # Inline code (the class definition)
@@ -177,7 +177,7 @@ class SpriteModel:
             is_physics=data.get("is_physics", False),
             gravity_x=float(gravity[0]) if len(gravity) > 0 else 0.0,
             gravity_y=float(gravity[1]) if len(gravity) > 1 else 0.2,
-            friction=float(data.get("friction", 0.98)),
+            friction=float(data.get("friction", 0.02)),
             elasticity=float(data.get("elasticity", 0.8)),
             code=data.get("code", _default_sprite_code(class_name)),
             script_path=data.get("script"),

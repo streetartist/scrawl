@@ -476,6 +476,7 @@ class PropertyEditor(QWidget):
         self._gravity_y_spin.setValue(self._sprite.gravity_y)
         self._friction_spin.setValue(self._sprite.friction)
         self._elasticity_spin.setValue(self._sprite.elasticity)
+        self._update_physics_controls_enabled(self._sprite.is_physics)
 
         self._updating = False
 
@@ -602,7 +603,15 @@ class PropertyEditor(QWidget):
         if self._updating or not self._sprite:
             return
         self._sprite.is_physics = checked
+        self._update_physics_controls_enabled(checked)
         self.property_changed.emit(self._sprite, "is_physics", checked)
+
+    def _update_physics_controls_enabled(self, enabled: bool):
+        """Enable or disable physics property controls based on is_physics."""
+        self._gravity_x_spin.setEnabled(enabled)
+        self._gravity_y_spin.setEnabled(enabled)
+        self._friction_spin.setEnabled(enabled)
+        self._elasticity_spin.setEnabled(enabled)
 
     def _on_gravity_x_changed(self, value: float):
         if self._updating or not self._sprite:

@@ -721,7 +721,33 @@ class MainWindow(QMainWindow):
     def _on_property_changed(self, sprite: SpriteModel, prop: str, value):
         """Handle property change in inspector."""
         self.scene_view.update_sprite(sprite)
+
+        # Handle is_physics change - update base class in code
+        if prop == "is_physics":
+            self._update_sprite_base_class(sprite, value)
+
         self.project.mark_modified()
+
+    def _update_sprite_base_class(self, sprite: SpriteModel, is_physics: bool):
+        """Update the base class in sprite code when is_physics changes."""
+        import re
+        code = sprite.code.strip()
+        if not code:
+            return
+
+        target_base = "PhysicsSprite" if is_physics else "Sprite"
+        pattern = rf'(class\s+{re.escape(sprite.class_name)}\s*\(\s*)(Sprite|PhysicsSprite)(\s*\)\s*:)'
+        new_code = re.sub(pattern, rf'\g<1>{target_base}\g<3>', code)
+
+        if new_code != code:
+            sprite.code = new_code
+            # Update open editor if exists
+            tab_id = f"sprite:{sprite.id}"
+            for i in range(self.code_tabs.count()):
+                widget = self.code_tabs.widget(i)
+                if hasattr(widget, 'tab_id') and widget.tab_id == tab_id:
+                    widget.set_text(new_code)
+                    break
 
     def _on_game_property_changed(self, prop: str, value):
         """Handle game property change in inspector."""
