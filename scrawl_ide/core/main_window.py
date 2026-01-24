@@ -244,6 +244,10 @@ class MainWindow(QMainWindow):
         self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
         self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
+        # Set tab position to top for right dock area, bottom for bottom dock area
+        self.setTabPosition(Qt.RightDockWidgetArea, QTabWidget.North)
+        self.setTabPosition(Qt.BottomDockWidgetArea, QTabWidget.South)
+
         # Scene Tree (left)
         self.hierarchy_dock = QDockWidget(tr("dock.scene_tree"), self)
         self.hierarchy_dock.setObjectName("SceneTreeDock")
@@ -270,27 +274,24 @@ class MainWindow(QMainWindow):
         self.asset_preview = AssetPreview(self)
         self.asset_preview.hide()
 
-        # Right panel with tabs: Code Editor + Inspector
-        self.right_dock = QDockWidget(self)
-        self.right_dock.setObjectName("RightDock")
-        self.right_dock.setTitleBarWidget(QWidget())  # Hide title bar
-
-        # Create tab widget for code editor and inspector
-        self.right_tabs = QTabWidget()
-
-        # Code Editor tab (contains multiple code tabs)
+        # Code Editor dock (right)
+        self.code_dock = QDockWidget(tr("dock.code_editor"), self)
+        self.code_dock.setObjectName("CodeEditorDock")
         self.code_tabs = QTabWidget()
         self.code_tabs.setTabsClosable(True)
         self.code_tabs.tabCloseRequested.connect(self._on_close_code_tab)
-        self.right_tabs.addTab(self.code_tabs, tr("dock.code_editor"))
+        self.code_dock.setWidget(self.code_tabs)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.code_dock)
+        self._view_menu.addAction(self.code_dock.toggleViewAction())
 
-        # Inspector tab
+        # Inspector dock (right, tabbed with code editor)
+        self.inspector_dock = QDockWidget(tr("dock.inspector"), self)
+        self.inspector_dock.setObjectName("InspectorDock")
         self.property_editor = PropertyEditor()
-        self.right_tabs.addTab(self.property_editor, tr("dock.inspector"))
-
-        self.right_dock.setWidget(self.right_tabs)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
-        self._view_menu.addAction(self.right_dock.toggleViewAction())
+        self.inspector_dock.setWidget(self.property_editor)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.inspector_dock)
+        self.tabifyDockWidget(self.code_dock, self.inspector_dock)
+        self._view_menu.addAction(self.inspector_dock.toggleViewAction())
 
         # Console (bottom)
         self.console_dock = QDockWidget(tr("dock.console"), self)
@@ -320,10 +321,10 @@ class MainWindow(QMainWindow):
         )
 
         # Set right dock width to be roughly equal to central widget
-        self.resizeDocks([self.right_dock], [600], Qt.Horizontal)
+        self.resizeDocks([self.code_dock], [600], Qt.Horizontal)
 
         # Show code editor tab by default
-        self.right_tabs.setCurrentIndex(0)
+        self.code_dock.raise_()
 
     def _setup_connections(self):
         """Set up signal connections."""
@@ -420,14 +421,17 @@ class MainWindow(QMainWindow):
         # Remove all docks first
         self.removeDockWidget(self.hierarchy_dock)
         self.removeDockWidget(self.asset_dock)
-        self.removeDockWidget(self.right_dock)
+        self.removeDockWidget(self.code_dock)
+        self.removeDockWidget(self.inspector_dock)
         self.removeDockWidget(self.console_dock)
         self.removeDockWidget(self.ai_dock)
 
         # Re-add docks in default positions
         self.addDockWidget(Qt.LeftDockWidgetArea, self.hierarchy_dock)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.asset_dock)
-        self.addDockWidget(Qt.RightDockWidgetArea, self.right_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.code_dock)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.inspector_dock)
+        self.tabifyDockWidget(self.code_dock, self.inspector_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.console_dock)
         self.addDockWidget(Qt.BottomDockWidgetArea, self.ai_dock)
         self.tabifyDockWidget(self.console_dock, self.ai_dock)
@@ -435,7 +439,8 @@ class MainWindow(QMainWindow):
         # Show all docks
         self.hierarchy_dock.show()
         self.asset_dock.show()
-        self.right_dock.show()
+        self.code_dock.show()
+        self.inspector_dock.show()
         self.console_dock.show()
         self.ai_dock.show()
 
@@ -445,10 +450,10 @@ class MainWindow(QMainWindow):
             [250, 150],
             Qt.Vertical
         )
-        self.resizeDocks([self.right_dock], [600], Qt.Horizontal)
+        self.resizeDocks([self.code_dock], [600], Qt.Horizontal)
 
         # Show code editor tab
-        self.right_tabs.setCurrentIndex(0)
+        self.code_dock.raise_()
 
     # Menu actions
     def _on_new_project(self):
@@ -643,7 +648,7 @@ class MainWindow(QMainWindow):
         self.property_editor.set_sprite(sprite)
         self.hierarchy_view.select_sprite(sprite)
         # Switch to inspector tab
-        self.right_tabs.setCurrentIndex(1)
+        self.inspector_dock.raise_()
         # Update AI context
         self._update_ai_context(sprite=sprite)
 
@@ -707,7 +712,7 @@ class MainWindow(QMainWindow):
         self.code_tabs.addTab(editor, tab_name)
         self.code_tabs.setCurrentWidget(editor)
         # Switch to code editor tab
-        self.right_tabs.setCurrentIndex(0)
+        self.code_dock.raise_()
 
     def _on_sprite_code_changed(self, editor):
         """Handle sprite code changes."""
@@ -737,7 +742,7 @@ class MainWindow(QMainWindow):
         self.code_tabs.addTab(editor, tab_name)
         self.code_tabs.setCurrentWidget(editor)
         # Switch to code editor tab
-        self.right_tabs.setCurrentIndex(0)
+        self.code_dock.raise_()
 
     def _on_scene_code_changed(self, editor):
         """Handle scene code changes."""
@@ -752,7 +757,7 @@ class MainWindow(QMainWindow):
         # Show scene properties in inspector
         self.property_editor.set_scene(scene)
         # Switch to inspector tab
-        self.right_tabs.setCurrentIndex(1)
+        self.inspector_dock.raise_()
         # Update AI context
         self._update_ai_context(scene=scene)
 
@@ -761,7 +766,7 @@ class MainWindow(QMainWindow):
         if self.project.model:
             self.property_editor.set_game_settings(self.project.model)
             # Switch to inspector tab
-            self.right_tabs.setCurrentIndex(1)
+            self.inspector_dock.raise_()
 
     def _on_hierarchy_sprite_added(self, scene: SceneModel, sprite: SpriteModel):
         """Handle sprite added from hierarchy view."""
@@ -927,7 +932,7 @@ class MainWindow(QMainWindow):
         self.code_tabs.addTab(editor, name)
         self.code_tabs.setCurrentWidget(editor)
         # Switch to code editor tab
-        self.right_tabs.setCurrentIndex(0)
+        self.code_dock.raise_()
 
     def _update_ai_context(self, sprite: SpriteModel = None, scene: SceneModel = None):
         """Update AI context with current selection."""
