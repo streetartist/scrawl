@@ -508,16 +508,31 @@ class TextPreview(QWidget):
 
 
 class AssetPreview(QWidget):
-    """Asset preview widget that shows appropriate preview for file type."""
+    """Asset preview widget that shows as a floating panel."""
 
     closed = Signal()  # Emitted when close button clicked
 
     def __init__(self, parent=None):
-        super().__init__(parent)
+        # Don't pass parent to make it a top-level window
+        super().__init__(None)
+
+        # Make it a floating popup window (not on top of other apps)
+        self.setWindowFlags(Qt.Popup | Qt.FramelessWindowHint)
+        self.setAttribute(Qt.WA_DeleteOnClose, False)
+        self.setFixedSize(300, 350)
+
+        self._parent = parent  # Store reference to parent
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setContentsMargins(1, 1, 1, 1)
         layout.setSpacing(0)
+
+        # Main container with border
+        container = QFrame()
+        container.setObjectName("PreviewContainer")
+        container_layout = QVBoxLayout(container)
+        container_layout.setContentsMargins(0, 0, 0, 0)
+        container_layout.setSpacing(0)
 
         # Header with close button
         header = QFrame()
@@ -526,7 +541,7 @@ class AssetPreview(QWidget):
         header_layout.setContentsMargins(8, 4, 4, 4)
 
         header_label = QLabel("Preview")
-        header_label.setStyleSheet("color: #90A4AE; font-size: 11px;")
+        header_label.setStyleSheet("color: #90A4AE; font-size: 11px; font-weight: bold;")
         header_layout.addWidget(header_label)
         header_layout.addStretch()
 
@@ -537,7 +552,7 @@ class AssetPreview(QWidget):
         close_btn.clicked.connect(self._on_close)
         header_layout.addWidget(close_btn)
 
-        layout.addWidget(header)
+        container_layout.addWidget(header)
 
         self._stack = QStackedWidget()
 
@@ -567,7 +582,8 @@ class AssetPreview(QWidget):
         self._text_preview = TextPreview()
         self._stack.addWidget(self._text_preview)
 
-        layout.addWidget(self._stack)
+        container_layout.addWidget(self._stack)
+        layout.addWidget(container)
 
         self._apply_styles()
 
@@ -576,10 +592,22 @@ class AssetPreview(QWidget):
         self.hide()
         self.closed.emit()
 
+    def showAtPosition(self, global_pos):
+        """Show the preview at a specific global position."""
+        self.move(global_pos.x(), global_pos.y())
+        self.show()
+
     def _apply_styles(self):
         self.setStyleSheet("""
+            #PreviewContainer {
+                background-color: #1E1E1E;
+                border: 1px solid #4FC3F7;
+                border-radius: 8px;
+            }
             #PreviewHeader {
                 background-color: #263238;
+                border-top-left-radius: 8px;
+                border-top-right-radius: 8px;
                 border-bottom: 1px solid #37474F;
             }
             #PreviewCloseBtn {

@@ -260,15 +260,15 @@ class MainWindow(QMainWindow):
         asset_layout.setContentsMargins(0, 0, 0, 0)
 
         self.asset_tree = AssetTreeView()
-        self.asset_preview = AssetPreview()
-        self.asset_preview.hide()  # Hidden by default, shown when file selected
-
-        asset_layout.addWidget(self.asset_tree, 2)
-        asset_layout.addWidget(self.asset_preview, 1)
+        asset_layout.addWidget(self.asset_tree)
 
         self.asset_dock.setWidget(asset_widget)
         self.addDockWidget(Qt.LeftDockWidgetArea, self.asset_dock)
         self._view_menu.addAction(self.asset_dock.toggleViewAction())
+
+        # Floating asset preview (not in layout)
+        self.asset_preview = AssetPreview(self)
+        self.asset_preview.hide()
 
         # Right panel with tabs: Code Editor + Inspector
         self.right_dock = QDockWidget(self)
@@ -846,8 +846,12 @@ class MainWindow(QMainWindow):
 
     def _on_asset_selected(self, path: str):
         """Handle asset selection."""
-        self.asset_preview.show()
         self.asset_preview.preview(path)
+        # Position preview to the right of asset dock
+        dock_pos = self.asset_dock.mapToGlobal(self.asset_dock.rect().topRight())
+        from PySide6.QtCore import QPoint
+        pos = QPoint(dock_pos.x() + 10, dock_pos.y() + 30)
+        self.asset_preview.showAtPosition(pos)
 
     def _on_asset_double_clicked(self, path: str):
         """Handle asset double-click."""
