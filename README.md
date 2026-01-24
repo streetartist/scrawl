@@ -348,18 +348,6 @@ https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
 -   **按键绑定**: 全局和场景级别绑定
 -   **精灵事件**: 支持碰撞检测
 
-## 安装
-
-```bash
-pip install scrawl-engine
-```
-
-升级
-
-```bash
-pip install --upgrade scrawl-engine
-```
-
 ## 开发文档
 
 ### 目录
