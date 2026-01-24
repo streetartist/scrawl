@@ -81,6 +81,43 @@ Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者�
 
 ## 快速开始
 
+### 1. 安装 Scrawl 引擎
+
+```bash
+pip install scrawl-engine
+```
+
+升级到最新版本：
+
+```bash
+pip install --upgrade scrawl-engine
+```
+
+### 2. 使用可视化 IDE（推荐）
+
+克隆代码库：
+
+```bash
+git clone https://github.com/streetartist/scrawl
+cd scrawl
+```
+
+安装 IDE 依赖：
+
+```bash
+pip install -r scrawl_ide/requirements.txt
+```
+
+运行 IDE：
+
+```bash
+python scrawl_ide/main.py
+```
+
+即可启动可视化 IDE，通过拖拽和 AI 助手快速创建游戏！
+
+### 3. 代码示例
+
 以下代码演示了 Scrawl 的基本用法：
 
 **示例 1：**
