@@ -5,14 +5,18 @@ Chat interface for AI code assistance with code modification support.
 """
 
 import re
+import difflib
+import json
 from typing import Optional, TYPE_CHECKING
 
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTextEdit,
-    QLineEdit, QPushButton, QMessageBox
+    QLineEdit, QPushButton, QMessageBox, QComboBox
 )
 from PySide6.QtCore import Signal
 from PySide6.QtGui import QTextCursor
+
+import markdown
 
 from core.ai_service import AIService
 from core.i18n import tr
@@ -35,6 +39,8 @@ class AIChatPanel(QWidget):
         self._project: Optional['ProjectModel'] = None
         self._main_window = None
         self._streaming_started = False
+        self._ai_message_start_pos = 0  # Track where AI message starts
+        self._md = markdown.Markdown(extensions=['fenced_code', 'tables', 'nl2br'])
         self._setup_ui()
         self._connect_signals()
 
@@ -43,6 +49,25 @@ class AIChatPanel(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
         layout.setSpacing(4)
+
+        # Model selector
+        model_layout = QHBoxLayout()
+        self._model_combo = QComboBox()
+        self._model_combo.setStyleSheet("""
+            QComboBox {
+                background-color: #2D2D2D;
+                color: #E0E0E0;
+                border: 1px solid #555;
+                padding: 4px 8px;
+                min-width: 150px;
+            }
+            QComboBox::drop-down { border: none; }
+            QComboBox::down-arrow { image: none; border: none; }
+        """)
+        self._setup_model_options()
+        self._model_combo.currentIndexChanged.connect(self._on_model_changed)
+        model_layout.addWidget(self._model_combo, 1)
+        layout.addLayout(model_layout)
 
         # Chat display
         self._chat_display = QTextEdit()
@@ -94,6 +119,116 @@ class AIChatPanel(QWidget):
         self._ai_service.response_done.connect(self._on_response_done)
         self._ai_service.error_occurred.connect(self._on_error)
 
+    def _setup_model_options(self):
+        """Setup model dropdown options."""
+        # Custom model from settings
+        self._model_combo.addItem("⚙️ 自定义 (设置)", "custom")
+        # Free models
+        for model_id, model_name in AIService.FREE_MODELS:
+            self._model_combo.addItem(f"🆓 {model_name}", model_id)
+        # Default to first free model
+        self._model_combo.setCurrentIndex(1)
+        self._on_model_changed(1)
+
+    def _on_model_changed(self, index: int):
+        """Handle model selection change."""
+        model_data = self._model_combo.currentData()
+        if model_data == "custom":
+            # Use settings config
+            self._ai_service.set_custom_config(None, None, None)
+        else:
+            # Use free model
+            self._ai_service.set_custom_config(
+                AIService.FREE_ENDPOINT,
+                AIService.FREE_API_KEY,
+                model_data
+            )
+
+    def _markdown_to_html(self, text: str) -> str:
+        """Convert markdown to styled HTML."""
+        self._md.reset()
+        # Fix unclosed code blocks for streaming
+        text = self._fix_unclosed_code_blocks(text)
+        html = self._md.convert(text)
+        # Wrap in styled container
+        styled_html = f'''
+        <style>
+            pre {{ background-color: #2D2D2D; padding: 10px; border-radius: 4px; overflow-x: auto; }}
+            code {{ background-color: #2D2D2D; padding: 2px 4px; border-radius: 3px; font-family: Consolas, monospace; }}
+            pre code {{ padding: 0; background: none; }}
+            h1, h2, h3, h4 {{ color: #81C784; margin: 8px 0; }}
+            ul, ol {{ margin: 8px 0; padding-left: 20px; }}
+            li {{ margin: 4px 0; }}
+            blockquote {{ border-left: 3px solid #555; padding-left: 10px; margin: 8px 0; color: #AAA; }}
+            table {{ border-collapse: collapse; margin: 8px 0; }}
+            th, td {{ border: 1px solid #555; padding: 6px 10px; }}
+            th {{ background-color: #2D2D2D; }}
+        </style>
+        {html}
+        '''
+        return styled_html
+
+    def _fix_unclosed_code_blocks(self, text: str) -> str:
+        """Fix unclosed code blocks for proper rendering during streaming."""
+        # Convert custom format ```python:sprite:xxx to standard ```python
+        text = re.sub(r'```(python|json):(\w+):([^\n]*)', r'```\1', text)
+
+        # Count code block markers
+        markers = re.findall(r'```', text)
+        if len(markers) % 2 == 1:
+            # Odd number of markers, add closing one
+            text += '\n```'
+        return text
+
+    def _get_current_code(self, target_type: str, target_id: str) -> Optional[str]:
+        """Get current code for a target."""
+        if not self._project:
+            return None
+        target_id = target_id.strip()
+        if target_type == "sprite":
+            for scene in self._project.scenes:
+                for sprite in scene.sprites:
+                    if sprite.id == target_id or sprite.name == target_id:
+                        return sprite.code or ""
+        elif target_type == "scene":
+            for scene in self._project.scenes:
+                if scene.id == target_id or scene.name == target_id:
+                    return scene.code or ""
+        return None
+
+    def _generate_diff_html(self, old_code: str, new_code: str, max_lines: int = 20) -> str:
+        """Generate HTML diff view like Claude Code."""
+        old_lines = old_code.splitlines(keepends=True)
+        new_lines = new_code.splitlines(keepends=True)
+
+        diff = list(difflib.unified_diff(old_lines, new_lines, lineterm=''))
+
+        # unified_diff returns: ['--- ...', '+++ ...', '@@ ... @@', ...actual diff...]
+        # If empty or only headers, no real changes
+        if not diff or len(diff) <= 2:
+            return '<p style="color: #888;">无变化</p>'
+
+        html_parts = []
+        line_count = 0
+
+        for line in diff[2:]:  # Skip --- and +++ headers
+            if line_count >= max_lines:
+                html_parts.append('<p style="color: #888;">... 更多变化已省略</p>')
+                break
+
+            line_escaped = line.rstrip('\n').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+            if line.startswith('+'):
+                html_parts.append(f'<div style="background:#1e3a1e;color:#4ade80;padding:1px 8px;font-family:Consolas,monospace;font-size:11pt;">{line_escaped}</div>')
+                line_count += 1
+            elif line.startswith('-'):
+                html_parts.append(f'<div style="background:#3a1e1e;color:#f87171;padding:1px 8px;font-family:Consolas,monospace;font-size:11pt;">{line_escaped}</div>')
+                line_count += 1
+            elif line.startswith('@@'):
+                html_parts.append(f'<div style="color:#60a5fa;padding:2px 8px;font-size:10pt;">{line_escaped}</div>')
+
+        return ''.join(html_parts)
+
     def load_engine_source(self, engine_path: str):
         """Load engine source for AI context."""
         self._ai_service.load_engine_source(engine_path)
@@ -121,23 +256,36 @@ class AIChatPanel(QWidget):
         self._send_btn.setEnabled(False)
 
     def _on_response_chunk(self, chunk: str):
-        """Handle response chunk."""
-        if not self._streaming_started:
-            # Start AI response with label
-            self._chat_display.append('<span style="color: #81C784;"><b>AI:</b> </span>')
-            self._streaming_started = True
+        """Handle response chunk with real-time markdown rendering."""
         self._current_response += chunk
-        # Insert chunk at cursor position
+
+        if not self._streaming_started:
+            # Add newline before AI message
+            self._chat_display.append("")
+            # Record position before AI message
+            cursor = self._chat_display.textCursor()
+            cursor.movePosition(QTextCursor.End)
+            self._ai_message_start_pos = cursor.position()
+            self._streaming_started = True
+
+        # Delete previous AI response content and re-render
         cursor = self._chat_display.textCursor()
-        cursor.movePosition(QTextCursor.End)
-        cursor.insertText(chunk)
+        cursor.setPosition(self._ai_message_start_pos)
+        cursor.movePosition(QTextCursor.End, QTextCursor.KeepAnchor)
+        cursor.removeSelectedText()
+
+        # Render markdown and insert
+        rendered_html = self._markdown_to_html(self._current_response)
+        ai_html = f'<p style="color: #81C784;"><b>AI:</b></p>{rendered_html}'
+        cursor.insertHtml(ai_html)
+
         self._scroll_to_bottom()
 
     def _on_response_done(self):
         """Handle response completion."""
         self._ai_service.add_assistant_message(self._current_response)
         self._send_btn.setEnabled(True)
-        # Add newline after streaming response
+        # Add spacing after response
         self._chat_display.append("")
         # Show pending changes preview
         self._show_pending_changes()
@@ -186,30 +334,69 @@ class AIChatPanel(QWidget):
         return matches
 
     def _show_pending_changes(self):
-        """Show preview of pending changes from AI response."""
-        import json
-        pending = []
+        """Show preview of pending changes with diff view like Claude Code."""
+        html_parts = []
 
         # Check code blocks
         code_blocks = self._extract_code_blocks()
-        for target_type, target_id, code in code_blocks:
-            if target_type and target_id:
-                pending.append(f"代码修改 → {target_type}:{target_id.strip()}")
+        for target_type, target_id, new_code in code_blocks:
+            if not target_type or not target_id:
+                continue
+            target_id = target_id.strip()
+            new_code = new_code.strip()
+
+            # Build header
+            header = f'''
+            <div style="background:#2D2D2D;border:1px solid #555;border-radius:6px;margin:8px 0;overflow:hidden;">
+                <div style="background:#3D3D3D;padding:8px 12px;border-bottom:1px solid #555;">
+                    <span style="color:#FFA726;font-weight:bold;">📝 代码修改</span>
+                    <span style="color:#81C784;margin-left:10px;">{target_type}:{target_id}</span>
+                </div>
+            '''
+
+            # Get current code and generate diff
+            current_code = self._get_current_code(target_type, target_id)
+            if current_code is not None:
+                diff_html = self._generate_diff_html(current_code, new_code)
+                html_parts.append(f'{header}<div style="padding:4px 0;">{diff_html}</div></div>')
+            else:
+                # New code, show as all additions
+                escaped = new_code.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                lines = escaped.split('\n')
+                new_html = ''.join(
+                    f'<div style="background:#1e3a1e;color:#4ade80;padding:1px 8px;font-family:Consolas,monospace;font-size:11pt;">+{line}</div>'
+                    for line in lines[:20]
+                )
+                if len(lines) > 20:
+                    new_html += '<p style="color:#888;padding:4px 8px;">... 更多行已省略</p>'
+                html_parts.append(f'{header}<div style="padding:4px 0;">{new_html}</div></div>')
 
         # Check property blocks
         json_blocks = self._extract_json_blocks()
         for target_type, target_id, json_str in json_blocks:
-            if target_type and target_id:
-                try:
-                    props = json.loads(json_str.strip())
-                    prop_names = ", ".join(props.keys())
-                    pending.append(f"属性修改 → {target_type}:{target_id.strip()} ({prop_names})")
-                except json.JSONDecodeError:
-                    pending.append(f"属性修改 → {target_type}:{target_id.strip()}")
+            if not target_type or not target_id:
+                continue
+            target_id = target_id.strip()
+            try:
+                props = json.loads(json_str.strip())
+                props_html = ''.join(
+                    f'<div style="padding:2px 12px;"><span style="color:#60a5fa;">{k}</span>: <span style="color:#4ade80;">{v}</span></div>'
+                    for k, v in props.items()
+                )
+                html_parts.append(f'''
+                <div style="background:#2D2D2D;border:1px solid #555;border-radius:6px;margin:8px 0;overflow:hidden;">
+                    <div style="background:#3D3D3D;padding:8px 12px;border-bottom:1px solid #555;">
+                        <span style="color:#FFA726;font-weight:bold;">⚙️ 属性修改</span>
+                        <span style="color:#81C784;margin-left:10px;">{target_type}:{target_id}</span>
+                    </div>
+                    <div style="padding:8px 0;font-family:Consolas,monospace;font-size:11pt;">{props_html}</div>
+                </div>
+                ''')
+            except json.JSONDecodeError:
+                pass
 
-        if pending:
-            msg = "📋 待应用的修改：\n" + "\n".join(f"  • {item}" for item in pending)
-            self._chat_display.append(f'<p style="color: #FFA726;">{msg.replace(chr(10), "<br>")}</p>')
+        if html_parts:
+            self._chat_display.append(''.join(html_parts))
             self._apply_btn.setEnabled(True)
             self._scroll_to_bottom()
 
@@ -306,7 +493,6 @@ class AIChatPanel(QWidget):
 
     def _apply_properties(self, target_type: str, target_id: str, json_str: str) -> str:
         """Apply properties from JSON to target. Returns applied props or empty string."""
-        import json
         try:
             props = json.loads(json_str)
         except json.JSONDecodeError:

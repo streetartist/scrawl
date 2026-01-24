@@ -92,12 +92,45 @@ class AIService(QObject):
     response_done = Signal()
     error_occurred = Signal(str)
 
+    # Free models configuration
+    FREE_ENDPOINT = "https://aihubmix.com/v1"
+    FREE_API_KEY = "sk-W1ZDyW5rbKBFPFRNEd1a3d934cD249B4B5094e1aBa6e7610"
+    FREE_MODELS = [
+        ("gemini-2.0-flash-free", "Gemini 2.0 Flash"),
+        ("gemini-3-flash-preview-free", "Gemini 3 Flash"),
+        ("glm-4.7-flash-free", "GLM 4.7 Flash"),
+        ("coding-glm-4.7-free", "Coding GLM 4.7"),
+        ("coding-minimax-m2.1-free", "Coding MiniMax"),
+        ("kimi-for-coding-free", "Kimi Coding"),
+        ("mimo-v2-flash-free", "Mimo V2 Flash"),
+    ]
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._settings = Settings()
         self._worker: Optional[AIWorker] = None
         self._messages: List[Message] = []
         self._engine_source = ""
+        # Custom config (None means use settings)
+        self._custom_endpoint: Optional[str] = None
+        self._custom_api_key: Optional[str] = None
+        self._custom_model: Optional[str] = None
+
+    def set_custom_config(self, endpoint: Optional[str], api_key: Optional[str], model: Optional[str]):
+        """Set custom endpoint, API key and model. Pass None to use settings."""
+        self._custom_endpoint = endpoint
+        self._custom_api_key = api_key
+        self._custom_model = model
+
+    def get_current_config(self) -> tuple:
+        """Get current endpoint, api_key, model."""
+        if self._custom_endpoint is not None:
+            return (self._custom_endpoint, self._custom_api_key, self._custom_model)
+        return (
+            self._settings.get_ai_endpoint(),
+            self._settings.get_ai_api_key(),
+            self._settings.get_ai_model()
+        )
 
     def load_engine_source(self, engine_path: str):
         """Load scrawl engine source code."""
@@ -171,9 +204,9 @@ class MyScene(Scene):
 
     def send_message(self, user_message: str, context: str = ""):
         """Send message to AI."""
-        api_key = self._settings.get_ai_api_key()
+        endpoint, api_key, model = self.get_current_config()
         if not api_key:
-            self.error_occurred.emit("请先在设置中配置API Key")
+            self.error_occurred.emit("请先在设置中配置API Key或选择免费模型")
             return
 
         # Add user message
@@ -185,12 +218,7 @@ class MyScene(Scene):
             messages.append({"role": msg.role, "content": msg.content})
 
         # Start worker
-        self._worker = AIWorker(
-            self._settings.get_ai_endpoint(),
-            api_key,
-            self._settings.get_ai_model(),
-            messages
-        )
+        self._worker = AIWorker(endpoint, api_key, model, messages)
         self._worker.response_chunk.connect(self.response_chunk.emit)
         self._worker.response_done.connect(self._on_response_done)
         self._worker.error_occurred.connect(self.error_occurred.emit)
