@@ -393,6 +393,24 @@ class PropertyEditor(QWidget):
 
         content_layout.addWidget(runtime_group)
 
+        # Sounds group
+        sounds_group = QGroupBox(tr("inspector.sounds"))
+        sounds_layout = QVBoxLayout(sounds_group)
+
+        # Sounds list
+        self._sounds_list = QListWidget()
+        self._sounds_list.setMaximumHeight(120)
+        self._sounds_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self._sounds_list.customContextMenuRequested.connect(self._on_sound_context_menu)
+        sounds_layout.addWidget(self._sounds_list)
+
+        # Add sound button
+        add_sound_btn = QPushButton(tr("inspector.add_sound"))
+        add_sound_btn.clicked.connect(self._on_add_sound)
+        sounds_layout.addWidget(add_sound_btn)
+
+        content_layout.addWidget(sounds_group)
+
         # Spacer
         content_layout.addStretch()
 
@@ -506,6 +524,16 @@ class PropertyEditor(QWidget):
         self._fullscreen_check.setChecked(self._game_settings.fullscreen)
         self._fps_spin.setValue(self._game_settings.fps)
         self._debug_check.setChecked(self._game_settings.debug)
+
+        # Refresh sounds list
+        self._sounds_list.clear()
+        if self._project:
+            for sound_path in self._project.sounds:
+                sound_name = os.path.basename(sound_path)
+                item = QListWidgetItem(sound_name)
+                item.setToolTip(sound_path)
+                item.setData(Qt.UserRole, sound_path)
+                self._sounds_list.addItem(item)
 
         self._updating = False
 
@@ -779,3 +807,44 @@ class PropertyEditor(QWidget):
         self._scene.background_image = None
         self._bg_image_edit.setText("")
         self.scene_property_changed.emit(self._scene, "background_image", None)
+
+    # Sound management methods
+    def _on_add_sound(self):
+        """Add a sound file to the project."""
+        if not self._project:
+            return
+
+        path, _ = QFileDialog.getOpenFileName(
+            self, tr("dialog.select_sound"), "",
+            tr("dialog.sound_filter")
+        )
+
+        if path and path not in self._project.sounds:
+            self._project.sounds.append(path)
+            self._refresh_game_settings()
+            self.game_property_changed.emit("sounds", self._project.sounds)
+
+    def _on_sound_context_menu(self, pos):
+        """Show context menu for sound item."""
+        item = self._sounds_list.itemAt(pos)
+        if not item:
+            return
+
+        menu = QMenu(self)
+
+        remove_action = QAction(tr("inspector.remove_sound"), self)
+        remove_action.triggered.connect(lambda: self._remove_sound(item))
+        menu.addAction(remove_action)
+
+        menu.exec_(self._sounds_list.mapToGlobal(pos))
+
+    def _remove_sound(self, item):
+        """Remove a sound from the project."""
+        if not self._project:
+            return
+
+        sound_path = item.data(Qt.UserRole)
+        if sound_path in self._project.sounds:
+            self._project.sounds.remove(sound_path)
+            self._refresh_game_settings()
+            self.game_property_changed.emit("sounds", self._project.sounds)

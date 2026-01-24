@@ -185,6 +185,11 @@ TRANSLATIONS_ZH = {
     "inspector.fps": "帧率 (FPS):",
     "inspector.debug": "调试模式:",
 
+    # Sounds
+    "inspector.sounds": "音频资源",
+    "inspector.add_sound": "添加音频...",
+    "inspector.remove_sound": "移除音频",
+
     # Collision
     "inspector.collision": "碰撞",
     "inspector.collision_type": "碰撞类型:",
@@ -241,6 +246,7 @@ TRANSLATIONS_ZH = {
     "dialog.save_project": "保存项目",
     "dialog.project_filter": "Scrawl 项目 (*.scrawl)",
     "dialog.image_filter": "图片文件 (*.png *.jpg *.jpeg *.gif *.bmp *.svg)",
+    "dialog.sound_filter": "音频文件 (*.wav *.mp3 *.ogg)",
     "dialog.python_filter": "Python 文件 (*.py)",
     "dialog.unsaved_title": "未保存的更改",
     "dialog.unsaved_message": "是否在关闭前保存更改?",
@@ -404,6 +410,11 @@ TRANSLATIONS_EN = {
     "inspector.fps": "Frame Rate (FPS):",
     "inspector.debug": "Debug Mode:",
 
+    # Sounds
+    "inspector.sounds": "Sounds",
+    "inspector.add_sound": "Add Sound...",
+    "inspector.remove_sound": "Remove Sound",
+
     # Collision
     "inspector.collision": "Collision",
     "inspector.collision_type": "Collision Type:",
@@ -460,6 +471,7 @@ TRANSLATIONS_EN = {
     "dialog.save_project": "Save Project As",
     "dialog.project_filter": "Scrawl Project (*.scrawl)",
     "dialog.image_filter": "Images (*.png *.jpg *.jpeg *.gif *.bmp *.svg)",
+    "dialog.sound_filter": "Audio Files (*.wav *.mp3 *.ogg)",
     "dialog.python_filter": "Python Files (*.py)",
     "dialog.unsaved_title": "Unsaved Changes",
     "dialog.unsaved_message": "Do you want to save changes before closing?",

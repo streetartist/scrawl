@@ -237,6 +237,13 @@ class MainWindow(QMainWindow):
 
     def _setup_docks(self):
         """Set up the dock widgets."""
+        # Configure corners so left and right docks extend full height
+        # Bottom corners go to left/right areas, making bottom dock only span center
+        self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
+        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
+
         # Scene Tree (left)
         self.hierarchy_dock = QDockWidget(tr("dock.scene_tree"), self)
         self.hierarchy_dock.setObjectName("SceneTreeDock")
@@ -254,6 +261,7 @@ class MainWindow(QMainWindow):
 
         self.asset_tree = AssetTreeView()
         self.asset_preview = AssetPreview()
+        self.asset_preview.hide()  # Hidden by default, shown when file selected
 
         asset_layout.addWidget(self.asset_tree, 2)
         asset_layout.addWidget(self.asset_preview, 1)
@@ -401,6 +409,12 @@ class MainWindow(QMainWindow):
         """Reset window layout to default."""
         # Clear saved state
         self.settings.clear_window_state()
+
+        # Configure corners so left and right docks extend full height
+        self.setCorner(Qt.TopLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.BottomLeftCorner, Qt.LeftDockWidgetArea)
+        self.setCorner(Qt.TopRightCorner, Qt.RightDockWidgetArea)
+        self.setCorner(Qt.BottomRightCorner, Qt.RightDockWidgetArea)
 
         # Reset dock positions immediately
         # Remove all docks first
@@ -832,6 +846,7 @@ class MainWindow(QMainWindow):
 
     def _on_asset_selected(self, path: str):
         """Handle asset selection."""
+        self.asset_preview.show()
         self.asset_preview.preview(path)
 
     def _on_asset_double_clicked(self, path: str):

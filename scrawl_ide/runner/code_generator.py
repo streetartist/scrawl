@@ -90,6 +90,15 @@ class CodeGenerator:
         code_parts.append('if __name__ == "__main__":')
         code_parts.append(f'    game = Game(width=SCREEN_WIDTH, height=SCREEN_HEIGHT, title=GAME_TITLE, fullscreen=FULLSCREEN)')
 
+        # Load sounds
+        if self.project.sounds:
+            code_parts.append('')
+            code_parts.append('    # 加载音效')
+            for sound_path in self.project.sounds:
+                sound_name = os.path.splitext(os.path.basename(sound_path))[0]
+                rel_path = sound_path.replace('\\', '/')
+                code_parts.append(f'    game.load_sound("{sound_name}", r"{rel_path}")')
+
         if scenes:
             # Use first scene as the starting scene
             first_scene = scenes[0]
