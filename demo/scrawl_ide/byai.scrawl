@@ -1,0 +1,172 @@
+{
+  "name": "byai",
+  "version": "1.0",
+  "game": {
+    "width": 800,
+    "height": 600,
+    "title": "byai",
+    "fps": 60,
+    "fullscreen": false,
+    "debug": false
+  },
+  "scenes": [
+    {
+      "id": "7f7d303b-3fef-4832-8c6f-077af9e0490b",
+      "name": "MainScene",
+      "background_color": [
+        100,
+        150,
+        200
+      ],
+      "background_image": null,
+      "code": "class MainScene(Scene):\n    def __init__(self):\n        super().__init__()\n        self.name = \"MainScene\"\n        self.background_color = (100, 150, 200)\n\n        # 精灵会由IDE自动添加，无需手动编写\n        # 可以在这里添加场景初始化逻辑\n\n    @as_main\n    def scene_logic(self):\n        \"\"\"场景主逻辑（可选）\"\"\"\n        while True:\n            yield 0\n",
+      "sprites": [
+        {
+          "id": "7141a676-28e7-4993-b04d-69c9bec3915e",
+          "name": "Bowl",
+          "class": "Bowl",
+          "pos": [
+            400.0,
+            550.0
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "bowl",
+              "path": "",
+              "draw_code": "# 碗的主体\npygame.draw.arc(surface, (220, 180, 140), (10, 10, 80, 80), 3.14, 6.28, 12)\n# 碗的内壁\npygame.draw.arc(surface, (240, 200, 160), (15, 15, 70, 70), 3.14, 6.28, 8)\n# 碗的边缘\npygame.draw.arc(surface, (200, 150, 100), (5, 5, 90, 90), 3.14, 6.28, 5)\n# 碗的底部\npygame.draw.line(surface, (180, 140, 100), (10, 50), (90, 50), 6)\n# 碗的阴影（增加立体感）\npygame.draw.arc(surface, (160, 120, 80), (15, 55, 70, 30), 0, 3.14, 4)",
+              "width": 100,
+              "height": 60
+            }
+          ],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "color": [
+            255,
+            100,
+            100
+          ],
+          "collision_type": "mask",
+          "is_physics": false,
+          "gravity": [
+            0.0,
+            0.2
+          ],
+          "friction": 0.02,
+          "elasticity": 0.8,
+          "code": "import pygame\n\nclass Bowl(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.speed = 10\n        self.game_over = False\n\n    @as_main\n    def main_loop(self):\n        while True:\n            if self.game_over:\n                yield 0\n                continue\n                \n            # 左右移动控制\n            keys = pygame.key.get_pressed()\n            if keys[pygame.K_LEFT]:\n                self.pos.x -= self.speed\n            if keys[pygame.K_RIGHT]:\n                self.pos.x += self.speed\n            \n            # 限制在屏幕内\n            if self.pos.x < 50: self.pos.x = 50\n            if self.pos.x > 750: self.pos.x = 750\n            \n            yield 0\n\n    @on_broadcast(\"show_missed\")\n    def on_show_missed(self, current, max_val):\n        \"\"\"显示漏掉金币的提示\"\"\"\n        self.say(f\"Missed: {current}/{max_val}\", 1)\n\n    @on_broadcast(\"game_over\")\n    def on_game_over(self):\n        \"\"\"游戏结束 - 由Bowl来喊话\"\"\"\n        self.game_over = True\n        self.say(\"Game Over!\", 3000)\n\n    @on_broadcast(\"reset_game\")\n    def on_reset(self):\n        \"\"\"重置游戏\"\"\"\n        self.game_over = False\n        self.pos.x = 400\n        self.say(\"Ready Go!\", 1000)",
+          "script": null,
+          "properties": {}
+        },
+        {
+          "id": "c6197e40-f05c-49ff-8efb-39a0c87cee82",
+          "name": "Coin",
+          "class": "Coin",
+          "pos": [
+            -100.0,
+            -100.0
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [
+            {
+              "name": "gold",
+              "path": "",
+              "draw_code": "# 金币主体\npygame.draw.circle(surface, (255, 215, 0), (15, 15), 13)\n# 金币内圈\npygame.draw.circle(surface, (255, 255, 0), (15, 15), 10)\n# 金币中心\npygame.draw.circle(surface, (255, 215, 0), (15, 15), 6)\n# 金币符号\npygame.draw.line(surface, (200, 150, 0), (15, 8), (15, 22), 2)\npygame.draw.line(surface, (200, 150, 0), (8, 15), (22, 15), 2)",
+              "width": 30,
+              "height": 30
+            }
+          ],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "color": [
+            255,
+            100,
+            100
+          ],
+          "collision_type": "mask",
+          "is_physics": false,
+          "gravity": [
+            0.0,
+            0.2
+          ],
+          "friction": 0.02,
+          "elasticity": 0.8,
+          "code": "import random\n\nclass Coin(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.visible = False  # 本体隐藏，作为模板\n        self.caught = False   # 是否被接住\n        self.rotation = 0     # 旋转角度\n        self.fall_speed = 5   # 基础下落速度\n        self.difficulty = 1.0 # 难度系数\n        self.game_over = False # 游戏结束标志\n\n    @as_main\n    def spawner(self):\n        \"\"\"生成器逻辑\"\"\"\n        while True:\n            if self.game_over:\n                yield 100\n                continue\n            self.clone()\n            interval = max(300, 1000 - (self.difficulty - 1) * 200)\n            yield interval\n\n    @as_clones\n    def fall_logic(self):\n        \"\"\"克隆体逻辑\"\"\"\n        self.visible = True\n        self.caught = False\n        self.rotation = 0\n        self.pos.x = random.randint(50, 750)\n        self.pos.y = -20\n        self.set_size(random.uniform(0.8, 1.2))\n        \n        while self.pos.y < 620 and not self.caught and not self.game_over:\n            self.rotation += 5\n            self.point_in_direction(self.rotation)\n            speed = self.fall_speed + random.uniform(0, 2) + (self.difficulty - 1) * 2\n            self.pos.y += speed\n            yield 0\n            \n        if not self.caught and not self.game_over:\n            # 这里广播漏掉事件，GameManager收到后会转发给Bowl显示\n            self.broadcast(\"coin_missed\")\n        \n        if not self.caught:\n            self.delete_self()\n\n    @on_broadcast(\"update_difficulty\")\n    def on_update_difficulty(self):\n        pass\n\n    @on_broadcast(\"reset_game\")\n    def on_reset(self):\n        self.difficulty = 1.0\n        self.fall_speed = 5\n        self.game_over = False\n\n    @on_broadcast(\"game_over\")\n    def on_game_over(self):\n        self.game_over = True\n\n    @on_sprite_collision(\"Bowl\")\n    def on_caught(self, bowl):\n        if self.caught or self.game_over:\n            return\n        self.caught = True\n        self.broadcast(\"coin_caught\")\n        for i in range(10):\n            self.change_size(0.1)\n            yield 50\n        self.delete_self()",
+          "script": null,
+          "properties": {}
+        },
+        {
+          "id": "6bbb20d9-22d5-4540-a090-712931958d46",
+          "name": "ScoreBoard",
+          "class": "ScoreBoard",
+          "pos": [
+            107.17977055673994,
+            36.27225474386305
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": true,
+          "color": [
+            255,
+            100,
+            100
+          ],
+          "collision_type": "rect",
+          "is_physics": false,
+          "gravity": [
+            0.0,
+            0.2
+          ],
+          "friction": 0.02,
+          "elasticity": 0.8,
+          "code": "import pygame\n\nclass ScoreBoard(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.score = 0\n        self.combo = 0\n\n    @as_main\n    def main_loop(self):\n        # 初始化显示（等待游戏环境准备好）\n        yield 10\n        self.update_display()\n        \n        while True:\n            yield 0\n\n    def update_display(self):\n        if not self.game:\n            return\n        \n        if self.combo > 1:\n            text = f\"分数: {self.score}  连击: {self.combo}x\"\n        else:\n            text = f\"分数: {self.score}\"\n        \n        text_surf = self.game.font.render(text, True, (255, 255, 255))\n        \n        surface = pygame.Surface((200, 40), pygame.SRCALPHA)\n        surface.blit(text_surf, (0, 0))\n        self.add_costume(\"default\", surface)\n\n    @on_broadcast(\"coin_caught\")\n    def on_score(self):\n        self.combo += 1\n        self.score += 10 + self.combo * 5\n        self.update_display()\n\n    @on_broadcast(\"coin_missed\")\n    def on_miss(self):\n        self.combo = 0\n        self.update_display()\n\n    @on_broadcast(\"reset_game\")\n    def on_reset(self):\n        self.score = 0\n        self.combo = 0\n        self.update_display()",
+          "script": null,
+          "properties": {}
+        },
+        {
+          "id": "9d04352b-f9aa-4cc5-9109-13a40b70e095",
+          "name": "GameManager",
+          "class": "GameManager",
+          "pos": [
+            400.0,
+            300.0
+          ],
+          "direction": 90.0,
+          "size": 1.0,
+          "costumes": [],
+          "current_costume": 0,
+          "default_costume": 0,
+          "visible": false,
+          "color": [
+            255,
+            100,
+            100
+          ],
+          "collision_type": "rect",
+          "is_physics": false,
+          "gravity": [
+            0.0,
+            0.2
+          ],
+          "friction": 0.02,
+          "elasticity": 0.8,
+          "code": "import random\n\nclass GameManager(Sprite):\n    def __init__(self):\n        super().__init__()\n        self.visible = False\n        self.missed_coins = 0\n        self.max_missed = 5  # 最多漏掉5个金币\n        self.game_over = False\n        self.difficulty = 1.0  # 难度系数\n        self.score = 0  # 存储分数\n\n    @as_main\n    def main_loop(self):\n        \"\"\"游戏主逻辑\"\"\"\n        while True:\n            # 检查游戏结束条件\n            if self.missed_coins >= self.max_missed and not self.game_over:\n                self.game_over = True\n                self.broadcast(\"game_over\")\n                \n            yield 0\n\n    @on_broadcast(\"coin_missed\")\n    def on_coin_missed(self):\n        \"\"\"金币漏掉\"\"\"\n        if self.game_over:\n            return\n            \n        self.missed_coins += 1\n        # 让碗来显示漏掉提示\n        self.broadcast(\"show_missed\", self.missed_coins, self.max_missed)\n\n    @on_broadcast(\"coin_caught\")\n    def on_coin_caught(self):\n        \"\"\"金币被接住 - 更新分数和难度\"\"\"\n        if self.game_over:\n            return\n            \n        # 更新分数\n        self.score += 10\n        \n        # 更新难度（根据分数）\n        self.difficulty = 1.0 + (self.score / 100)\n        \n        # 通知金币生成器调整速度\n        self.broadcast(\"update_difficulty\")\n\n    @on_broadcast(\"update_difficulty\")\n    def on_update_difficulty(self):\n        \"\"\"更新游戏难度\"\"\"\n        pass\n\n    @on_broadcast(\"game_over\")\n    def on_game_over(self):\n        \"\"\"游戏结束逻辑 - 仅负责倒计时重置，不说话\"\"\"\n        # 等待3秒\n        yield 3000\n        \n        # 重新开始\n        self.missed_coins = 0\n        self.game_over = False\n        self.score = 0\n        self.difficulty = 1.0\n        self.broadcast(\"reset_game\")",
+          "script": null,
+          "properties": {}
+        }
+      ]
+    }
+  ],
+  "scripts": {},
+  "assets": {
+    "images": [],
+    "sounds": []
+  }
+}

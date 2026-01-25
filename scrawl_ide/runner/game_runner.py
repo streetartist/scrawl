@@ -69,6 +69,12 @@ class GameRunner(QObject):
             env.insert("PYTHONIOENCODING", "utf-8")
             env.insert("PYTHONUTF8", "1")
             env.insert("PYTHONUNBUFFERED", "1")  # Force unbuffered output
+
+            # Use local scrawl module from project root
+            ide_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            scrawl_root = os.path.dirname(ide_dir)  # D:\Project\scrawl\scrawl
+            env.insert("PYTHONPATH", scrawl_root)
+
             self._process.setProcessEnvironment(env)
 
             # Set process channel mode to merge or separate

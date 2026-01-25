@@ -301,6 +301,14 @@ TRANSLATIONS_ZH = {
     "ai.send": "发送",
     "ai.apply": "应用",
     "ai.clear": "清空",
+
+    # Welcome Page
+    "welcome.subtitle": "轻松创建 2D 游戏",
+    "welcome.start": "开始",
+    "welcome.new_project": "新建项目",
+    "welcome.open_project": "打开项目",
+    "welcome.recent": "最近的项目",
+    "welcome.no_recent": "暂无最近的项目",
 }
 
 
@@ -526,4 +534,12 @@ TRANSLATIONS_EN = {
     "ai.send": "Send",
     "ai.apply": "Apply",
     "ai.clear": "Clear",
+
+    # Welcome Page
+    "welcome.subtitle": "Create 2D games with ease",
+    "welcome.start": "Start",
+    "welcome.new_project": "New Project",
+    "welcome.open_project": "Open Project",
+    "welcome.recent": "Recent Projects",
+    "welcome.no_recent": "No recent projects",
 }

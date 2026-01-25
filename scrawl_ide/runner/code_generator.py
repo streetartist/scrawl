@@ -144,6 +144,9 @@ class CodeGenerator:
             inject_parts.append(f'        self.set_friction({sprite.friction})')
             inject_parts.append(f'        self.set_elasticity({sprite.elasticity})')
 
+        # Always inject name assignment to ensure it matches IDE
+        inject_parts.append(f'        self.name = "{sprite.name}"')
+
         if inject_parts:
             inject_code = '\n'.join(inject_parts)
             code = self._inject_into_init(code, inject_code)
@@ -161,16 +164,33 @@ class CodeGenerator:
         """Generate costume loading code."""
         lines = []
         for costume in sprite.costumes:
-            # Use costume name and path from CostumeData
             costume_name = costume.name
-            costume_path = costume.path
-            # Make path relative or use absolute
-            if os.path.isabs(costume_path):
-                rel_path = os.path.relpath(costume_path, self.project_dir)
+
+            if costume.is_code_drawn():
+                # Code-drawn costume - generate drawing code
+                lines.append(f'        # 代码绘制造型: {costume_name}')
+                lines.append(f'        _surface_{costume_name} = pygame.Surface(({costume.width}, {costume.height}), pygame.SRCALPHA)')
+                lines.append(f'        _width, _height = {costume.width}, {costume.height}')
+                lines.append(f'        _surface = _surface_{costume_name}')
+                # Add the drawing code with proper indentation
+                for draw_line in costume.draw_code.split('\n'):
+                    if draw_line.strip() and not draw_line.strip().startswith('#'):
+                        # Replace 'surface' with '_surface', 'width' with '_width', 'height' with '_height'
+                        draw_line = draw_line.replace('surface', '_surface')
+                        draw_line = draw_line.replace('width', '_width')
+                        draw_line = draw_line.replace('height', '_height')
+                    lines.append(f'        {draw_line}')
+                lines.append(f'        self.add_costume("{costume_name}", _surface_{costume_name})')
             else:
-                rel_path = costume_path
-            rel_path = rel_path.replace('\\', '/')
-            lines.append(f'        self.add_costume("{costume_name}", pygame.image.load(r"{rel_path}").convert_alpha())')
+                # Image file costume
+                costume_path = costume.path
+                if costume_path:
+                    if os.path.isabs(costume_path):
+                        rel_path = os.path.relpath(costume_path, self.project_dir)
+                    else:
+                        rel_path = costume_path
+                    rel_path = rel_path.replace('\\', '/')
+                    lines.append(f'        self.add_costume("{costume_name}", pygame.image.load(r"{rel_path}").convert_alpha())')
 
         # Set default costume if specified
         if sprite.costumes and sprite.default_costume >= 0:

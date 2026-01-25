@@ -29,10 +29,19 @@ def _default_sprite_code(class_name: str = "MySprite") -> str:
 class CostumeData:
     """Data for a single costume."""
     name: str
-    path: str
+    path: str = ""  # Image file path (empty for code-drawn costumes)
+    draw_code: str = ""  # Pygame drawing code for code-drawn costumes
+    width: int = 32  # Width for code-drawn costumes
+    height: int = 32  # Height for code-drawn costumes
 
-    def to_dict(self) -> Dict[str, str]:
-        return {"name": self.name, "path": self.path}
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "path": self.path,
+            "draw_code": self.draw_code,
+            "width": self.width,
+            "height": self.height
+        }
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]) -> 'CostumeData':
@@ -41,7 +50,17 @@ class CostumeData:
             import os
             name = os.path.splitext(os.path.basename(data))[0]
             return cls(name=name, path=data)
-        return cls(name=data.get("name", "costume"), path=data.get("path", ""))
+        return cls(
+            name=data.get("name", "costume"),
+            path=data.get("path", ""),
+            draw_code=data.get("draw_code", ""),
+            width=data.get("width", 32),
+            height=data.get("height", 32)
+        )
+
+    def is_code_drawn(self) -> bool:
+        """Check if this costume is code-drawn."""
+        return bool(self.draw_code) and not self.path
 
 
 @dataclass
@@ -100,8 +119,30 @@ class SpriteModel:
         )
 
     def add_costume(self, name: str, path: str) -> int:
-        """Add a costume and return its index."""
+        """Add or update a costume and return its index."""
+        # Check if exists
+        for i, c in enumerate(self.costumes):
+            if c.name == name:
+                c.path = path
+                c.draw_code = "" # Clear code if switching to image
+                return i
+        
         costume = CostumeData(name=name, path=path)
+        self.costumes.append(costume)
+        return len(self.costumes) - 1
+
+    def add_code_costume(self, name: str, width: int, height: int, draw_code: str) -> int:
+        """Add or update a code-drawn costume and return its index."""
+        # Check if exists
+        for i, c in enumerate(self.costumes):
+            if c.name == name:
+                c.path = ""
+                c.draw_code = draw_code
+                c.width = width
+                c.height = height
+                return i
+
+        costume = CostumeData(name=name, path="", draw_code=draw_code, width=width, height=height)
         self.costumes.append(costume)
         return len(self.costumes) - 1
 

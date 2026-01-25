@@ -18,6 +18,7 @@ import os
 
 from models import SpriteModel, ProjectModel, GameSettings, SceneModel
 from core.i18n import tr
+from .code_costume_dialog import CodeCostumeDialog
 
 
 class ColorButton(QPushButton):
@@ -205,6 +206,11 @@ class PropertyEditor(QWidget):
         add_costume_btn = QPushButton(tr("inspector.add_costume"))
         add_costume_btn.clicked.connect(self._on_add_costume)
         appearance_layout.addRow("", add_costume_btn)
+
+        # Add code costume button
+        add_code_costume_btn = QPushButton("代码绘制造型...")
+        add_code_costume_btn.clicked.connect(self._on_add_code_costume)
+        appearance_layout.addRow("", add_code_costume_btn)
 
         content_layout.addWidget(appearance_group)
 
@@ -476,8 +482,15 @@ class PropertyEditor(QWidget):
         self._costumes_list.clear()
         self._default_costume_combo.clear()
         for i, costume in enumerate(self._sprite.costumes):
-            item = QListWidgetItem(costume.name)
-            item.setToolTip(costume.path)
+            # Show different icon for code-drawn costumes
+            if costume.is_code_drawn():
+                display_name = f"🎨 {costume.name}"
+                tooltip = f"代码绘制 ({costume.width}x{costume.height})"
+            else:
+                display_name = f"🖼️ {costume.name}"
+                tooltip = costume.path
+            item = QListWidgetItem(display_name)
+            item.setToolTip(tooltip)
             item.setData(Qt.UserRole, i)
             self._costumes_list.addItem(item)
             self._default_costume_combo.addItem(costume.name)
@@ -615,6 +628,23 @@ class PropertyEditor(QWidget):
             self._refresh_sprite()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 
+    def _on_add_code_costume(self):
+        """Add a code-drawn costume."""
+        if not self._sprite:
+            return
+
+        dialog = CodeCostumeDialog(self)
+        if dialog.exec():
+            data = dialog.get_data()
+            idx = self._sprite.add_code_costume(
+                data["name"], data["width"], data["height"], data["draw_code"]
+            )
+            if len(self._sprite.costumes) == 1:
+                self._sprite.current_costume = 0
+                self._sprite.default_costume = 0
+            self._refresh_sprite()
+            self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
+
     def _on_default_costume_changed(self, index: int):
         if self._updating or not self._sprite or index < 0:
             return
@@ -673,7 +703,17 @@ class PropertyEditor(QWidget):
         if not item:
             return
 
+        index = item.data(Qt.UserRole)
         menu = QMenu(self)
+
+        # Add edit option for code-drawn costumes
+        if index is not None and index < len(self._sprite.costumes):
+            costume = self._sprite.costumes[index]
+            if costume.is_code_drawn():
+                edit_action = QAction("编辑绘制代码...", self)
+                edit_action.triggered.connect(lambda: self._edit_code_costume(item))
+                menu.addAction(edit_action)
+                menu.addSeparator()
 
         rename_action = QAction(tr("inspector.rename_costume"), self)
         rename_action.triggered.connect(lambda: self._rename_costume(item))
@@ -733,6 +773,28 @@ class PropertyEditor(QWidget):
                 self._sprite.current_costume = max(0, len(self._sprite.costumes) - 1)
             if self._sprite.default_costume >= len(self._sprite.costumes):
                 self._sprite.default_costume = max(0, len(self._sprite.costumes) - 1)
+            self._refresh_sprite()
+            self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
+
+    def _edit_code_costume(self, item):
+        """Edit a code-drawn costume."""
+        if not self._sprite:
+            return
+        index = item.data(Qt.UserRole)
+        if index is None or index >= len(self._sprite.costumes):
+            return
+
+        costume = self._sprite.costumes[index]
+        if not costume.is_code_drawn():
+            return
+
+        dialog = CodeCostumeDialog(self, costume)
+        if dialog.exec():
+            data = dialog.get_data()
+            costume.name = data["name"]
+            costume.width = data["width"]
+            costume.height = data["height"]
+            costume.draw_code = data["draw_code"]
             self._refresh_sprite()
             self.property_changed.emit(self._sprite, "costumes", self._sprite.costumes)
 

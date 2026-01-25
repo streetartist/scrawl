@@ -24,6 +24,7 @@ from panels.inspector import PropertyEditor
 from panels.code_editor import CodeEditorWidget
 from panels.asset_browser import AssetTreeView, AssetPreview
 from panels.ai_chat import AIChatPanel
+from panels.welcome_page import WelcomePage
 from models import ProjectModel, SceneModel, SpriteModel
 from runner import GameRunner
 
@@ -53,12 +54,15 @@ class MainWindow(QMainWindow):
         self._setup_connections()
         self._restore_state()
 
+        # Flag to show welcome dialog on first show
+        self._first_show = True
+
     def _setup_ui(self):
         """Initialize the main UI components."""
         self.setWindowTitle(tr("app.name"))
         self.setMinimumSize(1200, 800)
 
-        # Central widget - Scene Editor (no toolbar here, moved to main toolbar)
+        # Central widget - Scene Editor
         self.scene_view = SceneView()
         self.setCentralWidget(self.scene_view)
 
@@ -602,6 +606,10 @@ class MainWindow(QMainWindow):
         """Handle project loaded."""
         self._update_title()
 
+        # Add to recent files
+        if self.project.path:
+            self._add_recent_file(self.project.path)
+
         # Set scene view size from game settings
         self.scene_view.set_scene_size(model.game.width, model.game.height)
 
@@ -987,6 +995,40 @@ class MainWindow(QMainWindow):
 
         self.ai_panel.set_context("\n".join(context_parts))
         self.ai_panel.set_project(self.project.model, self)
+
+    def _add_recent_file(self, path: str):
+        """Add a file to the recent files list."""
+        self.settings.add_recent_file(path)
+
+    def _on_open_recent(self, path: str):
+        """Open a recent project."""
+        if os.path.exists(path):
+            self.project.open_project(path)
+        else:
+            QMessageBox.warning(
+                self, tr("app.name"),
+                f"File not found: {path}"
+            )
+            self.settings.remove_recent_file(path)
+
+    def showEvent(self, event):
+        """Handle window show event."""
+        super().showEvent(event)
+        if self._first_show:
+            self._first_show = False
+            # Show welcome dialog after window is displayed
+            from PySide6.QtCore import QTimer
+            QTimer.singleShot(100, self._show_welcome_dialog)
+
+    def _show_welcome_dialog(self):
+        """Show the welcome dialog."""
+        self._welcome_dialog = WelcomePage(self)
+        self._welcome_dialog.set_recent_files(self.settings.get_recent_files())
+        self._welcome_dialog.new_project_clicked.connect(lambda: (self._welcome_dialog.accept(), self._on_new_project()))
+        self._welcome_dialog.open_project_clicked.connect(lambda: (self._welcome_dialog.accept(), self._on_open_project()))
+        self._welcome_dialog.recent_file_clicked.connect(lambda p: (self._welcome_dialog.accept(), self._on_open_recent(p)))
+        # Show as non-modal so main window X button still works
+        self._welcome_dialog.show()
 
     def closeEvent(self, event):
         """Handle window close."""

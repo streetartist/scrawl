@@ -24,6 +24,8 @@ from core.i18n import tr
 if TYPE_CHECKING:
     from models import ProjectModel
 
+from models import SpriteModel, SceneModel
+
 
 class AIChatPanel(QWidget):
     """AI chat panel for code assistance."""
@@ -458,7 +460,8 @@ class AIChatPanel(QWidget):
         return False
 
     def _apply_to_sprite(self, target_id: str, code: str) -> bool:
-        """Apply code to a sprite by id or name."""
+        """Apply code to a sprite by id or name. Creates sprite if not found."""
+        # First try to find existing sprite
         for scene in self._project.scenes:
             for sprite in scene.sprites:
                 if sprite.id == target_id or sprite.name == target_id:
@@ -467,10 +470,21 @@ class AIChatPanel(QWidget):
                     if self._main_window:
                         self._main_window.project.mark_modified()
                     return True
+
+        # Sprite not found, create new one in current scene
+        if self._main_window and self._main_window._current_scene:
+            sprite = SpriteModel.create_default(target_id)
+            sprite.code = code
+            self._main_window._current_scene.sprites.append(sprite)
+            self._main_window.scene_view.add_sprite(sprite)
+            self._main_window.hierarchy_view.refresh()
+            self._main_window.project.mark_modified()
+            return True
         return False
 
     def _apply_to_scene(self, target_id: str, code: str) -> bool:
-        """Apply code to a scene by id or name."""
+        """Apply code to a scene by id or name. Creates scene if not found."""
+        # First try to find existing scene
         for scene in self._project.scenes:
             if scene.id == target_id or scene.name == target_id:
                 scene.code = code
@@ -478,6 +492,15 @@ class AIChatPanel(QWidget):
                 if self._main_window:
                     self._main_window.project.mark_modified()
                 return True
+
+        # Scene not found, create new one
+        if self._main_window:
+            scene = SceneModel.create_default(target_id)
+            scene.code = code
+            self._project.scenes.append(scene)
+            self._main_window.hierarchy_view.refresh()
+            self._main_window.project.mark_modified()
+            return True
         return False
 
     def _update_editor(self, tab_id: str, code: str):
@@ -507,55 +530,102 @@ class AIChatPanel(QWidget):
         return ""
 
     def _apply_sprite_props(self, target_id: str, props: dict) -> str:
-        """Apply properties to a sprite. Returns applied props."""
-        for scene in self._project.scenes:
-            for sprite in scene.sprites:
-                if sprite.id == target_id or sprite.name == target_id:
-                    applied = []
-                    if "name" in props:
-                        sprite.name = props["name"]
-                        applied.append("name")
-                    if "x" in props:
-                        sprite.x = float(props["x"])
-                        applied.append("x")
-                    if "y" in props:
-                        sprite.y = float(props["y"])
-                        applied.append("y")
-                    if "size" in props:
-                        sprite.size = float(props["size"])
-                        applied.append("size")
-                    if "direction" in props:
-                        sprite.direction = float(props["direction"])
-                        applied.append("direction")
-                    if "visible" in props:
-                        sprite.visible = bool(props["visible"])
-                        applied.append("visible")
-                    if "is_physics" in props:
-                        sprite.is_physics = bool(props["is_physics"])
-                        applied.append("is_physics")
+        """Apply properties to a sprite. Creates sprite if not found."""
+        sprite = None
+        target_scene = None
 
-                    self._refresh_views()
-                    return ", ".join(applied) if applied else ""
-        return ""
+        # Find existing sprite
+        for scene in self._project.scenes:
+            for s in scene.sprites:
+                if s.id == target_id or s.name == target_id:
+                    sprite = s
+                    target_scene = scene
+                    break
+            if sprite:
+                break
+
+        # Create new sprite if not found
+        if not sprite and self._main_window and self._main_window._current_scene:
+            sprite = SpriteModel.create_default(target_id)
+            self._main_window._current_scene.sprites.append(sprite)
+            self._main_window.scene_view.add_sprite(sprite)
+            target_scene = self._main_window._current_scene
+
+        if not sprite:
+            return ""
+
+        # Apply properties
+        applied = []
+        if "name" in props:
+            sprite.name = props["name"]
+            applied.append("name")
+        if "x" in props:
+            sprite.x = float(props["x"])
+            applied.append("x")
+        if "y" in props:
+            sprite.y = float(props["y"])
+            applied.append("y")
+        if "size" in props:
+            sprite.size = float(props["size"])
+            applied.append("size")
+        if "direction" in props:
+            sprite.direction = float(props["direction"])
+            applied.append("direction")
+        if "visible" in props:
+            sprite.visible = bool(props["visible"])
+            applied.append("visible")
+        if "is_physics" in props:
+            sprite.is_physics = bool(props["is_physics"])
+            applied.append("is_physics")
+
+        # Handle code-drawn costumes
+        if "add_code_costume" in props:
+            costume_data = props["add_code_costume"]
+            if isinstance(costume_data, dict):
+                name = costume_data.get("name", "costume")
+                width = int(costume_data.get("width", 32))
+                height = int(costume_data.get("height", 32))
+                draw_code = costume_data.get("draw_code", "")
+                if draw_code:
+                    idx = sprite.add_code_costume(name, width, height, draw_code)
+                    sprite.current_costume = idx # Switch to new costume
+                    applied.append(f"costume:{name}")
+
+        self._refresh_views()
+        return ", ".join(applied) if applied else ""
 
     def _apply_scene_props(self, target_id: str, props: dict) -> str:
-        """Apply properties to a scene. Returns applied props."""
-        for scene in self._project.scenes:
-            if scene.id == target_id or scene.name == target_id:
-                applied = []
-                if "name" in props:
-                    scene.name = props["name"]
-                    applied.append("name")
-                if "bg_color" in props:
-                    scene.bg_color = props["bg_color"]
-                    applied.append("bg_color")
-                if "bg_image" in props:
-                    scene.bg_image = props["bg_image"]
-                    applied.append("bg_image")
+        """Apply properties to a scene. Creates scene if not found."""
+        scene = None
 
-                self._refresh_views()
-                return ", ".join(applied) if applied else ""
-        return ""
+        # Find existing scene
+        for s in self._project.scenes:
+            if s.id == target_id or s.name == target_id:
+                scene = s
+                break
+
+        # Create new scene if not found
+        if not scene and self._main_window:
+            scene = SceneModel.create_default(target_id)
+            self._project.scenes.append(scene)
+
+        if not scene:
+            return ""
+
+        # Apply properties
+        applied = []
+        if "name" in props:
+            scene.name = props["name"]
+            applied.append("name")
+        if "bg_color" in props:
+            scene.bg_color = props["bg_color"]
+            applied.append("bg_color")
+        if "bg_image" in props:
+            scene.bg_image = props["bg_image"]
+            applied.append("bg_image")
+
+        self._refresh_views()
+        return ", ".join(applied) if applied else ""
 
     def _apply_game_props(self, props: dict) -> str:
         """Apply properties to game settings. Returns applied props."""

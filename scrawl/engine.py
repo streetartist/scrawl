@@ -175,7 +175,21 @@ except NameError:
     PACKAGE_DIR = os.path.abspath('.')
 
 def get_resource_path(resource):
+    # 1. 尝试从包目录加载
     data_path = os.path.join(PACKAGE_DIR, resource)
+    if os.path.exists(data_path):
+        return data_path
+
+    # 2. 尝试从当前工作目录的scrawl子目录加载 (针对 IDE 本地开发环境)
+    cwd_scrawl_path = os.path.join(os.getcwd(), 'scrawl', resource)
+    if os.path.exists(cwd_scrawl_path):
+        return cwd_scrawl_path
+    
+    # 3. 尝试直接从当前目录加载
+    cwd_path = os.path.join(os.getcwd(), resource)
+    if os.path.exists(cwd_path):
+        return cwd_path
+
     return data_path
 
 def on_key(key: int, mode: str = "pressed"):
@@ -787,7 +801,7 @@ class Game:
                 continue
             except Exception as e:
                 # 其他异常也丢弃，防止卡死
-                self.log_debug(f"Task error: {e}")
+                self.log_error(f"Task error: {e}")
                 continue
 
         self.tasks = new_tasks
@@ -796,6 +810,12 @@ class Game:
     def log_debug(self, info: str):
         if self.debug:
             self.debug_info.append(info)
+            print(f"[DEBUG] {info}")
+
+    def log_error(self, info: str):
+        """Log error - always prints to terminal and shows on screen in debug mode"""
+        print(f"[ERROR] {info}")
+        self.debug_info.append(f"ERROR: {info}")
     
     def mark_broadcast(self, event_name: str):
         """标记广播已被触发"""
@@ -836,7 +856,7 @@ class Game:
             self.sound_effects[name] = sound
             self.log_debug(f"Loaded sound: {name}")
         except Exception as e:
-            self.log_debug(f"Failed to load sound {name}: {e}")
+            self.log_error(f"Failed to load sound {name}: {e}")
     
     def load_music(self, name: str, file_path: str):
         """加载背景音乐文件路径（实际播放时才加载）"""
@@ -846,7 +866,7 @@ class Game:
     def play_sound(self, name: str, volume: float = None):
         """播放音效"""
         if name not in self.sound_effects:
-            self.log_debug(f"Sound not found: {name}")
+            self.log_error(f"Sound not found: {name}")
             return
             
         sound = self.sound_effects[name]
@@ -860,7 +880,7 @@ class Game:
     def play_music(self, name: str, loops: int = -1, volume: float = None):
         """播放背景音乐（loops=-1表示无限循环）"""
         if name not in self.music:
-            self.log_debug(f"Music not found: {name}")
+            self.log_error(f"Music not found: {name}")
             return
             
         pygame.mixer.music.load(self.music[name])
@@ -1029,7 +1049,7 @@ class Scene:
                 
             self.game.log_debug(f"Set background image: {image_path}")
         except Exception as e:
-            self.game.log_debug(f"Failed to load background: {str(e)}")
+            self.game.log_error(f"Failed to load background: {str(e)}")
             self.background_image = None
             self.background_size = None
 
@@ -1487,6 +1507,14 @@ class Sprite:
 
 
     def is_colliding_with(self, other: "Sprite") -> bool:
+        if isinstance(other, str):
+            # Resolve string name to sprite(s)
+            if not self.scene: return False
+            for s in self.scene.sprites:
+                if s.name == other:
+                     if self.is_colliding_with(s): return True
+            return False
+
         if not self.visible or not other.visible:
             return False
 
@@ -1536,8 +1564,13 @@ class Sprite:
 
     def _trigger_sprite_collision_handler(self, handler: Callable, other: "Sprite"):
         sig = inspect.signature(handler)
-        task_to_add = (lambda: handler(other)) if 'other' in sig.parameters else handler
-        self.game.add_task(task_to_add,obj=self)
+        # Check if handler expects any parameter (not just 'other')
+        params = [p for p in sig.parameters.keys() if p != 'self']
+        if params:
+            task_to_add = lambda: handler(other)
+        else:
+            task_to_add = handler
+        self.game.add_task(task_to_add, obj=self)
 
     def is_touching_color(self, color: Tuple[int, int, int], tolerance: int = 0) -> bool:
         if not self.game or not self.visible: return False

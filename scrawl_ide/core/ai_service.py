@@ -68,11 +68,13 @@ class AIWorker(QThread):
                             break
                         try:
                             chunk = json.loads(data_str)
-                            delta = chunk.get("choices", [{}])[0].get("delta", {})
-                            content = delta.get("content", "")
-                            if content:
-                                self.response_chunk.emit(content)
-                        except json.JSONDecodeError:
+                            choices = chunk.get("choices", [])
+                            if choices and len(choices) > 0:
+                                delta = choices[0].get("delta", {})
+                                content = delta.get("content", "")
+                                if content:
+                                    self.response_chunk.emit(content)
+                        except (json.JSONDecodeError, IndexError):
                             pass
 
             self.response_done.emit()
@@ -142,64 +144,84 @@ class AIService(QObject):
 
     def get_system_prompt(self, context: str = "") -> str:
         """Build system prompt with engine source and context."""
-        engine_src = self._engine_source[:30000] if self._engine_source else "未加载"
+        prompt = """你是Scrawl IDE的AI编程助手。帮助用户在IDE中编写游戏代码。
 
-        prompt = f"""你是Scrawl游戏引擎的AI编程助手。帮助用户编写和修改游戏代码。
+## 核心思维链（CoT）
+**在生成代码前，请先思考：**
+1. 用户的需求是什么？
+2. 是静态配置（精灵属性/造型）还是动态逻辑（移动/事件）？
+3. **坐标计算**：注意 (0,0) 是屏幕左上角，但**精灵坐标 (x,y) 是精灵的中心点**！
+   - 例如：放置在左上角的按钮(宽100,高50)，坐标应设为 x=50, y=25 (而不是 0,0)。
+4. **关键判断**：除了scrawl/pygame，是否需要导入其他库（如math, random）？
+4. **安全检查**：
+   - 是否定义了 `__init__` 并调用 `super().__init__()`？（**必须**）
+   - 是否有循环阻塞？
 
-Scrawl引擎源码：
-```python
-{engine_src}
+## 🚫 严禁事项（Forbidden Patterns）
+1. **禁止在代码中加载资源**：严禁使用 `pygame.image.load()`。所有造型**必须**通过IDE属性（JSON格式）添加。
+2. **禁止修改IDE托管属性**：`self.x`, `self.y`, `self.rect` 是IDE管理的。代码中**只读**，修改请用API（`self.pos.x`, `self.move`）。
+3. **禁止阻塞主线程**：严禁 `time.sleep()`。必须用 `yield`。
+4. **禁止自定义字体**：优先使用 `self.game.font`，不要用 `pygame.font.SysFont`，以保持风格统一。
+5. **禁止省略 __init__**：必须显示定义 `__init__` 并调用 `super().__init__()`。这是**强制要求**，否则会出问题。
+
+## ✅ 正确工作流
+1. **添加造型**：
+   - **图片造型**：使用JSON格式 `"costumes": [...]`
+   - **绘图造型**：使用JSON格式 `"add_code_costume": {...}` (**不要**在python代码中写 `pygame.draw`)
+   - **动态变化**：只有在运行时需要*实时改变*形状时，才在Python代码中绘制。
+2. **使用库**：
+   - 默认可用：`scrawl`, `pygame`
+   - **必须导入**：`math`, `random`, `json`, `datetime` 等标准库必须显式 `import`。
+
+## 代码编写原则
+1. **必须定义 __init__**：务必定义 `__init__` 并第一行调用 `super().__init__()`。
+2. **面向对象**：所有逻辑写在方法里，通过装饰器注册事件。
+
+## 格式规范
+
+### 1. 修改代码（Python）
+```python:sprite:精灵名称
+import random  # 显式导入
+
+class 精灵类名(Sprite):
+    def __init__(self):
+        super().__init__()  # 必须调用！
+        self.hp = 100  # 逻辑属性
+
+    @as_main
+    def main_loop(self):
+        while True:
+            self.move(5)
+            yield 0
 ```
 
-## 代码修改格式
-当你需要修改精灵或场景的代码时，请使用以下格式：
-
-修改精灵代码：
-```python:sprite:精灵名称或ID
-# 完整的精灵代码
-class MySprite(Sprite):
-    ...
+### 2. 修改属性/添加造型（JSON）
+**注意：添加代码绘制造型属于IDE属性配置，必须用此JSON格式，而不是Python代码！**
+```json:sprite:精灵名称
+{
+    "x": 100, 
+    "y": 200,
+    "add_code_costume": {
+        "name": "造型名",
+        "width": 40,
+        "height": 30,
+        "draw_code": "pygame.draw.circle(surface, (255,0,0), (20,15), 15)"
+    }
+}
 ```
+**draw_code说明**：
+- 坐标系：(0,0)为Surface左上角
+- 多行：使用 `\\n` 分隔
+- 变量：`surface`, `width`, `height` 可用
 
-修改场景代码：
-```python:scene:场景名称或ID
-# 完整的场景代码
-class MyScene(Scene):
-    ...
-```
-
-注意：
-- 必须提供完整的代码，不是代码片段
-- 使用精灵/场景的名称或ID作为目标
-- 用户点击"应用"按钮后代码会自动更新到对应的精灵/场景
-
-## 属性修改格式
-当你需要修改精灵或场景的属性时，请使用JSON格式：
-
-修改精灵属性：
-```json:sprite:精灵名称或ID
 """
-        # Add JSON examples without f-string to avoid brace issues
-        prompt += '{\n    "name": "新名称",\n    "x": 100,\n    "y": 200,\n'
-        prompt += '    "size": 1.0,\n    "direction": 0,\n    "visible": true,\n'
-        prompt += '    "is_physics": false\n}\n```\n\n'
-
-        prompt += '修改场景属性：\n```json:scene:场景名称或ID\n'
-        prompt += '{\n    "name": "新场景名",\n    "bg_color": "#336699"\n}\n```\n\n'
-
-        prompt += '修改游戏设置：\n```json:game:settings\n'
-        prompt += '{\n    "title": "游戏标题",\n    "width": 800,\n    "height": 600,\n'
-        prompt += '    "fps": 60,\n    "fullscreen": false,\n    "debug": false\n}\n```\n\n'
-
-        prompt += "注意：只需包含要修改的属性，不需要包含所有属性。\n\n"
-
         # Add Scrawl API documentation
         prompt += self._get_api_documentation()
 
         if context:
             prompt += f"\n当前项目上下文：\n{context}\n"
 
-        prompt += "\n请用中文回答，代码要简洁清晰。"
+        prompt += "\n请用中文回答，严格遵守'严禁事项'和'正确工作流'。"
         return prompt
 
     def send_message(self, user_message: str, context: str = ""):
@@ -242,33 +264,44 @@ class MyScene(Scene):
 
     def _get_api_documentation(self) -> str:
         """Get complete Scrawl engine API documentation."""
-        doc = """## Scrawl引擎完整API文档
+        doc = """## Scrawl引擎API文档
 
-### 重要提示
-- **IDE可配置的属性（name, x, y, size, direction, visible, is_physics等）不需要在__init__中显式设置**
-- 如果需要修改这些属性，请使用上面的JSON属性修改格式（```json:sprite:名称```），而不是在代码的__init__中设置
-- 只有IDE无法配置的属性（如自定义变量、速度等）才需要在__init__中初始化
+### IDE与代码的职责划分
+| 由IDE管理（初始值） | 由代码控制（运行时） |
+|-----------|-----------|
+| 精灵位置(x,y) | 移动、滑行等动态位置变化 |
+| 精灵大小(size) | 动态缩放效果 |
+| 精灵方向(direction) | 旋转、面向目标 |
+| 可见性(visible) | 显示/隐藏逻辑 |
+| 造型列表 | 造型切换、动画 |
+| 物理属性初始值 | 运行时物理行为 |
+
+### 坐标系与锚点（重要！）
+- **屏幕坐标**：(0, 0) 为屏幕左上角。x向右增加，y向下增加。
+- **精灵锚点**：精灵的 `(x, y)` 属性对应其**图片中心点**。
+- **UI布局提示**：
+    - 左上角对齐：`x = width/2`, `y = height/2`
+    - 顶部居中：`x = SCREEN_WIDTH/2`, `y = height/2`
+    - 右下角对齐：`x = SCREEN_WIDTH - width/2`, `y = SCREEN_HEIGHT - height/2`
 
 ### Sprite类核心属性
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| self.pos | pygame.Vector2 | 位置，用self.pos.x和self.pos.y访问 |
-| self.direction | float | 方向角度（0=右，90=上，180=左，270=下） |
-| self.size | float | 缩放比例（1.0=原始大小） |
+| self.pos | pygame.Vector2 | 位置，用self.pos.x和self.pos.y |
+| self.direction | float | 方向角度（0=右，90=上） |
+| self.size | float | 缩放比例 |
 | self.visible | bool | 是否可见 |
 | self.name | str | 精灵名称 |
-| self.color | tuple | RGB颜色，如(255, 0, 0) |
-| self.collision_type | str | 碰撞类型："rect"/"circle"/"mask" |
 
-**注意：没有self.x和self.y属性！必须使用self.pos.x和self.pos.y**
+**重要：使用self.pos.x/self.pos.y，不是self.x/self.y**
 
-### PhysicsSprite额外属性（继承自Sprite）
-| 属性 | 类型 | 默认值 | 说明 |
-|------|------|--------|------|
-| self.velocity | pygame.Vector2 | (0, 0) | 速度向量 |
-| self.gravity | pygame.Vector2 | (0, 0.2) | 重力向量 |
-| self.friction | float | 0.02 | 摩擦力系数(0-1) |
-| self.elasticity | float | 0.8 | 弹性系数 |
+### PhysicsSprite额外属性
+| 属性 | 类型 | 说明 |
+|------|------|------|
+| self.velocity | pygame.Vector2 | 速度向量 |
+| self.gravity | pygame.Vector2 | 重力向量 |
+| self.friction | float | 摩擦力(0-1) |
+| self.elasticity | float | 弹性系数 |
 
 """
         doc += self._get_movement_api()
@@ -297,10 +330,10 @@ class MyScene(Scene):
 | self.go_to(x, y) | 瞬间移动到(x, y) |
 | self.go_to_random_position() | 移动到随机位置 |
 | yield from self.glide_to(x, y, duration, easing) | 滑行到(x, y)，duration毫秒 |
-| yield from self.glide_left(dist, duration) | 向左滑行 |
-| yield from self.glide_right(dist, duration) | 向右滑行 |
-| yield from self.glide_up(dist, duration) | 向上滑行 |
-| yield from self.glide_down(dist, duration) | 向下滑行 |
+| yield from self.glide_left(dist, duration) | 向左滑行(ms) |
+| yield from self.glide_right(dist, duration) | 向右滑行(ms) |
+| yield from self.glide_up(dist, duration) | 向上滑行(ms) |
+| yield from self.glide_down(dist, duration) | 向下滑行(ms) |
 
 easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 
@@ -336,7 +369,7 @@ easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 | self.is_touching_mouse() | 是否触碰鼠标 |
 | self.distance_to_mouse() | 到鼠标的距离 |
 | self.go_to_mouse() | 移动到鼠标位置 |
-| yield from self.glide_to_mouse(duration) | 滑行到鼠标位置 |
+| yield from self.glide_to_mouse(duration) | 滑行到鼠标位置(ms) |
 
 """
 
@@ -359,10 +392,39 @@ easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 ### 造型方法
 | 方法 | 说明 |
 |------|------|
-| self.add_costume(name, image) | 添加造型 |
+| self.add_costume(name, image) | 添加造型（image可以是pygame.Surface或图片路径） |
 | self.switch_costume(name) | 切换到指定造型 |
 | self.next_costume() | 切换到下一个造型 |
 | self.set_image(image) | 设置默认图像 |
+
+### 代码绘制造型（重要功能）
+IDE支持使用pygame代码绘制造型，无需图片文件。在__init__中创建pygame.Surface并绘制：
+
+```python
+# 创建透明Surface
+surface = pygame.Surface((宽度, 高度), pygame.SRCALPHA)
+
+# 使用pygame绑制图形
+pygame.draw.rect(surface, (R, G, B), (x, y, w, h))  # 矩形
+pygame.draw.circle(surface, (R, G, B), (cx, cy), radius)  # 圆形
+pygame.draw.ellipse(surface, (R, G, B), (x, y, w, h))  # 椭圆
+pygame.draw.polygon(surface, (R, G, B), [(x1,y1), (x2,y2), ...])  # 多边形
+pygame.draw.line(surface, (R, G, B), (x1, y1), (x2, y2), width)  # 线条
+
+# 添加为造型
+self.add_costume("造型名", surface)
+```
+
+**代码绘制造型示例（小鸟）：**
+```python
+bird_width, bird_height = 24, 17
+surface = pygame.Surface((bird_width, bird_height), pygame.SRCALPHA)
+pygame.draw.ellipse(surface, (255, 200, 0), (0, 0, bird_width, bird_height))  # 身体
+pygame.draw.circle(surface, (255, 100, 0), (bird_width - 9, 6), 3)  # 头
+pygame.draw.polygon(surface, (255, 0, 0), [(bird_width-6, 6), (bird_width+4, 6), (bird_width-1, 8)])  # 嘴
+pygame.draw.ellipse(surface, (0, 0, 0), (bird_width - 12, 4, 3, 3))  # 眼睛
+self.add_costume("default", surface)
+```
 
 """
 
@@ -375,8 +437,8 @@ easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 | self.play_sound(name, volume) | 播放音效 |
 | self.play_music(name, loops, volume) | 播放背景音乐(loops=-1循环) |
 | self.stop_music() | 停止背景音乐 |
-| self.play_note(note, duration) | 播放音符(C4-C5) |
-| self.play_drum(type, duration) | 播放鼓声(bass/snare/hihat/cymbal) |
+| self.play_note(note, duration) | 播放音符(C4-C5，ms) |
+| self.play_drum(type, duration) | 播放鼓声(ms) |
 | self.set_music_volume(volume) | 设置音乐音量(0.0-1.0) |
 | self.set_sound_volume(volume) | 设置音效音量(0.0-1.0) |
 
@@ -403,8 +465,8 @@ easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 ### 其他方法
 | 方法 | 说明 |
 |------|------|
-| self.say(text, duration) | 显示对话气泡 |
-| self.think(text, duration) | 显示思考气泡 |
+| self.say(text, duration) | 显示对话气泡(duration为毫秒，默认2000) |
+| self.think(text, duration) | 显示思考气泡(duration为毫秒) |
 | self.set_size(size) | 设置大小 |
 | self.change_size(change) | 改变大小 |
 | self.set_color(color) | 设置颜色 |
@@ -465,9 +527,9 @@ def on_hit_edge(self):
     \"\"\"碰到任意边缘时触发（可选：left/right/top/bottom）\"\"\"
     yield
 
-@on_sprite_collision(OtherSprite)
+@on_sprite_collision("TargetSpriteName")
 def on_hit_other(self, other):
-    \"\"\"碰到OtherSprite类型精灵时触发\"\"\"
+    \"\"\"碰到指定名称的精灵时触发（使用字符串）\"\"\"
     yield
 ```
 
@@ -476,52 +538,202 @@ def on_hit_other(self, other):
     def _get_code_examples(self) -> str:
         """Get code examples."""
         return """
-### 代码示例
+### 完整交互示例 (Few-Shot Example)
 
-#### 键盘控制移动（推荐方式）
-```python
-class Player(Sprite):
+**用户**：做一个接苹果的游戏。有个碗在下面左右移动，苹果从上面掉下来，接到加分。
+
+**AI**：
+
+**思考**：
+1.  **需求分析**：需要三个精灵（碗、苹果、分数板）。
+2.  **精灵配置**：
+    *   `Bowl`：底部半圆（代码绘制）。
+    *   `Apple`：顶部圆形（代码绘制）。
+    *   `ScoreBoard`：显示分数（动态文字渲染）。
+3.  **库检查**：`Apple`需 `random`；`ScoreBoard`需 `pygame.font`（包含在pygame中）。
+4.  **安全检查**：循环中使用 `yield`。
+
+---
+
+#### 1. 配置碗 (Bowl) - JSON
+```json:sprite:Bowl
+{
+    "x": 400,
+    "y": 500,
+    "add_code_costume": {
+        "name": "bowl",
+        "width": 60,
+        "height": 30,
+        "draw_code": "pygame.draw.arc(surface, (200, 150, 100), (0, 0, 60, 60), 3.14, 6.28, 5)\\npygame.draw.line(surface, (200, 150, 100), (0, 30), (60, 30), 5)"
+    }
+}
+```
+
+#### 2. 碗的逻辑 (Bowl) - Python
+```python:sprite:Bowl
+class Bowl(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.speed = 8
+
     @as_main
     def main_loop(self):
         while True:
+            # 左右移动控制
             keys = pygame.key.get_pressed()
             if keys[pygame.K_LEFT]:
-                self.pos.x -= 5
+                self.pos.x -= self.speed
             if keys[pygame.K_RIGHT]:
-                self.pos.x += 5
-            if keys[pygame.K_UP]:
-                self.pos.y -= 5
-            if keys[pygame.K_DOWN]:
-                self.pos.y += 5
+                self.pos.x += self.speed
+            
+            # 限制在屏幕内
+            if self.pos.x < 30: self.pos.x = 30
+            if self.pos.x > 770: self.pos.x = 770
+            
             yield 0
 ```
 
-#### 使用内置移动方法
-```python
-class Player(Sprite):
+#### 3. 配置苹果 (Apple) - JSON
+```json:sprite:Apple
+{
+    "x": 400,
+    "y": -50,
+    "add_code_costume": {
+        "name": "red_apple",
+        "width": 30,
+        "height": 30,
+        "draw_code": "pygame.draw.circle(surface, (255, 0, 0), (15, 15), 14)\\npygame.draw.line(surface, (0, 255, 0), (15, 0), (15, 5), 2)"
+    }
+}
+```
+
+#### 4. 苹果的逻辑 (Apple) - Python
+```python:sprite:Apple
+import random  # 必须显式导入！
+
+class Apple(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.reset_position()
+
     @as_main
     def main_loop(self):
+        self.reset_position()
         while True:
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT]:
-                self.move_left(5)
-            if keys[pygame.K_RIGHT]:
-                self.move_right(5)
+            self.pos.y += 5  # 下落
+            
+            # 掉出屏幕重置
+            if self.pos.y > 600:
+                self.reset_position()
+                
             yield 0
+
+    def reset_position(self):
+        self.pos.y = -50
+        self.pos.x = random.randint(50, 750)
+
+    @on_sprite_collision("Bowl")
+    def on_caught(self, bowl):
+        self.broadcast("score_up")
+        self.reset_position()
 ```
 
-#### 物理精灵示例
-```python
-class Ball(PhysicsSprite):
-    # 不需要在__init__中设置pos/size等，IDE会配置
+#### 5. 分数板配置 (ScoreBoard) - JSON
+```json:sprite:ScoreBoard
+{
+    "x": 80,
+    "y": 30,
+    "add_code_costume": {
+        "name": "default",
+        "width": 100,
+        "height": 30,
+        "draw_code": "" 
+    }
+}
+```
+
+#### 6. 分数板逻辑 (ScoreBoard) - Python
+```python:sprite:ScoreBoard
+class ScoreBoard(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.score = 0
+class ScoreBoard(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.score = 0
+        self.update_display()
+
+    def update_display(self):
+        # 动态绘制：创建Surface -> 绘制文字 -> 设为造型
+        if not self.game: return
+        
+        text = f"Score: {self.score}"
+        # 使用 self.game.font 保证字体统一
+        text_surf = self.game.font.render(text, True, (255, 255, 255))
+        
+        surface = pygame.Surface((150, 30), pygame.SRCALPHA)
+        surface.blit(text_surf, (0, 0))
+        self.add_costume("default", surface)
+
+    @on_broadcast("score_up")
+    def on_score(self):
+        self.score += 1
+        self.update_display()
+```
+
+### 克隆体示例 (Cloning Example)
+
+**用户**：做一个下雪的效果。雪花随机出现在顶部，飘落到底部消失。
+
+**AI**：
+
+#### 1. 雪花配置 (Snowflake) - JSON
+```json:sprite:Snowflake
+{
+    "x": -100, 
+    "y": -100,
+    "add_code_costume": {
+        "name": "snow",
+        "width": 10,
+        "height": 10,
+        "draw_code": "pygame.draw.circle(surface, (255, 255, 255), (5, 5), 4)"
+    }
+}
+```
+
+#### 2. 雪花逻辑 (Snowflake) - Python
+```python:sprite:Snowflake
+import random
+
+class Snowflake(Sprite):
+    def __init__(self):
+        super().__init__()
+        self.visible = False  # 本体隐藏，作为模板
 
     @as_main
-    def main_loop(self):
-        # 可以修改物理属性
-        self.gravity = pygame.Vector2(0, 0.5)
-        self.elasticity = 0.9
+    def spawner(self):
+        \"\"\"生成器逻辑\"\"\"
         while True:
-            yield 0
-```
+            self.clone()  # 克隆自己
+            yield 100     # 每0.1秒生成一个
 
+    @as_clones
+    def fall_logic(self):
+        \"\"\"克隆体逻辑\"\"\"
+        # 1. 初始设置
+        self.visible = True
+        self.pos.x = random.randint(0, 800)
+        self.pos.y = -10
+        self.set_size(random.uniform(0.5, 1.5))
+        
+        # 2. 运动循环
+        while self.pos.y < 610:
+            self.pos.y += 3
+            self.pos.x += random.uniform(-1, 1) # 微微摆动
+            yield 0
+            
+        # 3. 销毁
+        self.delete_self()
+```
 """

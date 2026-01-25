@@ -53,6 +53,22 @@ class Settings:
         recent = recent[:10]  # Keep only 10 most recent
         self._settings.setValue("projects/recent", recent)
 
+    def remove_recent_project(self, path: str):
+        recent = self.get_recent_projects()
+        if path in recent:
+            recent.remove(path)
+            self._settings.setValue("projects/recent", recent)
+
+    # Aliases for recent files
+    def get_recent_files(self) -> list:
+        return self.get_recent_projects()
+
+    def add_recent_file(self, path: str):
+        self.add_recent_project(path)
+
+    def remove_recent_file(self, path: str):
+        self.remove_recent_project(path)
+
     def get_last_project(self) -> Optional[str]:
         return self._settings.value("projects/last")
 
