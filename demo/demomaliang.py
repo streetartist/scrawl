@@ -1,5 +1,5 @@
 from scrawl import TkGUI
-from scrawl import Game, Scene, Sprite, Cat, as_main, on_mouse_event
+from scrawl import Game, Scene, Sprite, Cat, as_main, on_mouse
 import maliang
 
 class Gui(TkGUI):
@@ -30,7 +30,7 @@ class MyCat(Cat):
             self.walk()
             yield 500
 
-    @on_mouse_event(mode="pressed", button=1)  # 左键点击
+    @on_mouse(mode="pressed", button=1)  # 左键点击
     def on_click(self):
         print(f"精灵 {self.name} 被点击了！")
         # 这里可以添加点击后的逻辑

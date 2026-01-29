@@ -25,7 +25,7 @@ class Ball(Sprite):
             self.change_color_random()
             yield 1000
 
-    @handle_broadcast("event")
+    @on_broadcast("event")
     def event1(self):
         self.say("hello")
 

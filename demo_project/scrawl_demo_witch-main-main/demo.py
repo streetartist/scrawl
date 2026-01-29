@@ -56,16 +56,16 @@ class Bat1(Sprite):
             # 添加蝙蝠
             self.clone()
 
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def killed(self, other):
         self.delete_self()
         self.broadcast("add_score")
 
-    @handle_sprite_collision("Wall")
+    @on_sprite_collision("Wall")
     def die(self, other):
         self.delete_self()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
 
@@ -107,16 +107,16 @@ class Bat2(Sprite):
             # 添加蝙蝠
             self.clone()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
         
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def killed(self, other):
         self.delete_self()
         self.broadcast("add_score")
 
-    @handle_sprite_collision("Wall")
+    @on_sprite_collision("Wall")
     def die(self, other):
         self.delete_self()
 
@@ -160,12 +160,12 @@ class Dragon(Sprite):
             # 添加龙
             self.clone()
 
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def killed(self, other):
         self.delete_self()
         self.broadcast("add_score")
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
 
@@ -207,11 +207,16 @@ class Hippo(Sprite):
             # 添加河马
             self.clone()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("FireBall")
+    def killed(self, other):
+        self.delete_self()
+        self.broadcast("add_score")
+
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         self.delete_self()
 
-    @handle_sprite_collision("Wall")
+    @on_sprite_collision("Wall")
     def die(self, other):
         self.delete_self()
 
@@ -233,7 +238,7 @@ class FireBall(Sprite):
             self.move(10)
             yield 100
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         self.delete_self()
 
@@ -263,7 +268,7 @@ class Gameover(Sprite):
                          pygame.image.load("gameover.png").convert_alpha())
         self.visible = False
 
-    @handle_broadcast("gameover")
+    @on_broadcast("gameover")
     def gameover(self):
         self.visible = True
 
@@ -292,13 +297,13 @@ class Witch(Sprite):
         self.fireball.direction = self.direction
         self.clone(self.fireball)
 
-    @handle_sprite_collision("Bat1")
-    @handle_sprite_collision("Bat2")
-    @handle_sprite_collision("Dragon")
+    @on_sprite_collision("Bat1")
+    @on_sprite_collision("Bat2")
+    @on_sprite_collision("Dragon")
     def reduce_life(self):
         self.broadcast("reduce_life")
 
-    @handle_sprite_collision("Hippo")
+    @on_sprite_collision("Hippo")
     def add_life(self):
         self.broadcast("add_life")
 
@@ -337,7 +342,7 @@ class Life(Sprite):
         # 设置精灵造型
         self.add_costume("default", self.surface)
     
-    @handle_broadcast("reduce_life")
+    @on_broadcast("reduce_life")
     def reduce_life(self):
         """减少生命数+显示"""
         global LIFE
@@ -347,7 +352,7 @@ class Life(Sprite):
         else:    
             self.update_display()
     
-    @handle_broadcast("add_life")
+    @on_broadcast("add_life")
     def add_life(self):
         """增加生命数+显示"""
         global LIFE
@@ -381,7 +386,7 @@ class Score(Sprite):
         
         self.add_costume("default", self.surface)
     
-    @handle_broadcast("add_score")
+    @on_broadcast("add_score")
     def add_score(self):
         """增加得分+显示"""
         global SCORE
@@ -424,4 +429,4 @@ class MyScene(Scene):
 
 # 运行游戏
 game.set_scene(MyScene())
-game.run(fps=60)
+game.run(fps=60,debug=True)

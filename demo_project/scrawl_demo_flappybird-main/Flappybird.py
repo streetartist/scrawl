@@ -1,7 +1,7 @@
 import pygame
 from pygame import K_SPACE
 import random
-from scrawl import Game, Scene, PhysicsSprite, Sprite, on_key, as_main, on_mouse_event, handle_edge_collision, handle_sprite_collision, CloudVariablesClient
+from scrawl import Game, Scene, PhysicsSprite, Sprite, on_key, as_main, on_mouse, on_edge_collision, on_sprite_collision, CloudVariablesClient
 import time
 
 # 游戏常量
@@ -41,29 +41,29 @@ class Bird(PhysicsSprite):
         # 设置物理属性
         self.set_gravity(0, GRAVITY)
         self.set_elasticity(0.2)
-        self.set_friction(0.99)
+        self.set_friction(0.01)
         
         # 游戏状态
         self.game_over = False
         self.score = 0
     
     @on_key(K_SPACE, "pressed")
-    @on_mouse_event(button=1, mode="pressed")
+    @on_mouse(button=1, mode="pressed")
     def flap(self):
         """按下空格键或鼠标使小鸟上升"""
         if not self.game_over:
             self.velocity.y = FLAP_FORCE
             self.play_sound("flap")  # 播放拍翅膀音效
     
-    @handle_edge_collision("top")
+    @on_edge_collision("top")
     def hit_top(self):
         """碰到上边界"""
         if not self.game_over:
             self.velocity.y = 0
             self.pos.y = 10
     
-    @handle_edge_collision("bottom")
-    @handle_sprite_collision("管道")
+    @on_edge_collision("bottom")
+    @on_sprite_collision("管道")
     def hit_bottom(self):
         """碰到下边界或管道 - 游戏结束"""
         if not self.game_over:

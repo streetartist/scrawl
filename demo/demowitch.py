@@ -46,17 +46,17 @@ class Bat(Sprite):
             # 添加蝙蝠
             self.clone()
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         # print("触发边缘删除!")
         self.delete_self()
 
-    @handle_sprite_collision("FireBall")
+    @on_sprite_collision("FireBall")
     def hit_fireball(self, other):
         # print("触发精灵删除!")
         self.delete_self()
 
-    @handle_sprite_collision("Witch")
+    @on_sprite_collision("Witch")
     def hit_witch(self, other):
         # print("触发精灵删除!")
         self.delete_self()
@@ -80,7 +80,7 @@ class FireBall(Sprite):
             self.move(10)
             yield 100
 
-    @handle_edge_collision()
+    @on_edge_collision()
     def finish(self):
         #print("触发边缘删除!")
         self.delete_self()

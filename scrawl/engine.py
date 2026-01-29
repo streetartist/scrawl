@@ -175,17 +175,29 @@ except NameError:
     PACKAGE_DIR = os.path.abspath('.')
 
 def get_resource_path(resource):
-    # 1. 尝试从包目录加载
+    """获取资源文件的路径，优先从scrawl包目录加载"""
+
+    # 1. 尝试从包目录加载（最可靠的方式）
     data_path = os.path.join(PACKAGE_DIR, resource)
     if os.path.exists(data_path):
         return data_path
 
-    # 2. 尝试从当前工作目录的scrawl子目录加载 (针对 IDE 本地开发环境)
+    # 2. 尝试通过模块查找scrawl包的位置
+    try:
+        import scrawl
+        scrawl_pkg_dir = os.path.dirname(os.path.abspath(scrawl.__file__))
+        pkg_resource_path = os.path.join(scrawl_pkg_dir, resource)
+        if os.path.exists(pkg_resource_path):
+            return pkg_resource_path
+    except (ImportError, AttributeError):
+        pass
+
+    # 3. 尝试从当前工作目录的scrawl子目录加载 (针对 IDE 本地开发环境)
     cwd_scrawl_path = os.path.join(os.getcwd(), 'scrawl', resource)
     if os.path.exists(cwd_scrawl_path):
         return cwd_scrawl_path
-    
-    # 3. 尝试直接从当前目录加载
+
+    # 4. 尝试直接从当前目录加载
     cwd_path = os.path.join(os.getcwd(), resource)
     if os.path.exists(cwd_path):
         return cwd_path

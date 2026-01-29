@@ -1,5 +1,5 @@
 from scrawl import TkGUI
-from scrawl import Game, Scene, Sprite, Cat, as_main, on_mouse_event
+from scrawl import Game, Scene, Sprite, Cat, as_main, on_mouse
 import tkinter as tk
 
 class Gui(TkGUI):
