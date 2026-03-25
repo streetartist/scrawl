@@ -1,0 +1,23 @@
+[package]
+name = "scrawl-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "The Scrawl engine binary - assembles all plugins"
+
+[[bin]]
+name = "scrawl-engine"
+path = "src/main.rs"
+
+[[bin]]
+name = "bench-bare"
+path = "src/bench_bare.rs"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { workspace = true }
+scrawl-render = { workspace = true }
+scrawl-scripting = { workspace = true }
+log = { workspace = true }
+env_logger = { workspace = true }
+clap = { workspace = true }

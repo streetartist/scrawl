@@ -1,0 +1,10 @@
+[package]
+name = "scrawl-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "In-game UI system"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { path = "../scrawl-core" }

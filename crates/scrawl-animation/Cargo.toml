@@ -1,0 +1,11 @@
+[package]
+name = "scrawl-animation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Animation system (sprite sheet, skeletal, tween)"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { path = "../scrawl-core" }
+log = { workspace = true }

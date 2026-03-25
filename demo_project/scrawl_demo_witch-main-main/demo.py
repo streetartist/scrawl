@@ -292,7 +292,7 @@ class Witch(Sprite):
     def left_held(self):
         self.turn_left(2)
 
-    @on_key(pygame.K_SPACE, "pressed")
+    @on_key(pygame.K_SPACE, "held")
     def space_pressed(self):
         self.fireball.direction = self.direction
         self.clone(self.fireball)
@@ -429,4 +429,4 @@ class MyScene(Scene):
 
 # 运行游戏
 game.set_scene(MyScene())
-game.run(fps=60,debug=True)
+game.run(fps=600,debug=True)

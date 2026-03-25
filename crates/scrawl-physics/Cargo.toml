@@ -1,0 +1,12 @@
+[package]
+name = "scrawl-physics"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Rapier2D physics integration for the Scrawl engine"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { workspace = true }
+bevy_rapier2d = { workspace = true }
+log = { workspace = true }

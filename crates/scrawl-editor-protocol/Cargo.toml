@@ -1,0 +1,10 @@
+[package]
+name = "scrawl-editor-protocol"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "IPC protocol definitions for IDE<->Engine"
+
+[dependencies]
+serde = { workspace = true }
+rmp-serde = { workspace = true }

@@ -1,0 +1,12 @@
+[package]
+name = "scrawl-tilemap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Tilemap system"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { path = "../scrawl-core" }
+bevy_ecs_tilemap = { workspace = true }
+log = { workspace = true }

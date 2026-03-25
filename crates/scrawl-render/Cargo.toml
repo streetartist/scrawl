@@ -1,0 +1,13 @@
+[package]
+name = "scrawl-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "2D rendering plugin for the Scrawl engine (sprites, pen, speech bubbles, debug gizmos)"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { workspace = true }
+log = { workspace = true }
+resvg = { workspace = true }
+thiserror = { workspace = true }

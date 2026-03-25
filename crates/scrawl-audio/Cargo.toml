@@ -1,0 +1,12 @@
+[package]
+name = "scrawl-audio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Audio bus system"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { path = "../scrawl-core" }
+bevy_kira_audio = { workspace = true }
+log = { workspace = true }

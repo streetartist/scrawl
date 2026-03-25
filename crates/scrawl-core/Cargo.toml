@@ -1,0 +1,14 @@
+[package]
+name = "scrawl-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core ECS components, resources, events, and scheduling for the Scrawl engine"
+
+[dependencies]
+bevy = { workspace = true }
+uuid = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+log = { workspace = true }
+thiserror = { workspace = true }

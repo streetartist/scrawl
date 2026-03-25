@@ -1,0 +1,20 @@
+[package]
+name = "scrawl-bridge"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "PyO3 cdylib exposing the Scrawl engine to Python"
+
+[lib]
+name = "scrawl_native"
+crate-type = ["cdylib"]
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { workspace = true }
+scrawl-render = { workspace = true }
+scrawl-scripting = { workspace = true }
+pyo3 = { workspace = true }
+log = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

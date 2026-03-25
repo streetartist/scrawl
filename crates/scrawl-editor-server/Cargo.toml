@@ -1,0 +1,14 @@
+[package]
+name = "scrawl-editor-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Engine-side IPC server"
+
+[dependencies]
+bevy = { workspace = true }
+scrawl-core = { path = "../scrawl-core" }
+scrawl-editor-protocol = { path = "../scrawl-editor-protocol" }
+tokio = { workspace = true }
+log = { workspace = true }
+rmp-serde = { workspace = true }
