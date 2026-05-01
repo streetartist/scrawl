@@ -3,6 +3,8 @@ Code Generator
 
 Generates runnable Python code from the project model by merging
 all sprite and scene class definitions into a single file.
+
+Uses the official scrawl package (Bevy-based engine) as the backend.
 """
 
 import os
@@ -10,10 +12,11 @@ import re
 from typing import Optional, List, Set
 
 from models import ProjectModel, SceneModel, SpriteModel
+from models.sprite_model import PHYSICS_NODE_TYPES
 
 
 class CodeGenerator:
-    """Generates Python code from project models."""
+    """Generates Python code from project models using scrawl."""
 
     def __init__(self, project: ProjectModel, project_dir: str):
         self.project = project
@@ -33,12 +36,23 @@ class CodeGenerator:
         code_parts.append('"""')
         code_parts.append('')
 
-        # 2. Imports
-        code_parts.append('import pygame')
+        # 2. Imports - use the official scrawl package
         code_parts.append('from scrawl import (')
         code_parts.append('    Game, Scene, Sprite, PhysicsSprite,')
         code_parts.append('    on_key, on_mouse, as_main, as_clones,')
-        code_parts.append('    on_sprite_collision, on_edge_collision, on_broadcast, on_sprite_clicked')
+        code_parts.append('    on_sprite_collision, on_edge_collision, on_broadcast, on_sprite_clicked,')
+        code_parts.append('    Vector2, Color, Input, InputMap, Timer, Tween,')
+        code_parts.append('    Camera2D, AudioManager, AudioPlayer, AudioStream,')
+        code_parts.append('    TileMap, TileSet, ParticleEmitter2D,')
+        code_parts.append('    Label, Button, ProgressBar, Panel, CanvasLayer,')
+        code_parts.append('    AnimatedSprite2D, SpriteFrames, AnimationPlayer, Animation,')
+        code_parts.append('    StaticBody2D, RigidBody2D, KinematicBody2D, Area2D,')
+        code_parts.append('    CollisionShape2D, RayCast2D,')
+        code_parts.append('    PointLight2D, DirectionalLight2D,')
+        code_parts.append('    NavigationGrid, NavigationAgent2D,')
+        code_parts.append('    StateMachine, State, Signal,')
+        code_parts.append('    Path2D, PathFollow2D, Line2D,')
+        code_parts.append('    ResourceLoader,')
         code_parts.append(')')
         code_parts.append('')
         code_parts.append(f'# 项目目录')
@@ -88,6 +102,9 @@ class CodeGenerator:
         code_parts.append('# ' + '=' * 60)
         code_parts.append('')
         code_parts.append('if __name__ == "__main__":')
+        code_parts.append('    # 加载默认输入映射')
+        code_parts.append('    InputMap.load_default_actions()')
+        code_parts.append('')
         code_parts.append(f'    game = Game(width=SCREEN_WIDTH, height=SCREEN_HEIGHT, title=GAME_TITLE, fullscreen=FULLSCREEN)')
 
         # Load sounds
@@ -97,7 +114,7 @@ class CodeGenerator:
             for sound_path in self.project.sounds:
                 sound_name = os.path.splitext(os.path.basename(sound_path))[0]
                 rel_path = sound_path.replace('\\', '/')
-                code_parts.append(f'    game.load_sound("{sound_name}", r"{rel_path}")')
+                code_parts.append(f'    AudioManager.load("{sound_name}", r"{rel_path}")')
 
         if scenes:
             # Use first scene as the starting scene
@@ -115,7 +132,8 @@ class CodeGenerator:
     def _get_sprite_code(self, sprite: SpriteModel) -> str:
         """Get the sprite class code, with costume setup injected."""
         code = sprite.code.strip()
-        target_base = "PhysicsSprite" if sprite.is_physics else "Sprite"
+        # Determine the base class from node_type
+        target_base = sprite.node_type if sprite.node_type else ("PhysicsSprite" if sprite.is_physics else "Sprite")
 
         if not code:
             # Generate default code if none exists
@@ -139,10 +157,96 @@ class CodeGenerator:
             inject_parts.append(f'        self.set_collision_type("{sprite.collision_type}")')
 
         # Inject physics properties if physics sprite
-        if sprite.is_physics:
+        if sprite.is_physics or sprite.node_type in PHYSICS_NODE_TYPES:
             inject_parts.append(f'        self.set_gravity({sprite.gravity_x}, {sprite.gravity_y})')
             inject_parts.append(f'        self.set_friction({sprite.friction})')
             inject_parts.append(f'        self.set_elasticity({sprite.elasticity})')
+            if sprite.mass != 1.0:
+                inject_parts.append(f'        self.mass = {sprite.mass}')
+            if sprite.linear_damping != 0.0:
+                inject_parts.append(f'        self.linear_damping = {sprite.linear_damping}')
+            if sprite.angular_damping != 0.0:
+                inject_parts.append(f'        self.angular_damping = {sprite.angular_damping}')
+            # Collision shape
+            if sprite.collision_shape != "rectangle":
+                inject_parts.append(f'        self.set_collision_shape("{sprite.collision_shape}", {sprite.collision_width}, {sprite.collision_height})')
+            elif sprite.collision_shape == "circle":
+                inject_parts.append(f'        self.set_collision_shape("circle", {sprite.collision_radius})')
+
+        # Camera2D properties
+        if sprite.node_type == "Camera2D":
+            if sprite.camera_zoom != 1.0:
+                inject_parts.append(f'        self.zoom = {sprite.camera_zoom}')
+            inject_parts.append(f'        self.smoothing_enabled = {sprite.camera_smoothing}')
+            if sprite.camera_smoothing_speed != 5.0:
+                inject_parts.append(f'        self.smoothing_speed = {sprite.camera_smoothing_speed}')
+            if sprite.camera_follow_target:
+                inject_parts.append(f'        self.follow_target = "{sprite.camera_follow_target}"')
+            inject_parts.append(f'        self.set_limits({sprite.camera_limit_left}, {sprite.camera_limit_right}, {sprite.camera_limit_top}, {sprite.camera_limit_bottom})')
+
+        # Light2D properties
+        if sprite.node_type in ("PointLight2D", "DirectionalLight2D"):
+            lc = sprite.light_color
+            inject_parts.append(f'        self.color = Color({lc[0]}, {lc[1]}, {lc[2]})')
+            if sprite.light_energy != 1.0:
+                inject_parts.append(f'        self.energy = {sprite.light_energy}')
+            if sprite.light_radius != 200.0:
+                inject_parts.append(f'        self.radius = {sprite.light_radius}')
+            if sprite.light_shadow:
+                inject_parts.append(f'        self.shadow_enabled = True')
+
+        # AudioPlayer2D properties
+        if sprite.node_type == "AudioPlayer2D":
+            if sprite.audio_stream:
+                rel = sprite.audio_stream.replace('\\', '/')
+                inject_parts.append(f'        self.stream = AudioStream(r"{rel}")')
+            if sprite.audio_volume != 1.0:
+                inject_parts.append(f'        self.volume = {sprite.audio_volume}')
+            if sprite.audio_pitch != 1.0:
+                inject_parts.append(f'        self.pitch_scale = {sprite.audio_pitch}')
+            if sprite.audio_autoplay:
+                inject_parts.append(f'        self.autoplay = True')
+            if sprite.audio_loop:
+                inject_parts.append(f'        self.loop = True')
+
+        # ParticleEmitter2D properties
+        if sprite.node_type == "ParticleEmitter2D":
+            inject_parts.append(f'        self.amount = {sprite.particle_amount}')
+            inject_parts.append(f'        self.lifetime = {sprite.particle_lifetime}')
+            inject_parts.append(f'        self.emitting = {sprite.particle_emitting}')
+            if sprite.particle_preset:
+                inject_parts.append(f'        self.apply_preset("{sprite.particle_preset}")')
+
+        # UI node properties
+        if sprite.node_type in ("Label", "Button", "ProgressBar", "Panel"):
+            if sprite.ui_text:
+                inject_parts.append(f'        self.text = "{sprite.ui_text}"')
+            if sprite.ui_font_size != 16:
+                inject_parts.append(f'        self.font_size = {sprite.ui_font_size}')
+            tc = sprite.ui_text_color
+            if tc != (255, 255, 255):
+                inject_parts.append(f'        self.text_color = Color({tc[0]}, {tc[1]}, {tc[2]})')
+            if sprite.node_type == "ProgressBar":
+                inject_parts.append(f'        self.min_value = {sprite.ui_min_value}')
+                inject_parts.append(f'        self.max_value = {sprite.ui_max_value}')
+                inject_parts.append(f'        self.value = {sprite.ui_value}')
+
+        # Timer properties
+        if sprite.node_type == "Timer":
+            inject_parts.append(f'        self.wait_time = {sprite.timer_wait_time}')
+            inject_parts.append(f'        self.one_shot = {sprite.timer_one_shot}')
+            if sprite.timer_autostart:
+                inject_parts.append(f'        self.autostart = True')
+
+        # TileMap properties
+        if sprite.node_type == "TileMap":
+            inject_parts.append(f'        self.cell_size = {sprite.tilemap_cell_size}')
+
+        # NavigationAgent2D properties
+        if sprite.node_type == "NavigationAgent2D":
+            inject_parts.append(f'        self.max_speed = {sprite.nav_max_speed}')
+            if sprite.nav_target_x != 0 or sprite.nav_target_y != 0:
+                inject_parts.append(f'        self.set_target(Vector2({sprite.nav_target_x}, {sprite.nav_target_y}))')
 
         # Always inject name assignment to ensure it matches IDE
         inject_parts.append(f'        self.name = "{sprite.name}"')
@@ -154,35 +258,37 @@ class CodeGenerator:
         return code
 
     def _replace_base_class(self, code: str, class_name: str, target_base: str) -> str:
-        """Replace the base class in a class declaration to match is_physics setting."""
-        # Match: class ClassName(Sprite): or class ClassName(PhysicsSprite):
-        pattern = rf'(class\s+{re.escape(class_name)}\s*\(\s*)(Sprite|PhysicsSprite)(\s*\)\s*:)'
+        """Replace the base class in a class declaration."""
+        known_bases = (
+            "Sprite|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
+            "|AnimatedSprite2D|Camera2D|ParticleEmitter2D|AudioPlayer2D"
+            "|PointLight2D|DirectionalLight2D|Path2D|PathFollow2D|Line2D"
+            "|Label|Button|ProgressBar|Panel|Timer|NavigationAgent2D|TileMap"
+        )
+        pattern = rf'(class\s+{re.escape(class_name)}\s*\(\s*)({known_bases})(\s*\)\s*:)'
         replacement = rf'\g<1>{target_base}\g<3>'
         return re.sub(pattern, replacement, code)
 
     def _generate_costume_code(self, sprite: SpriteModel) -> str:
-        """Generate costume loading code."""
+        """Generate costume loading code using scrawl_v2 API."""
         lines = []
         for costume in sprite.costumes:
             costume_name = costume.name
 
             if costume.is_code_drawn():
-                # Code-drawn costume - generate drawing code
+                # Code-drawn costume - use scrawl_v2 drawing API
                 lines.append(f'        # 代码绘制造型: {costume_name}')
-                lines.append(f'        _surface_{costume_name} = pygame.Surface(({costume.width}, {costume.height}), pygame.SRCALPHA)')
                 lines.append(f'        _width, _height = {costume.width}, {costume.height}')
-                lines.append(f'        _surface = _surface_{costume_name}')
                 # Add the drawing code with proper indentation
+                draw_lines = []
                 for draw_line in costume.draw_code.split('\n'):
-                    if draw_line.strip() and not draw_line.strip().startswith('#'):
-                        # Replace 'surface' with '_surface', 'width' with '_width', 'height' with '_height'
-                        draw_line = draw_line.replace('surface', '_surface')
-                        draw_line = draw_line.replace('width', '_width')
-                        draw_line = draw_line.replace('height', '_height')
-                    lines.append(f'        {draw_line}')
-                lines.append(f'        self.add_costume("{costume_name}", _surface_{costume_name})')
+                    if draw_line.strip():
+                        draw_lines.append(f'        {draw_line}')
+                if draw_lines:
+                    lines.extend(draw_lines)
+                lines.append(f'        self.add_costume("{costume_name}", (_width, _height))')
             else:
-                # Image file costume
+                # Image file costume - use path string directly (scrawl_v2 handles loading)
                 costume_path = costume.path
                 if costume_path:
                     if os.path.isabs(costume_path):
@@ -190,7 +296,7 @@ class CodeGenerator:
                     else:
                         rel_path = costume_path
                     rel_path = rel_path.replace('\\', '/')
-                    lines.append(f'        self.add_costume("{costume_name}", pygame.image.load(r"{rel_path}").convert_alpha())')
+                    lines.append(f'        self.add_costume("{costume_name}", r"{rel_path}")')
 
         # Set default costume if specified
         if sprite.costumes and sprite.default_costume >= 0:
@@ -310,41 +416,76 @@ class CodeGenerator:
             var_name = '_' + var_name
         return var_name or 'sprite'
 
-    def generate_sprite_template(self, sprite_name: str, is_physics: bool = False) -> str:
+    def generate_sprite_template(self, sprite_name: str, is_physics: bool = False, node_type: str = "Sprite") -> str:
         """Generate a template script for a sprite."""
         class_name = sprite_name.replace(' ', '')
-        base_class = "PhysicsSprite" if is_physics else "Sprite"
+        base_class = node_type if node_type else ("PhysicsSprite" if is_physics else "Sprite")
 
-        physics_setup = ""
-        if is_physics:
-            physics_setup = '''
+        type_setup = ""
+        if is_physics or node_type in PHYSICS_NODE_TYPES:
+            type_setup = '''
         # 物理属性
         self.set_gravity(0, 0.5)
         self.set_elasticity(0.8)
         self.set_friction(0.95)
 '''
+        elif node_type == "Camera2D":
+            type_setup = '''
+        # 相机属性
+        self.zoom = 1.0
+        self.smoothing_enabled = True
+        self.smoothing_speed = 5.0
+'''
+        elif node_type in ("PointLight2D", "DirectionalLight2D"):
+            type_setup = '''
+        # 灯光属性
+        self.color = Color(255, 255, 255)
+        self.energy = 1.0
+        self.radius = 200.0
+'''
+        elif node_type == "AudioPlayer2D":
+            type_setup = '''
+        # 音频属性
+        # self.stream = AudioStream("path/to/audio.ogg")
+        self.volume = 1.0
+        self.autoplay = False
+'''
+        elif node_type == "ParticleEmitter2D":
+            type_setup = '''
+        # 粒子属性
+        self.amount = 50
+        self.lifetime = 2.0
+        self.emitting = True
+'''
+        elif node_type in ("Label", "Button"):
+            type_setup = f'''
+        # UI属性
+        self.text = "{sprite_name}"
+        self.font_size = 16
+'''
+        elif node_type == "Timer":
+            type_setup = '''
+        # 计时器属性
+        self.wait_time = 1.0
+        self.one_shot = False
+        self.autostart = False
+'''
+        elif node_type == "TileMap":
+            type_setup = '''
+        # 瓦片地图属性
+        self.cell_size = 32
+'''
 
         return f'''class {class_name}({base_class}):
     def __init__(self):
         super().__init__()
-        self.name = "{sprite_name}"{physics_setup}
+        self.name = "{sprite_name}"{type_setup}
 
     @as_main
     def main_loop(self):
         """主循环"""
         while True:
-            # 在这里添加逻辑
             yield 0
-
-    # 键盘事件示例:
-    # @on_key(pygame.K_SPACE, "pressed")
-    # def on_space(self):
-    #     pass
-
-    # 碰撞事件示例:
-    # @on_sprite_collision("OtherSprite")
-    # def on_collision(self, other):
-    #     pass
 '''
 
     def generate_scene_template(self, scene_name: str) -> str:
@@ -364,7 +505,11 @@ class CodeGenerator:
     def scene_logic(self):
         """场景主逻辑（可选）"""
         # 加载音效示例:
-        # self.game.load_sound("jump", "sounds/jump.ogg")
+        # AudioManager.load("jump", "sounds/jump.ogg")
+        # AudioManager.play("jump")
+
+        # 播放背景音乐示例:
+        # AudioManager.play_music("sounds/bgm.ogg")
 
         while True:
             yield 0

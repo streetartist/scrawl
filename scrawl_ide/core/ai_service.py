@@ -152,25 +152,25 @@ class AIService(QObject):
 2. 是静态配置（精灵属性/造型）还是动态逻辑（移动/事件）？
 3. **坐标计算**：注意 (0,0) 是屏幕左上角，但**精灵坐标 (x,y) 是精灵的中心点**！
    - 例如：放置在左上角的按钮(宽100,高50)，坐标应设为 x=50, y=25 (而不是 0,0)。
-4. **关键判断**：除了scrawl/pygame，是否需要导入其他库（如math, random）？
+4. **关键判断**：除了scrawl_v2，是否需要导入其他库（如math, random）？
 4. **安全检查**：
    - 是否定义了 `__init__` 并调用 `super().__init__()`？（**必须**）
    - 是否有循环阻塞？
 
 ## 🚫 严禁事项（Forbidden Patterns）
-1. **禁止在代码中加载资源**：严禁使用 `pygame.image.load()`。所有造型**必须**通过IDE属性（JSON格式）添加。
+1. **禁止在代码中加载资源**：严禁使用外部加载函数。所有造型**必须**通过IDE属性（JSON格式）添加。
 2. **禁止修改IDE托管属性**：`self.x`, `self.y`, `self.rect` 是IDE管理的。代码中**只读**，修改请用API（`self.pos.x`, `self.move`）。
 3. **禁止阻塞主线程**：严禁 `time.sleep()`。必须用 `yield`。
-4. **禁止自定义字体**：优先使用 `self.game.font`，不要用 `pygame.font.SysFont`，以保持风格统一。
+4. **禁止自定义字体**：优先使用 `self.game.font`，以保持风格统一。
 5. **禁止省略 __init__**：必须显示定义 `__init__` 并调用 `super().__init__()`。这是**强制要求**，否则会出问题。
 
 ## ✅ 正确工作流
 1. **添加造型**：
    - **图片造型**：使用JSON格式 `"costumes": [...]`
-   - **绘图造型**：使用JSON格式 `"add_code_costume": {...}` (**不要**在python代码中写 `pygame.draw`)
+   - **绘图造型**：使用JSON格式 `"add_code_costume": {...}` (**不要**在python代码中写绘图代码)
    - **动态变化**：只有在运行时需要*实时改变*形状时，才在Python代码中绘制。
 2. **使用库**：
-   - 默认可用：`scrawl`, `pygame`
+   - 默认可用：`scrawl_v2`（已由IDE自动导入所有API）
    - **必须导入**：`math`, `random`, `json`, `datetime` 等标准库必须显式 `import`。
 
 ## 代码编写原则
@@ -205,7 +205,7 @@ class 精灵类名(Sprite):
         "name": "造型名",
         "width": 40,
         "height": 30,
-        "draw_code": "pygame.draw.circle(surface, (255,0,0), (20,15), 15)"
+        "draw_code": "draw_circle((255,0,0), (20,15), 15)"
     }
 }
 ```
@@ -287,7 +287,7 @@ class 精灵类名(Sprite):
 ### Sprite类核心属性
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| self.pos | pygame.Vector2 | 位置，用self.pos.x和self.pos.y |
+| self.pos | Vector2 | 位置，用self.pos.x和self.pos.y |
 | self.direction | float | 方向角度（0=右，90=上） |
 | self.size | float | 缩放比例 |
 | self.visible | bool | 是否可见 |
@@ -298,8 +298,8 @@ class 精灵类名(Sprite):
 ### PhysicsSprite额外属性
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| self.velocity | pygame.Vector2 | 速度向量 |
-| self.gravity | pygame.Vector2 | 重力向量 |
+| self.velocity | Vector2 | 速度向量 |
+| self.gravity | Vector2 | 重力向量 |
 | self.friction | float | 摩擦力(0-1) |
 | self.elasticity | float | 弹性系数 |
 
@@ -392,38 +392,30 @@ easing可选值: "linear", "ease_in", "ease_out", "ease_in_out"
 ### 造型方法
 | 方法 | 说明 |
 |------|------|
-| self.add_costume(name, image) | 添加造型（image可以是pygame.Surface或图片路径） |
+| self.add_costume(name, image) | 添加造型（image可以是图片路径字符串或尺寸元组） |
 | self.switch_costume(name) | 切换到指定造型 |
 | self.next_costume() | 切换到下一个造型 |
 | self.set_image(image) | 设置默认图像 |
 
 ### 代码绘制造型（重要功能）
-IDE支持使用pygame代码绘制造型，无需图片文件。在__init__中创建pygame.Surface并绘制：
+IDE支持使用绘制代码创建造型，无需图片文件。通过JSON的 `add_code_costume` 配置：
 
-```python
-# 创建透明Surface
-surface = pygame.Surface((宽度, 高度), pygame.SRCALPHA)
-
-# 使用pygame绑制图形
-pygame.draw.rect(surface, (R, G, B), (x, y, w, h))  # 矩形
-pygame.draw.circle(surface, (R, G, B), (cx, cy), radius)  # 圆形
-pygame.draw.ellipse(surface, (R, G, B), (x, y, w, h))  # 椭圆
-pygame.draw.polygon(surface, (R, G, B), [(x1,y1), (x2,y2), ...])  # 多边形
-pygame.draw.line(surface, (R, G, B), (x1, y1), (x2, y2), width)  # 线条
-
-# 添加为造型
-self.add_costume("造型名", surface)
+```
+可用绘制函数:
+draw_rect(color, (x, y, w, h))  # 矩形
+draw_circle(color, (cx, cy), radius)  # 圆形
+draw_ellipse(color, (x, y, w, h))  # 椭圆
+draw_polygon(color, [(x1,y1), (x2,y2), ...])  # 多边形
+draw_line(color, (x1, y1), (x2, y2), width)  # 线条
 ```
 
 **代码绘制造型示例（小鸟）：**
-```python
-bird_width, bird_height = 24, 17
-surface = pygame.Surface((bird_width, bird_height), pygame.SRCALPHA)
-pygame.draw.ellipse(surface, (255, 200, 0), (0, 0, bird_width, bird_height))  # 身体
-pygame.draw.circle(surface, (255, 100, 0), (bird_width - 9, 6), 3)  # 头
-pygame.draw.polygon(surface, (255, 0, 0), [(bird_width-6, 6), (bird_width+4, 6), (bird_width-1, 8)])  # 嘴
-pygame.draw.ellipse(surface, (0, 0, 0), (bird_width - 12, 4, 3, 3))  # 眼睛
-self.add_costume("default", surface)
+```
+draw_code 示例:
+draw_ellipse((255, 200, 0), (0, 0, 24, 17))  # 身体
+draw_circle((255, 100, 0), (15, 6), 3)  # 头
+draw_polygon((255, 0, 0), [(18, 6), (28, 6), (23, 8)])  # 嘴
+draw_ellipse((0, 0, 0), (12, 4, 3, 3))  # 眼睛
 ```
 
 """
@@ -497,12 +489,12 @@ def clones_loop(self):
     while True:
         yield 0
 
-@on_key(pygame.K_SPACE, "pressed")
+@on_key("space", "pressed")
 def on_space(self):
     \"\"\"按下空格键时触发\"\"\"
     yield
 
-@on_key(pygame.K_UP, "down")
+@on_key("up", "down")
 def on_up_held(self):
     \"\"\"按住上键时持续触发\"\"\"
     yield
@@ -550,7 +542,7 @@ def on_hit_other(self, other):
     *   `Bowl`：底部半圆（代码绘制）。
     *   `Apple`：顶部圆形（代码绘制）。
     *   `ScoreBoard`：显示分数（动态文字渲染）。
-3.  **库检查**：`Apple`需 `random`；`ScoreBoard`需 `pygame.font`（包含在pygame中）。
+3.  **库检查**：`Apple`需 `random`；`ScoreBoard`可用 `say()` 方法显示文字。
 4.  **安全检查**：循环中使用 `yield`。
 
 ---
@@ -564,7 +556,7 @@ def on_hit_other(self, other):
         "name": "bowl",
         "width": 60,
         "height": 30,
-        "draw_code": "pygame.draw.arc(surface, (200, 150, 100), (0, 0, 60, 60), 3.14, 6.28, 5)\\npygame.draw.line(surface, (200, 150, 100), (0, 30), (60, 30), 5)"
+        "draw_code": "draw_arc((200, 150, 100), (0, 0, 60, 60), 3.14, 6.28, 5)\\ndraw_line((200, 150, 100), (0, 30), (60, 30), 5)"
     }
 }
 ```
@@ -580,11 +572,8 @@ class Bowl(Sprite):
     def main_loop(self):
         while True:
             # 左右移动控制
-            keys = pygame.key.get_pressed()
-            if keys[pygame.K_LEFT]:
-                self.pos.x -= self.speed
-            if keys[pygame.K_RIGHT]:
-                self.pos.x += self.speed
+            direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+            self.pos.x += direction.x * self.speed
             
             # 限制在屏幕内
             if self.pos.x < 30: self.pos.x = 30
@@ -602,7 +591,7 @@ class Bowl(Sprite):
         "name": "red_apple",
         "width": 30,
         "height": 30,
-        "draw_code": "pygame.draw.circle(surface, (255, 0, 0), (15, 15), 14)\\npygame.draw.line(surface, (0, 255, 0), (15, 0), (15, 5), 2)"
+        "draw_code": "draw_circle((255, 0, 0), (15, 15), 14)\\ndraw_line((0, 255, 0), (15, 0), (15, 5), 2)"
     }
 }
 ```
@@ -665,16 +654,8 @@ class ScoreBoard(Sprite):
         self.update_display()
 
     def update_display(self):
-        # 动态绘制：创建Surface -> 绘制文字 -> 设为造型
-        if not self.game: return
-        
-        text = f"Score: {self.score}"
-        # 使用 self.game.font 保证字体统一
-        text_surf = self.game.font.render(text, True, (255, 255, 255))
-        
-        surface = pygame.Surface((150, 30), pygame.SRCALPHA)
-        surface.blit(text_surf, (0, 0))
-        self.add_costume("default", surface)
+        # 使用 Label 或 say 方法显示分数
+        self.say(f"Score: {self.score}", 999999)
 
     @on_broadcast("score_up")
     def on_score(self):
@@ -697,7 +678,7 @@ class ScoreBoard(Sprite):
         "name": "snow",
         "width": 10,
         "height": 10,
-        "draw_code": "pygame.draw.circle(surface, (255, 255, 255), (5, 5), 4)"
+        "draw_code": "draw_circle((255, 255, 255), (5, 5), 4)"
     }
 }
 ```

@@ -17,8 +17,13 @@ from typing import Optional
 import os
 
 from models import SpriteModel, ProjectModel, GameSettings, SceneModel
+from models.sprite_model import NODE_CATEGORIES, NODE_ICONS, VISUAL_NODE_TYPES, PHYSICS_NODE_TYPES
 from core.i18n import tr
 from .code_costume_dialog import CodeCostumeDialog
+from .tilemap_editor import TileMapEditor
+from .spriteframes_editor import SpriteFramesEditor
+from .path_editor import PathEditor
+from .navigation_editor import NavigationGridEditor
 
 
 class ColorButton(QPushButton):
@@ -131,6 +136,15 @@ class PropertyEditor(QWidget):
         self._class_edit = QLineEdit()
         self._class_edit.textChanged.connect(self._on_class_changed)
         identity_layout.addRow(tr("inspector.class"), self._class_edit)
+
+        # Node type selector
+        self._node_type_combo = QComboBox()
+        all_types = []
+        for types in NODE_CATEGORIES.values():
+            all_types.extend(types)
+        self._node_type_combo.addItems(all_types)
+        self._node_type_combo.currentTextChanged.connect(self._on_node_type_changed)
+        identity_layout.addRow("节点类型:", self._node_type_combo)
 
         content_layout.addWidget(identity_group)
 
@@ -273,6 +287,266 @@ class PropertyEditor(QWidget):
         physics_layout.addRow(tr("inspector.elasticity"), self._elasticity_spin)
 
         content_layout.addWidget(physics_group)
+
+        # --- Camera2D group ---
+        self._camera_group = QGroupBox("📷 Camera2D")
+        camera_layout = QFormLayout(self._camera_group)
+
+        self._camera_zoom_spin = QDoubleSpinBox()
+        self._camera_zoom_spin.setRange(0.1, 10.0)
+        self._camera_zoom_spin.setDecimals(2)
+        self._camera_zoom_spin.setSingleStep(0.1)
+        self._camera_zoom_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("camera_zoom", v))
+        camera_layout.addRow("缩放:", self._camera_zoom_spin)
+
+        self._camera_smoothing_check = QCheckBox()
+        self._camera_smoothing_check.toggled.connect(lambda v: self._on_typed_prop_changed("camera_smoothing", v))
+        camera_layout.addRow("平滑:", self._camera_smoothing_check)
+
+        self._camera_smoothing_speed_spin = QDoubleSpinBox()
+        self._camera_smoothing_speed_spin.setRange(0.1, 50.0)
+        self._camera_smoothing_speed_spin.setDecimals(1)
+        self._camera_smoothing_speed_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("camera_smoothing_speed", v))
+        camera_layout.addRow("平滑速度:", self._camera_smoothing_speed_spin)
+
+        self._camera_follow_edit = QLineEdit()
+        self._camera_follow_edit.setPlaceholderText("目标节点名称")
+        self._camera_follow_edit.textChanged.connect(lambda v: self._on_typed_prop_changed("camera_follow_target", v))
+        camera_layout.addRow("跟随目标:", self._camera_follow_edit)
+
+        self._camera_group.setVisible(False)
+        content_layout.addWidget(self._camera_group)
+
+        # --- Light2D group ---
+        self._light_group = QGroupBox("💡 Light2D")
+        light_layout = QFormLayout(self._light_group)
+
+        self._light_color_btn = ColorButton((255, 255, 255))
+        self._light_color_btn.color_changed.connect(lambda v: self._on_typed_prop_changed("light_color", v))
+        light_layout.addRow("颜色:", self._light_color_btn)
+
+        self._light_energy_spin = QDoubleSpinBox()
+        self._light_energy_spin.setRange(0.0, 10.0)
+        self._light_energy_spin.setDecimals(2)
+        self._light_energy_spin.setSingleStep(0.1)
+        self._light_energy_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("light_energy", v))
+        light_layout.addRow("强度:", self._light_energy_spin)
+
+        self._light_radius_spin = QDoubleSpinBox()
+        self._light_radius_spin.setRange(1.0, 2000.0)
+        self._light_radius_spin.setDecimals(0)
+        self._light_radius_spin.setSingleStep(10)
+        self._light_radius_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("light_radius", v))
+        light_layout.addRow("半径:", self._light_radius_spin)
+
+        self._light_shadow_check = QCheckBox()
+        self._light_shadow_check.toggled.connect(lambda v: self._on_typed_prop_changed("light_shadow", v))
+        light_layout.addRow("阴影:", self._light_shadow_check)
+
+        self._light_group.setVisible(False)
+        content_layout.addWidget(self._light_group)
+
+        # --- AudioPlayer2D group ---
+        self._audio_group = QGroupBox("🔊 AudioPlayer2D")
+        audio_layout = QFormLayout(self._audio_group)
+
+        audio_stream_w = QWidget()
+        audio_stream_l = QHBoxLayout(audio_stream_w)
+        audio_stream_l.setContentsMargins(0, 0, 0, 0)
+        self._audio_stream_edit = QLineEdit()
+        self._audio_stream_edit.setReadOnly(True)
+        self._audio_stream_edit.setPlaceholderText("选择音频文件...")
+        audio_stream_l.addWidget(self._audio_stream_edit)
+        audio_browse_btn = QPushButton("...")
+        audio_browse_btn.setFixedWidth(40)
+        audio_browse_btn.clicked.connect(self._on_browse_audio)
+        audio_stream_l.addWidget(audio_browse_btn)
+        audio_layout.addRow("音频文件:", audio_stream_w)
+
+        self._audio_volume_spin = QDoubleSpinBox()
+        self._audio_volume_spin.setRange(0.0, 2.0)
+        self._audio_volume_spin.setDecimals(2)
+        self._audio_volume_spin.setSingleStep(0.1)
+        self._audio_volume_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("audio_volume", v))
+        audio_layout.addRow("音量:", self._audio_volume_spin)
+
+        self._audio_pitch_spin = QDoubleSpinBox()
+        self._audio_pitch_spin.setRange(0.1, 4.0)
+        self._audio_pitch_spin.setDecimals(2)
+        self._audio_pitch_spin.setSingleStep(0.1)
+        self._audio_pitch_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("audio_pitch", v))
+        audio_layout.addRow("音调:", self._audio_pitch_spin)
+
+        self._audio_autoplay_check = QCheckBox()
+        self._audio_autoplay_check.toggled.connect(lambda v: self._on_typed_prop_changed("audio_autoplay", v))
+        audio_layout.addRow("自动播放:", self._audio_autoplay_check)
+
+        self._audio_loop_check = QCheckBox()
+        self._audio_loop_check.toggled.connect(lambda v: self._on_typed_prop_changed("audio_loop", v))
+        audio_layout.addRow("循环:", self._audio_loop_check)
+
+        self._audio_group.setVisible(False)
+        content_layout.addWidget(self._audio_group)
+
+        # --- ParticleEmitter2D group ---
+        self._particle_group = QGroupBox("✨ ParticleEmitter2D")
+        particle_layout = QFormLayout(self._particle_group)
+
+        self._particle_amount_spin = QSpinBox()
+        self._particle_amount_spin.setRange(1, 1000)
+        self._particle_amount_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("particle_amount", v))
+        particle_layout.addRow("粒子数:", self._particle_amount_spin)
+
+        self._particle_lifetime_spin = QDoubleSpinBox()
+        self._particle_lifetime_spin.setRange(0.1, 30.0)
+        self._particle_lifetime_spin.setDecimals(1)
+        self._particle_lifetime_spin.setSingleStep(0.5)
+        self._particle_lifetime_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("particle_lifetime", v))
+        particle_layout.addRow("生命周期:", self._particle_lifetime_spin)
+
+        self._particle_emitting_check = QCheckBox()
+        self._particle_emitting_check.toggled.connect(lambda v: self._on_typed_prop_changed("particle_emitting", v))
+        particle_layout.addRow("发射中:", self._particle_emitting_check)
+
+        self._particle_preset_combo = QComboBox()
+        self._particle_preset_combo.addItems(["", "fire", "smoke", "sparkle", "rain", "snow", "explosion"])
+        self._particle_preset_combo.currentTextChanged.connect(lambda v: self._on_typed_prop_changed("particle_preset", v))
+        particle_layout.addRow("预设:", self._particle_preset_combo)
+
+        self._particle_group.setVisible(False)
+        content_layout.addWidget(self._particle_group)
+
+        # --- UI group (Label, Button, ProgressBar, Panel) ---
+        self._ui_group = QGroupBox("🏷️ UI")
+        ui_layout = QFormLayout(self._ui_group)
+
+        self._ui_text_edit = QLineEdit()
+        self._ui_text_edit.textChanged.connect(lambda v: self._on_typed_prop_changed("ui_text", v))
+        ui_layout.addRow("文本:", self._ui_text_edit)
+
+        self._ui_font_size_spin = QSpinBox()
+        self._ui_font_size_spin.setRange(6, 200)
+        self._ui_font_size_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("ui_font_size", v))
+        ui_layout.addRow("字号:", self._ui_font_size_spin)
+
+        self._ui_text_color_btn = ColorButton((255, 255, 255))
+        self._ui_text_color_btn.color_changed.connect(lambda v: self._on_typed_prop_changed("ui_text_color", v))
+        ui_layout.addRow("文字颜色:", self._ui_text_color_btn)
+
+        self._ui_min_spin = QDoubleSpinBox()
+        self._ui_min_spin.setRange(-99999, 99999)
+        self._ui_min_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("ui_min_value", v))
+        ui_layout.addRow("最小值:", self._ui_min_spin)
+
+        self._ui_max_spin = QDoubleSpinBox()
+        self._ui_max_spin.setRange(-99999, 99999)
+        self._ui_max_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("ui_max_value", v))
+        ui_layout.addRow("最大值:", self._ui_max_spin)
+
+        self._ui_value_spin = QDoubleSpinBox()
+        self._ui_value_spin.setRange(-99999, 99999)
+        self._ui_value_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("ui_value", v))
+        ui_layout.addRow("当前值:", self._ui_value_spin)
+
+        self._ui_group.setVisible(False)
+        content_layout.addWidget(self._ui_group)
+
+        # --- Timer group ---
+        self._timer_group = QGroupBox("⏱️ Timer")
+        timer_layout = QFormLayout(self._timer_group)
+
+        self._timer_wait_spin = QDoubleSpinBox()
+        self._timer_wait_spin.setRange(0.01, 3600.0)
+        self._timer_wait_spin.setDecimals(2)
+        self._timer_wait_spin.setSingleStep(0.1)
+        self._timer_wait_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("timer_wait_time", v))
+        timer_layout.addRow("等待时间(秒):", self._timer_wait_spin)
+
+        self._timer_oneshot_check = QCheckBox()
+        self._timer_oneshot_check.toggled.connect(lambda v: self._on_typed_prop_changed("timer_one_shot", v))
+        timer_layout.addRow("一次性:", self._timer_oneshot_check)
+
+        self._timer_autostart_check = QCheckBox()
+        self._timer_autostart_check.toggled.connect(lambda v: self._on_typed_prop_changed("timer_autostart", v))
+        timer_layout.addRow("自动开始:", self._timer_autostart_check)
+
+        self._timer_group.setVisible(False)
+        content_layout.addWidget(self._timer_group)
+
+        # --- TileMap group ---
+        self._tilemap_group = QGroupBox("🗺️ TileMap")
+        tilemap_layout = QFormLayout(self._tilemap_group)
+
+        self._tilemap_cellsize_spin = QSpinBox()
+        self._tilemap_cellsize_spin.setRange(4, 256)
+        self._tilemap_cellsize_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("tilemap_cell_size", v))
+        tilemap_layout.addRow("单元格大小:", self._tilemap_cellsize_spin)
+
+        self._tilemap_group.setVisible(False)
+        content_layout.addWidget(self._tilemap_group)
+
+        # --- Collision Shape group ---
+        self._collision_shape_group = QGroupBox("碰撞形状")
+        cs_layout = QFormLayout(self._collision_shape_group)
+
+        self._collision_shape_combo = QComboBox()
+        self._collision_shape_combo.addItems(["rectangle", "circle", "capsule"])
+        self._collision_shape_combo.currentTextChanged.connect(lambda v: self._on_typed_prop_changed("collision_shape", v))
+        cs_layout.addRow("形状:", self._collision_shape_combo)
+
+        self._collision_width_spin = QDoubleSpinBox()
+        self._collision_width_spin.setRange(1, 2000)
+        self._collision_width_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("collision_width", v))
+        cs_layout.addRow("宽度:", self._collision_width_spin)
+
+        self._collision_height_spin = QDoubleSpinBox()
+        self._collision_height_spin.setRange(1, 2000)
+        self._collision_height_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("collision_height", v))
+        cs_layout.addRow("高度:", self._collision_height_spin)
+
+        self._collision_radius_spin = QDoubleSpinBox()
+        self._collision_radius_spin.setRange(1, 2000)
+        self._collision_radius_spin.valueChanged.connect(lambda v: self._on_typed_prop_changed("collision_radius", v))
+        cs_layout.addRow("半径:", self._collision_radius_spin)
+
+        self._collision_shape_group.setVisible(False)
+        content_layout.addWidget(self._collision_shape_group)
+
+        # --- TileMap Editor ---
+        self._tilemap_editor_group = QGroupBox("🗺️ 瓦片地图编辑器")
+        tme_layout = QVBoxLayout(self._tilemap_editor_group)
+        self._tilemap_editor = TileMapEditor()
+        self._tilemap_editor.data_changed.connect(self._on_tilemap_data_changed)
+        tme_layout.addWidget(self._tilemap_editor)
+        self._tilemap_editor_group.setVisible(False)
+        content_layout.addWidget(self._tilemap_editor_group)
+
+        # --- SpriteFrames Editor ---
+        self._spriteframes_editor_group = QGroupBox("🎞️ 帧动画编辑器")
+        sfe_layout = QVBoxLayout(self._spriteframes_editor_group)
+        self._spriteframes_editor = SpriteFramesEditor()
+        self._spriteframes_editor.data_changed.connect(self._on_spriteframes_data_changed)
+        sfe_layout.addWidget(self._spriteframes_editor)
+        self._spriteframes_editor_group.setVisible(False)
+        content_layout.addWidget(self._spriteframes_editor_group)
+
+        # --- Path Editor ---
+        self._path_editor_group = QGroupBox("📐 路径编辑器")
+        pe_layout = QVBoxLayout(self._path_editor_group)
+        self._path_editor = PathEditor()
+        self._path_editor.data_changed.connect(self._on_path_data_changed)
+        pe_layout.addWidget(self._path_editor)
+        self._path_editor_group.setVisible(False)
+        content_layout.addWidget(self._path_editor_group)
+
+        # --- Navigation Grid Editor ---
+        self._nav_editor_group = QGroupBox("🧭 导航网格编辑器")
+        ne_layout = QVBoxLayout(self._nav_editor_group)
+        self._nav_editor = NavigationGridEditor()
+        self._nav_editor.data_changed.connect(self._on_nav_data_changed)
+        ne_layout.addWidget(self._nav_editor)
+        self._nav_editor_group.setVisible(False)
+        content_layout.addWidget(self._nav_editor_group)
 
         # Spacer
         content_layout.addStretch()
@@ -472,6 +746,7 @@ class PropertyEditor(QWidget):
         self._title_label.setText(self._sprite.name)
         self._name_edit.setText(self._sprite.name)
         self._class_edit.setText(self._sprite.class_name)
+        self._node_type_combo.setCurrentText(self._sprite.node_type)
         self._x_spin.setValue(self._sprite.x)
         self._y_spin.setValue(self._sprite.y)
         self._direction_spin.setValue(self._sprite.direction)
@@ -508,6 +783,95 @@ class PropertyEditor(QWidget):
         self._friction_spin.setValue(self._sprite.friction)
         self._elasticity_spin.setValue(self._sprite.elasticity)
         self._update_physics_controls_enabled(self._sprite.is_physics)
+
+        # Show/hide type-specific groups
+        nt = self._sprite.node_type
+        self._camera_group.setVisible(nt == "Camera2D")
+        self._light_group.setVisible(nt in ("PointLight2D", "DirectionalLight2D"))
+        self._audio_group.setVisible(nt == "AudioPlayer2D")
+        self._particle_group.setVisible(nt == "ParticleEmitter2D")
+        self._ui_group.setVisible(nt in ("Label", "Button", "ProgressBar", "Panel"))
+        self._timer_group.setVisible(nt == "Timer")
+        self._tilemap_group.setVisible(nt == "TileMap")
+        self._collision_shape_group.setVisible(nt in PHYSICS_NODE_TYPES)
+
+        # Populate type-specific fields
+        if nt == "Camera2D":
+            self._camera_zoom_spin.setValue(self._sprite.camera_zoom)
+            self._camera_smoothing_check.setChecked(self._sprite.camera_smoothing)
+            self._camera_smoothing_speed_spin.setValue(self._sprite.camera_smoothing_speed)
+            self._camera_follow_edit.setText(self._sprite.camera_follow_target)
+
+        if nt in ("PointLight2D", "DirectionalLight2D"):
+            self._light_color_btn.color = self._sprite.light_color
+            self._light_energy_spin.setValue(self._sprite.light_energy)
+            self._light_radius_spin.setValue(self._sprite.light_radius)
+            self._light_shadow_check.setChecked(self._sprite.light_shadow)
+
+        if nt == "AudioPlayer2D":
+            self._audio_stream_edit.setText(self._sprite.audio_stream)
+            self._audio_volume_spin.setValue(self._sprite.audio_volume)
+            self._audio_pitch_spin.setValue(self._sprite.audio_pitch)
+            self._audio_autoplay_check.setChecked(self._sprite.audio_autoplay)
+            self._audio_loop_check.setChecked(self._sprite.audio_loop)
+
+        if nt == "ParticleEmitter2D":
+            self._particle_amount_spin.setValue(self._sprite.particle_amount)
+            self._particle_lifetime_spin.setValue(self._sprite.particle_lifetime)
+            self._particle_emitting_check.setChecked(self._sprite.particle_emitting)
+            self._particle_preset_combo.setCurrentText(self._sprite.particle_preset)
+
+        if nt in ("Label", "Button", "ProgressBar", "Panel"):
+            self._ui_text_edit.setText(self._sprite.ui_text)
+            self._ui_font_size_spin.setValue(self._sprite.ui_font_size)
+            self._ui_text_color_btn.color = self._sprite.ui_text_color
+            self._ui_min_spin.setValue(self._sprite.ui_min_value)
+            self._ui_max_spin.setValue(self._sprite.ui_max_value)
+            self._ui_value_spin.setValue(self._sprite.ui_value)
+
+        if nt == "Timer":
+            self._timer_wait_spin.setValue(self._sprite.timer_wait_time)
+            self._timer_oneshot_check.setChecked(self._sprite.timer_one_shot)
+            self._timer_autostart_check.setChecked(self._sprite.timer_autostart)
+
+        if nt == "TileMap":
+            self._tilemap_cellsize_spin.setValue(self._sprite.tilemap_cell_size)
+
+        if nt in PHYSICS_NODE_TYPES:
+            self._collision_shape_combo.setCurrentText(self._sprite.collision_shape)
+            self._collision_width_spin.setValue(self._sprite.collision_width)
+            self._collision_height_spin.setValue(self._sprite.collision_height)
+            self._collision_radius_spin.setValue(self._sprite.collision_radius)
+
+        # Specialized editors visibility
+        self._tilemap_editor_group.setVisible(nt == "TileMap")
+        self._spriteframes_editor_group.setVisible(nt == "AnimatedSprite2D")
+        self._path_editor_group.setVisible(nt in ("Path2D", "PathFollow2D", "Line2D"))
+        self._nav_editor_group.setVisible(nt == "NavigationAgent2D")
+
+        # Load specialized editor data
+        if nt == "TileMap":
+            self._tilemap_editor.load_data(
+                self._sprite.tilemap_data,
+                self._sprite.tilemap_cell_size
+            )
+
+        if nt == "AnimatedSprite2D":
+            anim_data = self._sprite.properties.get("animations", {})
+            if anim_data:
+                self._spriteframes_editor.load_animations(anim_data)
+
+        if nt in ("Path2D", "PathFollow2D", "Line2D"):
+            self._path_editor.load_data(
+                self._sprite.path_points,
+                self._sprite.path_loop,
+                self._sprite.line_width,
+                self._sprite.line_color
+            )
+
+        if nt == "NavigationAgent2D":
+            nav_grid_data = self._sprite.properties.get("nav_grid", "")
+            self._nav_editor.load_data(nav_grid_data)
 
         self._updating = False
 
@@ -572,6 +936,18 @@ class PropertyEditor(QWidget):
             return
         self._sprite.class_name = text
         self.property_changed.emit(self._sprite, "class_name", text)
+
+    def _on_node_type_changed(self, text: str):
+        if self._updating or not self._sprite:
+            return
+        self._sprite.node_type = text
+        # Auto-enable physics for physics body types
+        physics_types = {"PhysicsSprite", "StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
+        is_physics = text in physics_types
+        self._sprite.is_physics = is_physics
+        self._is_physics_check.setChecked(is_physics)
+        self._update_physics_controls_enabled(is_physics)
+        self.property_changed.emit(self._sprite, "node_type", text)
 
     def _on_x_changed(self, value: float):
         if self._updating or not self._sprite:
@@ -694,6 +1070,58 @@ class PropertyEditor(QWidget):
             return
         self._sprite.elasticity = value
         self.property_changed.emit(self._sprite, "elasticity", value)
+
+    def _on_typed_prop_changed(self, prop_name: str, value):
+        """Generic handler for node-type-specific properties."""
+        if self._updating or not self._sprite:
+            return
+        setattr(self._sprite, prop_name, value)
+        self.property_changed.emit(self._sprite, prop_name, value)
+
+    def _on_browse_audio(self):
+        """Browse for audio file."""
+        if not self._sprite:
+            return
+        path, _ = QFileDialog.getOpenFileName(
+            self, "选择音频文件", "",
+            "音频文件 (*.wav *.mp3 *.ogg);;所有文件 (*.*)"
+        )
+        if path:
+            self._audio_stream_edit.setText(path)
+            self._sprite.audio_stream = path
+            self.property_changed.emit(self._sprite, "audio_stream", path)
+
+    def _on_tilemap_data_changed(self, data: str):
+        """Handle tilemap editor data change."""
+        if self._updating or not self._sprite:
+            return
+        self._sprite.tilemap_data = data
+        self.property_changed.emit(self._sprite, "tilemap_data", data)
+
+    def _on_spriteframes_data_changed(self, data: dict):
+        """Handle sprite frames editor data change."""
+        if self._updating or not self._sprite:
+            return
+        self._sprite.properties["animations"] = data
+        self.property_changed.emit(self._sprite, "animations", data)
+
+    def _on_path_data_changed(self, points, loop, width, color):
+        """Handle path editor data change."""
+        if self._updating or not self._sprite:
+            return
+        self._sprite.path_points = points
+        self._sprite.path_loop = loop
+        self._sprite.line_width = width
+        if isinstance(color, tuple):
+            self._sprite.line_color = color
+        self.property_changed.emit(self._sprite, "path_points", points)
+
+    def _on_nav_data_changed(self, data: str):
+        """Handle navigation grid editor data change."""
+        if self._updating or not self._sprite:
+            return
+        self._sprite.properties["nav_grid"] = data
+        self.property_changed.emit(self._sprite, "nav_grid", data)
 
     def _on_costume_context_menu(self, pos):
         if not self._sprite:

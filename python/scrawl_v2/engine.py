@@ -6,14 +6,18 @@ delegates to the Rust engine. Otherwise falls back to a pure-Python stub.
 """
 
 try:
-    from scrawl_v2.scrawl_native import NativeGame
+    from scrawl.scrawl_native import NativeGame
     _HAS_NATIVE = True
 except ImportError:
     try:
-        from scrawl_native import NativeGame
+        from scrawl_v2.scrawl_native import NativeGame
         _HAS_NATIVE = True
     except ImportError:
-        _HAS_NATIVE = False
+        try:
+            from scrawl_native import NativeGame
+            _HAS_NATIVE = True
+        except ImportError:
+            _HAS_NATIVE = False
 
 
 class Game:

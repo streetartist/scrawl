@@ -166,6 +166,10 @@ class MainWindow(QMainWindow):
         # Scene menu
         scene_menu = menubar.addMenu(tr("menu.scene"))
 
+        add_node_action = QAction("添加节点...", self)
+        add_node_action.triggered.connect(self._on_add_node)
+        scene_menu.addAction(add_node_action)
+
         add_sprite_action = QAction(tr("menu.scene.add_sprite"), self)
         add_sprite_action.triggered.connect(self._on_add_sprite)
         scene_menu.addAction(add_sprite_action)
@@ -499,6 +503,32 @@ class MainWindow(QMainWindow):
                 path += '.scrawl'
             self.project.save_as(path)
 
+    def _on_add_node(self):
+        """Add a new node to the current scene via type selection dialog."""
+        if not self.project.model:
+            QMessageBox.warning(self, tr("app.name"), tr("dialog.no_project"))
+            return
+        if not self._current_scene:
+            QMessageBox.warning(self, tr("app.name"), tr("dialog.no_scene"))
+            return
+
+        from panels.scene_tree.hierarchy_view import AddNodeDialog
+        from PySide6.QtWidgets import QInputDialog, QDialog
+
+        dialog = AddNodeDialog(self)
+        if dialog.exec() == QDialog.Accepted and dialog.selected_type:
+            node_type = dialog.selected_type
+            name, ok = QInputDialog.getText(
+                self, "添加节点", "节点名称:",
+                text=f"{node_type}{len(self._current_scene.sprites) + 1}"
+            )
+            if ok and name:
+                sprite = SpriteModel.create_default(name, node_type)
+                self._current_scene.sprites.append(sprite)
+                self.scene_view.add_sprite(sprite)
+                self.hierarchy_view.refresh()
+                self.project.mark_modified()
+
     def _on_add_sprite(self):
         """Add a new sprite to the current scene."""
         if not self.project.model:
@@ -814,11 +844,38 @@ class MainWindow(QMainWindow):
         """Handle property change in inspector."""
         self.scene_view.update_sprite(sprite)
 
-        # Handle is_physics change - update base class in code
+        # Handle node_type / is_physics change - update base class in code
         if prop == "is_physics":
             self._update_sprite_base_class(sprite, value)
+        elif prop == "node_type":
+            self._update_sprite_node_type(sprite, value)
 
         self.project.mark_modified()
+
+    def _update_sprite_node_type(self, sprite: SpriteModel, node_type: str):
+        """Update the base class in sprite code when node_type changes."""
+        import re
+        code = sprite.code.strip()
+        if not code:
+            return
+
+        known_bases = (
+            "Sprite|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
+            "|AnimatedSprite2D|Camera2D|ParticleEmitter2D|AudioPlayer2D"
+            "|PointLight2D|DirectionalLight2D|Path2D|PathFollow2D|Line2D"
+            "|Label|Button|ProgressBar|Panel|Timer|NavigationAgent2D|TileMap"
+        )
+        pattern = rf'(class\s+{re.escape(sprite.class_name)}\s*\(\s*)({known_bases})(\s*\)\s*:)'
+        new_code = re.sub(pattern, rf'\g<1>{node_type}\g<3>', code)
+
+        if new_code != code:
+            sprite.code = new_code
+            tab_id = f"sprite:{sprite.id}"
+            for i in range(self.code_tabs.count()):
+                widget = self.code_tabs.widget(i)
+                if hasattr(widget, 'tab_id') and widget.tab_id == tab_id:
+                    widget.set_text(new_code)
+                    break
 
     def _update_sprite_base_class(self, sprite: SpriteModel, is_physics: bool):
         """Update the base class in sprite code when is_physics changes."""

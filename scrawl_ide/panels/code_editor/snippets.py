@@ -2,6 +2,7 @@
 Code Snippets for Scrawl IDE
 
 Defines decorator and function templates for quick insertion.
+Uses scrawl_v2 API.
 """
 
 from typing import List, Dict, Any
@@ -13,7 +14,7 @@ DECORATOR_SNIPPETS: List[Dict[str, Any]] = [
         "name": "@on_key",
         "category": "事件",
         "description": "键盘按键事件",
-        "template": '''@on_key(pygame.K_SPACE, "pressed")
+        "template": '''@on_key("space", "pressed")
     def on_key_space(self):
         """按下空格键时触发"""
         pass
@@ -201,7 +202,19 @@ FUNCTION_SNIPPETS: List[Dict[str, Any]] = [
         "name": "is_key_pressed(key)",
         "category": "侦测",
         "description": "按键是否按下",
-        "template": "if self.is_key_pressed(pygame.K_SPACE):",
+        "template": 'if self.is_key_pressed("space"):',
+    },
+    {
+        "name": "Input.is_action_pressed",
+        "category": "侦测",
+        "description": "输入映射动作检测",
+        "template": 'if Input.is_action_pressed("move_right"):',
+    },
+    {
+        "name": "Input.get_vector",
+        "category": "侦测",
+        "description": "获取方向向量（WASD/箭头）",
+        "template": 'direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")',
     },
     {
         "name": "is_mouse_down()",
@@ -264,6 +277,275 @@ FUNCTION_SNIPPETS: List[Dict[str, Any]] = [
         "category": "物理",
         "description": "施加力",
         "template": "self.apply_force(0, -10)",
+    },
+    # Scrawl V2 - Audio
+    {
+        "name": "AudioManager.load",
+        "category": "音频",
+        "description": "加载音效",
+        "template": 'AudioManager.load("effect_name", "sounds/effect.ogg")',
+    },
+    {
+        "name": "AudioManager.play",
+        "category": "音频",
+        "description": "播放音效",
+        "template": 'AudioManager.play("effect_name")',
+    },
+    {
+        "name": "AudioManager.play_music",
+        "category": "音频",
+        "description": "播放背景音乐",
+        "template": 'AudioManager.play_music("sounds/bgm.ogg")',
+    },
+    # Scrawl V2 - Animation
+    {
+        "name": "Tween",
+        "category": "动画",
+        "description": "创建补间动画",
+        "template": '''tween = Tween()
+        tween.tween_property(self, "pos.x", target_value, 1.0)
+        tween.play()''',
+    },
+    {
+        "name": "AnimatedSprite2D",
+        "category": "动画",
+        "description": "帧动画精灵",
+        "template": '''frames = SpriteFrames()
+        frames.add_animation("walk")
+        frames.add_frame("walk", "walk_1.png")
+        frames.add_frame("walk", "walk_2.png")
+        animated = AnimatedSprite2D(frames)
+        animated.play("walk")''',
+    },
+    # Scrawl V2 - Camera
+    {
+        "name": "Camera2D",
+        "category": "摄像机",
+        "description": "创建摄像机跟随",
+        "template": '''camera = Camera2D()
+        camera.follow(self)
+        camera.smoothing_enabled = True
+        camera.smoothing_speed = 5.0''',
+    },
+    # Scrawl V2 - Timer
+    {
+        "name": "Timer",
+        "category": "控制",
+        "description": "定时器",
+        "template": '''timer = Timer(wait_time=2.0, one_shot=True)
+        timer.timeout.connect(self.on_timer_done)
+        timer.start()''',
+    },
+    # Scrawl V2 - Particles
+    {
+        "name": "ParticleEmitter2D",
+        "category": "特效",
+        "description": "粒子发射器",
+        "template": 'emitter = ParticleEmitter2D.create_preset("fire")',
+    },
+    # Scrawl V2 - State Machine
+    {
+        "name": "StateMachine",
+        "category": "控制",
+        "description": "状态机",
+        "template": '''sm = StateMachine()
+        sm.add_state("idle", IdleState())
+        sm.add_state("walk", WalkState())
+        sm.add_transition("idle", "walk", lambda: Input.is_action_pressed("move_right"))
+        sm.start("idle")''',
+    },
+    # Scrawl V2 - Signals
+    {
+        "name": "Signal",
+        "category": "信号",
+        "description": "自定义信号",
+        "template": '''# 类级别定义信号
+    health_changed = Signal()
+
+    # 连接信号
+    self.health_changed.connect(self.on_health_changed)
+
+    # 发射信号
+    self.health_changed.emit(new_hp)''',
+    },
+    # Scrawl V2 - TileMap
+    {
+        "name": "TileMap",
+        "category": "地图",
+        "description": "创建瓦片地图",
+        "template": '''tileset = TileSet(tile_size=32)
+        tileset.add_tile(0, "tiles/grass.png")
+        tileset.add_tile(1, "tiles/wall.png", has_collision=True)
+        tilemap = TileMap(tileset)
+        tilemap.load_from_string("""
+        0 0 0 0
+        0 1 1 0
+        0 0 0 0
+        """)''',
+    },
+    # Scrawl V2 - UI
+    {
+        "name": "Label",
+        "category": "UI",
+        "description": "文本标签",
+        "template": '''label = Label("Score: 0")
+        label.position = Vector2(10, 10)
+        label.font_size = 24''',
+    },
+    {
+        "name": "Button",
+        "category": "UI",
+        "description": "按钮",
+        "template": '''btn = Button("Start")
+        btn.pressed.connect(self.on_start_pressed)''',
+    },
+    {
+        "name": "ProgressBar",
+        "category": "UI",
+        "description": "进度条",
+        "template": '''hp_bar = ProgressBar()
+        hp_bar.min_value = 0
+        hp_bar.max_value = 100
+        hp_bar.value = 100''',
+    },
+    # Scrawl V2 - Physics Bodies
+    {
+        "name": "RigidBody2D.apply_force",
+        "category": "物理",
+        "description": "刚体施加力",
+        "template": '''self.apply_force(Vector2(0, -500))''',
+    },
+    {
+        "name": "RigidBody2D.apply_impulse",
+        "category": "物理",
+        "description": "刚体施加冲量",
+        "template": '''self.apply_impulse(Vector2(100, -200))''',
+    },
+    {
+        "name": "KinematicBody2D.move",
+        "category": "物理",
+        "description": "运动学体移动（含碰撞）",
+        "template": '''velocity = Vector2(0, 0)
+        direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
+        velocity = direction * 200
+        self.move_and_slide(velocity)''',
+    },
+    {
+        "name": "Area2D.body_entered",
+        "category": "物理",
+        "description": "区域检测",
+        "template": '''self.body_entered.connect(self.on_body_entered)
+
+    def on_body_entered(self, body):
+        print(f"进入区域: {body.name}")''',
+    },
+    {
+        "name": "CollisionShape2D",
+        "category": "物理",
+        "description": "碰撞形状",
+        "template": '''shape = CollisionShape2D()
+        shape.set_rectangle(32, 32)
+        # 或者圆形: shape.set_circle(16)
+        self.add_child(shape)''',
+    },
+    # Scrawl V2 - Light2D
+    {
+        "name": "PointLight2D",
+        "category": "渲染",
+        "description": "点光源",
+        "template": '''light = PointLight2D()
+        light.color = Color(255, 200, 100)
+        light.energy = 1.5
+        light.radius = 300
+        light.shadow_enabled = True''',
+    },
+    {
+        "name": "DirectionalLight2D",
+        "category": "渲染",
+        "description": "平行光",
+        "template": '''light = DirectionalLight2D()
+        light.color = Color(255, 255, 200)
+        light.energy = 0.8
+        light.direction = 45''',
+    },
+    # Scrawl V2 - Navigation
+    {
+        "name": "NavigationAgent2D",
+        "category": "寻路",
+        "description": "导航代理",
+        "template": '''agent = NavigationAgent2D()
+        agent.max_speed = 200
+        agent.set_target(Vector2(400, 300))
+        # 主循环中调用:
+        # velocity = agent.get_next_velocity()
+        # self.pos += velocity * dt''',
+    },
+    {
+        "name": "NavigationGrid",
+        "category": "寻路",
+        "description": "导航网格",
+        "template": '''nav_grid = NavigationGrid(width=20, height=15, cell_size=32)
+        nav_grid.set_obstacle(5, 3)
+        path = nav_grid.find_path(start=(0, 0), end=(19, 14))''',
+    },
+    # Scrawl V2 - Path2D/Line2D
+    {
+        "name": "Path2D",
+        "category": "路径",
+        "description": "路径节点",
+        "template": '''path = Path2D()
+        path.add_point(Vector2(0, 0))
+        path.add_point(Vector2(100, 50))
+        path.add_point(Vector2(200, 0))''',
+    },
+    {
+        "name": "PathFollow2D",
+        "category": "路径",
+        "description": "路径跟随",
+        "template": '''follower = PathFollow2D()
+        follower.path = path
+        follower.speed = 100
+        follower.loop = True''',
+    },
+    {
+        "name": "Line2D",
+        "category": "路径",
+        "description": "绘制线条",
+        "template": '''line = Line2D()
+        line.add_point(Vector2(0, 0))
+        line.add_point(Vector2(100, 100))
+        line.width = 3
+        line.color = Color(255, 0, 0)''',
+    },
+    # Scrawl V2 - ResourceLoader
+    {
+        "name": "ResourceLoader",
+        "category": "资源",
+        "description": "资源加载器",
+        "template": '''# 预加载资源
+        ResourceLoader.preload("player_sprite", "images/player.png")
+        ResourceLoader.preload("jump_sound", "sounds/jump.ogg")
+        
+        # 获取资源
+        img = ResourceLoader.get("player_sprite")''',
+    },
+    # Scrawl V2 - Panel
+    {
+        "name": "Panel",
+        "category": "UI",
+        "description": "面板容器",
+        "template": '''panel = Panel()
+        panel.position = Vector2(100, 100)
+        panel.size = Vector2(200, 150)''',
+    },
+    # Scrawl V2 - CanvasLayer
+    {
+        "name": "CanvasLayer",
+        "category": "UI",
+        "description": "画布层（用于HUD）",
+        "template": '''hud = CanvasLayer(layer=10)
+        score_label = Label("Score: 0")
+        hud.add_child(score_label)''',
     },
 ]
 

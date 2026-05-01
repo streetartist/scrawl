@@ -1,7 +1,7 @@
 """
 Code Costume Dialog
 
-Dialog for creating costumes using pygame drawing code.
+Dialog for creating costumes using drawing code.
 """
 
 from PySide6.QtWidgets import (
@@ -13,10 +13,10 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont
 
 
-DEFAULT_DRAW_CODE = '''# 在 surface 上绘制造型
-# surface 是一个 pygame.Surface 对象，大小为 (width, height)
+DEFAULT_DRAW_CODE = '''# 在画布上绘制造型
+# 可用变量: width, height (造型尺寸)
 # 示例：绘制一个圆形
-pygame.draw.circle(surface, (255, 200, 0), (width//2, height//2), min(width, height)//2)
+draw_circle((255, 200, 0), (width//2, height//2), min(width, height)//2)
 '''
 
 
@@ -65,12 +65,12 @@ class CodeCostumeDialog(QDialog):
         layout.addWidget(info_group)
 
         # Code group
-        code_group = QGroupBox("绘制代码 (pygame)")
+        code_group = QGroupBox("绘制代码")
         code_layout = QVBoxLayout(code_group)
 
         hint = QLabel(
-            "可用变量: surface (pygame.Surface), width, height\n"
-            "可用模块: pygame (已导入)"
+            "可用变量: width, height (造型尺寸)\n"
+            "可用函数: draw_circle, draw_rect, draw_line 等"
         )
         hint.setStyleSheet("color: #888; font-size: 11px;")
         code_layout.addWidget(hint)

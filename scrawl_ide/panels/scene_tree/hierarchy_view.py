@@ -6,14 +6,95 @@ Tree view showing the scene hierarchy (scenes and sprites).
 
 from PySide6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QWidget, QVBoxLayout,
-    QMenu, QInputDialog, QMessageBox
+    QMenu, QInputDialog, QMessageBox, QDialog, QListWidget,
+    QListWidgetItem, QDialogButtonBox, QLabel, QHBoxLayout, QTabWidget,
+    QLineEdit
 )
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QAction
+from PySide6.QtGui import QAction, QFont
 from typing import Optional, Dict
 
 from models import ProjectModel, SceneModel, SpriteModel
+from models.sprite_model import NODE_CATEGORIES, NODE_ICONS
 from core.i18n import tr
+
+
+class AddNodeDialog(QDialog):
+    """Dialog for selecting a node type to add."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("添加节点")
+        self.setMinimumSize(420, 500)
+        self.selected_type = None
+
+        layout = QVBoxLayout(self)
+
+        # Search box
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("搜索节点类型...")
+        self._search.textChanged.connect(self._on_search)
+        layout.addWidget(self._search)
+
+        # Tree view with categories as parent items, node types as children
+        self._tree = QTreeWidget()
+        self._tree.setHeaderHidden(True)
+        self._tree.setIndentation(20)
+        self._tree.setAnimated(True)
+
+        category_font = QFont()
+        category_font.setBold(True)
+
+        self._category_items: Dict[str, QTreeWidgetItem] = {}
+        self._node_items: list = []
+
+        for category, types in NODE_CATEGORIES.items():
+            cat_item = QTreeWidgetItem(self._tree, [f"📁 {category}"])
+            cat_item.setFont(0, category_font)
+            cat_item.setFlags(cat_item.flags() & ~Qt.ItemIsSelectable)
+            cat_item.setExpanded(True)
+            self._category_items[category] = cat_item
+
+            for t in types:
+                icon = NODE_ICONS.get(t, "")
+                node_item = QTreeWidgetItem(cat_item, [f"{icon}  {t}"])
+                node_item.setData(0, Qt.UserRole, t)
+                self._node_items.append(node_item)
+
+        self._tree.itemDoubleClicked.connect(self._on_double_click)
+        layout.addWidget(self._tree)
+
+        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        buttons.accepted.connect(self._on_accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
+
+    def _on_search(self, text: str):
+        text = text.strip().lower()
+        for cat_item in self._category_items.values():
+            any_visible = False
+            for i in range(cat_item.childCount()):
+                child = cat_item.child(i)
+                node_type = child.data(0, Qt.UserRole) or ""
+                visible = not text or text in node_type.lower()
+                child.setHidden(not visible)
+                if visible:
+                    any_visible = True
+            cat_item.setHidden(not any_visible)
+            if any_visible:
+                cat_item.setExpanded(True)
+
+    def _on_accept(self):
+        current = self._tree.currentItem()
+        if current and current.data(0, Qt.UserRole):
+            self.selected_type = current.data(0, Qt.UserRole)
+            self.accept()
+
+    def _on_double_click(self, item):
+        node_type = item.data(0, Qt.UserRole)
+        if node_type:
+            self.selected_type = node_type
+            self.accept()
 
 
 class HierarchyView(QTreeWidget):
@@ -81,7 +162,8 @@ class HierarchyView(QTreeWidget):
 
             # Add sprites in scene
             for sprite in scene.sprites:
-                sprite_item = QTreeWidgetItem(scene_item, [sprite.name])
+                icon = NODE_ICONS.get(sprite.node_type, "🔷")
+                sprite_item = QTreeWidgetItem(scene_item, [f"{icon} {sprite.name}"])
                 sprite_item.setData(0, Qt.UserRole, ("sprite", sprite))
                 sprite_item.setFlags(sprite_item.flags() | Qt.ItemIsEditable)
                 self._sprite_items[sprite.id] = sprite_item
@@ -150,9 +232,18 @@ class HierarchyView(QTreeWidget):
             menu.addAction(add_scene_action)
 
         elif item_type == "scene":
-            add_sprite_action = QAction(tr("hierarchy.add_sprite"), self)
-            add_sprite_action.triggered.connect(lambda: self._add_sprite(model))
-            menu.addAction(add_sprite_action)
+            add_node_action = QAction("添加节点...", self)
+            add_node_action.triggered.connect(lambda: self._add_node(model))
+            menu.addAction(add_node_action)
+
+            # Quick-add submenu for common types
+            quick_menu = QMenu("快速添加", self)
+            for node_type in ["Sprite", "PhysicsSprite", "Camera2D", "Label", "Timer"]:
+                icon = NODE_ICONS.get(node_type, "")
+                act = QAction(f"{icon} {node_type}", self)
+                act.triggered.connect(lambda checked, nt=node_type: self._add_sprite(model, nt))
+                quick_menu.addAction(act)
+            menu.addMenu(quick_menu)
 
             menu.addSeparator()
 
@@ -197,15 +288,30 @@ class HierarchyView(QTreeWidget):
             self.refresh()
             self.scene_added.emit(scene)
 
-    def _add_sprite(self, scene: SceneModel):
+    def _add_node(self, scene: SceneModel):
+        """Add a new node to a scene via type selection dialog."""
+        dialog = AddNodeDialog(self)
+        if dialog.exec() == QDialog.Accepted and dialog.selected_type:
+            node_type = dialog.selected_type
+            name, ok = QInputDialog.getText(
+                self, "添加节点", "节点名称:",
+                text=f"{node_type}{len(scene.sprites) + 1}"
+            )
+            if ok and name:
+                sprite = SpriteModel.create_default(name, node_type)
+                scene.add_sprite(sprite)
+                self.refresh()
+                self.sprite_added.emit(scene, sprite)
+
+    def _add_sprite(self, scene: SceneModel, node_type: str = "Sprite"):
         """Add a new sprite to a scene."""
         name, ok = QInputDialog.getText(
             self, tr("dialog.add_sprite_title"), tr("dialog.add_sprite_prompt"),
-            text=f"Sprite{len(scene.sprites) + 1}"
+            text=f"{node_type}{len(scene.sprites) + 1}"
         )
 
         if ok and name:
-            sprite = SpriteModel.create_default(name)
+            sprite = SpriteModel.create_default(name, node_type)
             scene.add_sprite(sprite)
             self.refresh()
             self.sprite_added.emit(scene, sprite)
