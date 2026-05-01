@@ -1,5 +1,8 @@
 name: Publish Python Package
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   release:
     types: [published]
@@ -10,7 +13,7 @@ permissions:
 
 jobs:
   build-wheels:
-    name: Build wheel on ${{ matrix.os }}
+    name: Build wheel on ${{ matrix.os }} (Python ${{ matrix.python-version }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -19,6 +22,11 @@ jobs:
           - ubuntu-latest
           - windows-latest
           - macos-latest
+        python-version:
+          - '3.9'
+          - '3.10'
+          - '3.11'
+          - '3.12'
 
     steps:
       - name: Checkout source
@@ -27,19 +35,19 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: ${{ matrix.python-version }}
 
       - name: Build wheels with maturin
         uses: PyO3/maturin-action@v1
         with:
           command: build
-          args: --release --interpreter 3.9 3.10 3.11 3.12 --out dist
-          manylinux: auto
+          args: --release --interpreter python --out dist
+          manylinux: ${{ matrix.os == 'ubuntu-latest' && 'off' || 'auto' }}
 
       - name: Upload wheel artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: wheels-${{ matrix.os }}
+          name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
           path: dist/*.whl
 
   build-sdist:
