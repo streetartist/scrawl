@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "scrawl-engine"
-version = "2.0.4"
+version = "2.0.5"
 description = "A simple yet powerful 2D game engine built on Bevy"
 authors = [{name = "Streetartist"}]
 license = {text = "MIT"}
@@ -13,5 +13,6 @@ requires-python = ">=3.8"
 [tool.maturin]
 manifest-path = "crates/scrawl-bridge/Cargo.toml"
 python-source = "python"
+python-packages = ["scrawl", "scrawl_v2"]
 module-name = "scrawl.scrawl_native"
 include = [{ path = "LICENSE", format = "sdist" }]
