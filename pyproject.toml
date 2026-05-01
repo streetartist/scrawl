@@ -4,7 +4,7 @@ build-backend = "maturin"
 
 [project]
 name = "scrawl-engine"
-version = "2.0.0"
+version = "2.0.4"
 description = "A simple yet powerful 2D game engine built on Bevy"
 authors = [{name = "Streetartist"}]
 license = {text = "MIT"}
