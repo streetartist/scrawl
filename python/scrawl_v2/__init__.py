@@ -49,7 +49,7 @@ Scrawl v2 - 功能完备的 2D 游戏引擎。
     game.run()
 """
 
-__version__ = "2.1.0"
+__version__ = "2.1.1"
 
 # === 核心 ===
 from .engine import Game

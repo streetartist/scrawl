@@ -16,7 +16,6 @@ _SUBMODULES = (
     "animation",
     "audio",
     "camera",
-    "compat",
     "constants",
     "engine",
     "events",
