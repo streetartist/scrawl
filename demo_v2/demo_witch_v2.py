@@ -3,19 +3,13 @@ Scrawl v2 port of the Witch demo.
 Original: demo_project/scrawl_demo_witch-main-main/demo.py
 """
 
-import sys
 import os
 import time
-import random
 
-# Add python package path
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "python"))
-
-from scrawl_v2 import *
+from scrawl import *
 
 # Asset directory (relative to this script)
-ASSET_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                         "demo_project", "scrawl_demo_witch-main-main")
+ASSET_DIR = os.path.dirname(os.path.abspath(__file__))
 
 def asset(name):
     return os.path.join(ASSET_DIR, name)
@@ -227,7 +221,7 @@ class Witch(Sprite):
     def left_held(self):
         self.turn_left(2)
 
-    @on_key("space", "pressed")
+    @on_key("space", "held")
     def space_pressed(self):
         self.fireball.direction = self.direction
         self.clone(self.fireball)

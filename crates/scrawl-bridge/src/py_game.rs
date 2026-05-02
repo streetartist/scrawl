@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use pyo3::prelude::*;
 use std::collections::HashMap;
 
+use scrawl_audio::ScrawlAudioPlugin;
 use scrawl_core::components::*;
 use scrawl_core::resources::ScrawlConfig;
 use scrawl_core::ScrawlCorePlugin;
@@ -40,9 +41,9 @@ pub struct PyGame {
 
 #[derive(Debug)]
 struct SceneInfo {
-    name: String,
+    _name: String,
     background_color: [f32; 4],
-    background_image: Option<String>,
+    _background_image: Option<String>,
     sprites: Vec<Py<PyAny>>,
 }
 
@@ -93,6 +94,7 @@ impl PyGame {
         // Build startup data
         let scene = &self.scenes[active_idx];
         let bg_color = scene.background_color;
+        let bg_image = scene._background_image.clone();
 
         // Collect sprite initial states and Python objects
         let mut sprite_data: Vec<SpriteSpawnData> = Vec::new();
@@ -150,6 +152,7 @@ impl PyGame {
         let fps = self.fps;
         let debug = self.debug;
         let vsync = self.vsync;
+        let fullscreen = self.fullscreen;
 
         // Release the GIL and run Bevy
         // NOTE: We need to allow other threads during Bevy's run loop
@@ -166,8 +169,14 @@ impl PyGame {
             app.add_plugins(
                 DefaultPlugins.set(WindowPlugin {
                     primary_window: Some(Window {
-                        title: title.clone(),                        resolution: (width as f32, height as f32).into(),
+                        title: title.clone(),
+                        resolution: (width as f32, height as f32).into(),
                         present_mode,
+                        mode: if fullscreen {
+                            bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+                        } else {
+                            bevy::window::WindowMode::Windowed
+                        },
                         // Disable system maximize button to avoid Windows modal loop freeze.
                         // Use F11 for fullscreen toggle instead.
                         enabled_buttons: bevy::window::EnabledButtons {
@@ -187,11 +196,12 @@ impl PyGame {
                 height,
                 title,
                 fps,
-                fullscreen: false,
+                fullscreen,
                 debug,
             });
             app.add_plugins(ScrawlCorePlugin);
             app.add_plugins(ScrawlRenderPlugin);
+            app.add_plugins(ScrawlAudioPlugin);
             app.add_plugins(ScrawlScriptingPlugin::default());
             app.add_plugins(PythonRuntimePlugin);
 
@@ -207,9 +217,14 @@ impl PyGame {
 
             // Store sprite data for the startup system
             app.insert_resource(PendingSprites(sprite_data));
+            app.insert_resource(PendingBackground {
+                image_path: bg_image,
+                width: width as f32,
+                height: height as f32,
+            });
 
             // Startup system to spawn entities
-            app.add_systems(Startup, spawn_sprites_from_python);
+            app.add_systems(Startup, (spawn_scene_background, spawn_sprites_from_python));
 
             app.run();
         });
@@ -255,6 +270,35 @@ struct SpriteSpawnData {
 
 #[derive(Resource)]
 struct PendingSprites(Vec<SpriteSpawnData>);
+
+#[derive(Resource)]
+struct PendingBackground {
+    image_path: Option<String>,
+    width: f32,
+    height: f32,
+}
+
+fn spawn_scene_background(
+    mut commands: Commands,
+    pending: Res<PendingBackground>,
+    asset_server: Res<AssetServer>,
+) {
+    let Some(path) = pending.image_path.as_ref() else {
+        return;
+    };
+
+    let image: Handle<Image> = asset_server.load(path.clone());
+    commands.spawn((
+        Sprite {
+            image,
+            custom_size: Some(Vec2::new(pending.width, pending.height)),
+            color: Color::WHITE,
+            ..default()
+        },
+        Transform::from_xyz(pending.width / 2.0, pending.height / 2.0, -100.0),
+        Name::new("SceneBackground"),
+    ));
+}
 
 /// Startup system: spawn ECS entities from Python sprite data.
 fn spawn_sprites_from_python(
@@ -371,7 +415,7 @@ fn spawn_sprites_from_python(
 }
 
 /// Extract scene info from a Python Scene object.
-fn extract_scene_info(py: Python<'_>, scene: &Bound<'_, PyAny>) -> PyResult<SceneInfo> {
+fn extract_scene_info(_py: Python<'_>, scene: &Bound<'_, PyAny>) -> PyResult<SceneInfo> {
     let name = scene
         .getattr("name")
         .and_then(|v| v.extract::<String>())
@@ -395,14 +439,14 @@ fn extract_scene_info(py: Python<'_>, scene: &Bound<'_, PyAny>) -> PyResult<Scen
 
     let sprites_list = scene.getattr("_sprites")?;
     let mut sprites = Vec::new();
-    for item in sprites_list.iter()? {
+    for item in sprites_list.try_iter()? {
         sprites.push(item?.unbind());
     }
 
     Ok(SceneInfo {
-        name,
+        _name: name,
         background_color: bg_color,
-        background_image: bg_image,
+        _background_image: bg_image,
         sprites,
     })
 }

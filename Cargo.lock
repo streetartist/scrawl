@@ -4393,8 +4393,10 @@ name = "scrawl-bridge"
 version = "2.0.5"
 dependencies = [
  "bevy",
+ "bevy_kira_audio",
  "log",
  "pyo3",
+ "scrawl-audio",
  "scrawl-core",
  "scrawl-render",
  "scrawl-scripting",

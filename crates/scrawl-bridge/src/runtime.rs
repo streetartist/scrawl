@@ -4,8 +4,10 @@
 //! acquiring the GIL only once to minimize overhead.
 
 use bevy::prelude::*;
+use bevy_kira_audio::Audio;
 use pyo3::prelude::*;
-use std::collections::HashMap;
+use scrawl_audio::AudioManager;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, Instant};
 
 use scrawl_core::components::*;
@@ -71,6 +73,10 @@ fn python_frame_system(world: &mut World) {
         .resource_mut::<Events<KeyInputEvent>>()
         .drain()
         .collect();
+    let mouse_events: Vec<MouseInputEvent> = world
+        .resource_mut::<Events<MouseInputEvent>>()
+        .drain()
+        .collect();
     let broadcast_events: Vec<BroadcastEvent> = world
         .resource_mut::<Events<BroadcastEvent>>()
         .drain()
@@ -83,6 +89,13 @@ fn python_frame_system(world: &mut World) {
         .resource_mut::<Events<SpriteCollisionEvent>>()
         .drain()
         .collect();
+    let mut clicked_entities: HashSet<Entity> = world
+        .resource_mut::<Events<SpriteClickedEvent>>()
+        .drain()
+        .map(|event| event.0)
+        .collect();
+
+    clicked_entities.extend(synthesize_sprite_clicked_entities(world, &mouse_events));
 
     // Collect entity names for collision lookup
     let mut entity_names: HashMap<Entity, String> = HashMap::new();
@@ -185,7 +198,42 @@ fn python_frame_system(world: &mut World) {
                 }
             }
 
-            // --- 5. Advance all active coroutines ---
+            // --- 5. Dispatch mouse input events ---
+            for event in &mouse_events {
+                let Some(event_button) = mouse_button_number(event.button) else {
+                    continue;
+                };
+                let event_mode = match event.mode {
+                    InputMode::Pressed => "pressed",
+                    InputMode::Released => "released",
+                    InputMode::Held => "held",
+                };
+
+                for (method_name, kind) in &handlers {
+                    if let HandlerKind::Mouse { button, mode } = kind {
+                        if *button == event_button && *mode == event_mode {
+                            let coro_key = format!("mouse_{}_{}_{}", method_name, event_button, event_mode);
+                            if !sprite.coroutines.contains_key(&coro_key) {
+                                start_handler(py, sprite, method_name, coro_key);
+                            }
+                        }
+                    }
+                }
+            }
+
+            // --- 6. Dispatch sprite clicked events ---
+            if clicked_entities.contains(&sprite.entity) {
+                for (method_name, kind) in &handlers {
+                    if matches!(kind, HandlerKind::SpriteClicked) {
+                        let coro_key = format!("clicked_{}", method_name);
+                        if !sprite.coroutines.contains_key(&coro_key) {
+                            start_handler(py, sprite, method_name, coro_key);
+                        }
+                    }
+                }
+            }
+
+            // --- 7. Advance all active coroutines ---
             let names: Vec<String> = sprite.coroutines.keys().cloned().collect();
             let mut to_remove = Vec::new();
 
@@ -238,11 +286,13 @@ fn python_frame_system(world: &mut World) {
                 sprite.wake_times.remove(&name);
             }
 
-            // --- 6. Sync Python state → ECS (Y-up: Python matches Bevy, no flip) ---
+            // --- 8. Sync Python state → ECS (Y-up: Python matches Bevy, no flip) ---
             let obj = sprite.py_object.bind(py);
             let entity = sprite.entity;
+            let mut previous_position = None;
 
             if let Some(mut t2d) = world.get_mut::<Transform2D>(entity) {
+                previous_position = Some(t2d.position);
                 if let Ok(x) = obj.getattr("x").and_then(|v| v.extract::<f32>()) {
                     t2d.position.x = x;
                 }
@@ -262,6 +312,18 @@ fn python_frame_system(world: &mut World) {
                 }
             }
 
+            if let Some(mut sprite_color) = world.get_mut::<SpriteColor>(entity) {
+                if let Ok((r, g, b)) = obj.getattr("color").and_then(|v| v.extract::<(u8, u8, u8)>()) {
+                    sprite_color.0 = Color::srgb(
+                        r as f32 / 255.0,
+                        g as f32 / 255.0,
+                        b as f32 / 255.0,
+                    );
+                }
+            }
+
+            sync_pen_state_from_python(world, entity, &obj, previous_position);
+
             // Sync current costume
             if let Ok(costume_name) = obj.getattr("_current_costume").and_then(|v| v.extract::<String>()) {
                 if let Some(mut costumes) = world.get_mut::<CostumeSet>(entity) {
@@ -272,9 +334,7 @@ fn python_frame_system(world: &mut World) {
     });
 
     // --- Process command queue from Python ---
-    let commands = Python::with_gil(|py| {
-        process_python_commands(py, &mut sprites)
-    });
+    let commands = Python::with_gil(process_python_commands);
 
     // Execute commands on the ECS world
     for cmd in commands {
@@ -293,6 +353,7 @@ fn python_frame_system(world: &mut World) {
                     });
                     if idx_to_remove.is_some() { break; }
                 }
+                despawn_text_displays_for_owner(world, ptr_id);
                 if let Some(i) = idx_to_remove {
                     sprites.remove(i);
                 }
@@ -301,57 +362,44 @@ fn python_frame_system(world: &mut World) {
                 world.send_event(BroadcastEvent(event));
             }
             PythonCommand::SetText { ptr_id, text, font_size, color } => {
-                // Find existing text entity for this sprite, or spawn new one
-
-                // Get sprite position from the sprites list
-                let sprite_pos = sprites.iter().find(|s| {
-                    Python::with_gil(|py| s.py_object.bind(py).as_ptr() as usize == ptr_id)
-                }).and_then(|s| {
-                    Python::with_gil(|py| {
-                        let obj = s.py_object.bind(py);
-                        let x = obj.getattr("x").and_then(|v| v.extract::<f32>()).unwrap_or(400.0);
-                        let y = obj.getattr("y").and_then(|v| v.extract::<f32>()).unwrap_or(300.0);
-                        Some(Vec2::new(x, y))
-                    })
-                }).unwrap_or(Vec2::new(400.0, 300.0));
-
-                // Find existing text entity
-                let mut existing = None;
-                let mut text_query = world.query::<(Entity, &ScrawlTextDisplay)>();
-                for (e, td) in text_query.iter(world) {
-                    if td.owner_ptr == ptr_id {
-                        existing = Some(e);
-                        break;
-                    }
-                }
-
-                if text.is_empty() {
-                    // Clear text
-                    if let Some(e) = existing {
-                        world.despawn(e);
-                    }
-                } else if let Some(e) = existing {
-                    // Update existing
-                    if let Some(mut t) = world.get_mut::<Text2d>(e) {
-                        **t = text;
-                    }
-                    if let Some(mut tr) = world.get_mut::<Transform>(e) {
-                        tr.translation.x = sprite_pos.x;
-                        tr.translation.y = sprite_pos.y;
-                    }
-                } else {
-                    // Spawn new text entity
-                    world.spawn((
-                        ScrawlTextDisplay { owner_ptr: ptr_id },
-                        Text2d::new(text),
-                        TextFont { font_size, ..default() },
-                        TextColor(Color::srgb(color[0], color[1], color[2])),
-                        Transform::from_xyz(sprite_pos.x, sprite_pos.y, 500.0),
-                    ));
-                }
+                upsert_text_display(
+                    world,
+                    &sprites,
+                    ptr_id,
+                    TextDisplayKind::Persistent,
+                    text,
+                    font_size,
+                    color,
+                    0.0,
+                    None,
+                );
             }
+            PythonCommand::Say { ptr_id, text, duration_ms } => {
+                upsert_text_display(
+                    world,
+                    &sprites,
+                    ptr_id,
+                    TextDisplayKind::Speech,
+                    text,
+                    18.0,
+                    [1.0, 1.0, 1.0],
+                    48.0,
+                    Some(Instant::now() + Duration::from_millis(duration_ms)),
+                );
+            }
+            PythonCommand::PlaySound { path, volume } => {
+                play_sound_command(world, &path, volume);
+            }
+            PythonCommand::PlayMusic { path, loops, volume } => {
+                play_music_command(world, &path, loops, volume);
+            }
+            PythonCommand::StopMusic => stop_music_command(world),
+            PythonCommand::PauseMusic => pause_music_command(world),
+            PythonCommand::ResumeMusic => resume_music_command(world),
         }
     }
+
+    sync_text_displays(world, &sprites);
 
     // Put sprites back
     world.resource_mut::<PythonRuntime>().sprites = sprites;
@@ -362,16 +410,31 @@ enum PythonCommand {
     Delete(usize),
     Broadcast(String),
     SetText { ptr_id: usize, text: String, font_size: f32, color: [f32; 3] },
+    Say { ptr_id: usize, text: String, duration_ms: u64 },
+    PlaySound { path: String, volume: Option<f64> },
+    PlayMusic { path: String, loops: i32, volume: Option<f64> },
+    StopMusic,
+    PauseMusic,
+    ResumeMusic,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TextDisplayKind {
+    Persistent,
+    Speech,
 }
 
 /// Marker for text entities spawned by set_text().
 #[derive(Component)]
 struct ScrawlTextDisplay {
     owner_ptr: usize,
+    kind: TextDisplayKind,
+    expires_at: Option<Instant>,
+    y_offset: f32,
 }
 
 /// Read and drain the Python-side _scrawl_command_queue.
-fn process_python_commands(py: Python<'_>, sprites: &mut Vec<PythonSpriteInstance>) -> Vec<PythonCommand> {
+fn process_python_commands(py: Python<'_>) -> Vec<PythonCommand> {
     let mut commands = Vec::new();
 
     let module = match py.import("scrawl_v2.sprite") {
@@ -387,14 +450,14 @@ fn process_python_commands(py: Python<'_>, sprites: &mut Vec<PythonSpriteInstanc
         Err(_) => return commands,
     };
 
-    let items: Vec<pyo3::Bound<'_, PyAny>> = match queue.iter() {
+    let items: Vec<pyo3::Bound<'_, PyAny>> = match queue.try_iter() {
         Ok(iter) => iter.filter_map(|i| i.ok()).collect(),
         Err(_) => return commands,
     };
 
     for item in &items {
         if let Ok(tuple) = item.downcast::<pyo3::types::PyTuple>() {
-            if tuple.len() < 2 { continue; }
+            if tuple.is_empty() { continue; }
             let cmd_type: String = match tuple.get_item(0).and_then(|v| v.extract()) {
                 Ok(s) => s,
                 Err(_) => continue,
@@ -436,6 +499,47 @@ fn process_python_commands(py: Python<'_>, sprites: &mut Vec<PythonSpriteInstanc
                         }
                     }
                 }
+                "say" => {
+                    // ("say", sprite_obj, text_str, duration_ms)
+                    if tuple.len() >= 4 {
+                        if let Ok(sprite_obj) = tuple.get_item(1) {
+                            let ptr_id = sprite_obj.as_ptr() as usize;
+                            let text = tuple.get_item(2).and_then(|v| v.extract::<String>()).unwrap_or_default();
+                            let duration_ms = tuple.get_item(3).and_then(|v| v.extract::<u64>()).unwrap_or(2000);
+                            commands.push(PythonCommand::Say { ptr_id, text, duration_ms });
+                        }
+                    }
+                }
+                "play_sound" => {
+                    if tuple.len() >= 2 {
+                        let path = tuple.get_item(1).and_then(|v| v.extract::<String>()).unwrap_or_default();
+                        let volume = if tuple.len() >= 3 {
+                            tuple.get_item(2).and_then(|v| v.extract::<f64>()).ok()
+                        } else {
+                            None
+                        };
+                        if !path.is_empty() {
+                            commands.push(PythonCommand::PlaySound { path, volume });
+                        }
+                    }
+                }
+                "play_music" => {
+                    if tuple.len() >= 3 {
+                        let path = tuple.get_item(1).and_then(|v| v.extract::<String>()).unwrap_or_default();
+                        let loops = tuple.get_item(2).and_then(|v| v.extract::<i32>()).unwrap_or(-1);
+                        let volume = if tuple.len() >= 4 {
+                            tuple.get_item(3).and_then(|v| v.extract::<f64>()).ok()
+                        } else {
+                            None
+                        };
+                        if !path.is_empty() {
+                            commands.push(PythonCommand::PlayMusic { path, loops, volume });
+                        }
+                    }
+                }
+                "stop_music" => commands.push(PythonCommand::StopMusic),
+                "pause_music" => commands.push(PythonCommand::PauseMusic),
+                "resume_music" => commands.push(PythonCommand::ResumeMusic),
                 _ => {}
             }
         }
@@ -452,6 +556,382 @@ fn start_handler(py: Python<'_>, sprite: &mut PythonSpriteInstance, method_name:
     if let Ok(gen) = sprite.py_object.bind(py).call_method0(method_name) {
         if gen.hasattr("__next__").unwrap_or(false) {
             sprite.coroutines.insert(coro_key, gen.unbind());
+        }
+    }
+}
+
+fn mouse_button_number(button: MouseButton) -> Option<u32> {
+    match button {
+        MouseButton::Left => Some(1),
+        MouseButton::Middle => Some(2),
+        MouseButton::Right => Some(3),
+        _ => None,
+    }
+}
+
+fn synthesize_sprite_clicked_entities(
+    world: &mut World,
+    mouse_events: &[MouseInputEvent],
+) -> HashSet<Entity> {
+    let mut clicked = HashSet::new();
+
+    for event in mouse_events {
+        if event.button != MouseButton::Left || event.mode != InputMode::Pressed {
+            continue;
+        }
+
+        let Some(world_pos) = screen_to_world_position(world, event.position) else {
+            continue;
+        };
+
+        let mut sprite_query = world.query::<(
+            Entity,
+            &Transform2D,
+            Option<&bevy::sprite::Sprite>,
+            Option<&CollisionShape>,
+            Option<&CollisionMask>,
+            &Visible,
+            &NodeType,
+        )>();
+
+        for (entity, t2d, sprite, shape, mask, visible, node_type) in sprite_query.iter(world) {
+            if !visible.0 || node_type.0 != NodeKind::Sprite {
+                continue;
+            }
+
+            if point_hits_sprite(world_pos, t2d, sprite, shape, mask) {
+                clicked.insert(entity);
+            }
+        }
+    }
+
+    clicked
+}
+
+fn screen_to_world_position(world: &mut World, screen_pos: Vec2) -> Option<Vec2> {
+    let mut camera_query = world.query::<(&Camera, &GlobalTransform)>();
+    let (camera, camera_transform) = camera_query.iter(world).next()?;
+    camera.viewport_to_world_2d(camera_transform, screen_pos).ok()
+}
+
+fn point_hits_sprite(
+    world_pos: Vec2,
+    t2d: &Transform2D,
+    sprite: Option<&bevy::sprite::Sprite>,
+    shape: Option<&CollisionShape>,
+    mask: Option<&CollisionMask>,
+) -> bool {
+    let shape = shape.cloned().unwrap_or_default();
+
+    match shape.kind {
+        CollisionKind::Circle => {
+            let radius = click_circle_radius(t2d, &shape, sprite, mask);
+            t2d.position.distance(world_pos) <= radius
+        }
+        CollisionKind::Rect => {
+            let half = click_half_size(t2d, sprite, mask);
+            let local = click_local_point(world_pos, t2d);
+            local.x.abs() <= half.x && local.y.abs() <= half.y
+        }
+        CollisionKind::Mask => {
+            let local = click_local_point(world_pos, t2d);
+            let half = click_half_size(t2d, sprite, mask);
+
+            if local.x.abs() > half.x || local.y.abs() > half.y {
+                return false;
+            }
+
+            let Some(mask) = mask else {
+                return true;
+            };
+
+            let base = click_base_size(sprite, Some(mask));
+            let scale = Vec2::new(
+                t2d.scale.x.abs().max(f32::EPSILON),
+                t2d.scale.y.abs().max(f32::EPSILON),
+            );
+
+            let pixel_x = ((local.x / scale.x) + base.x / 2.0).floor() as i32;
+            let pixel_y = ((local.y / scale.y) + base.y / 2.0).floor() as i32;
+            mask.is_solid(pixel_x, pixel_y)
+        }
+    }
+}
+
+fn click_local_point(world_pos: Vec2, t2d: &Transform2D) -> Vec2 {
+    let delta = world_pos - t2d.position;
+    let rad = (t2d.rotation_degrees - 90.0).to_radians();
+    let cos = rad.cos();
+    let sin = rad.sin();
+
+    Vec2::new(
+        delta.x * cos - delta.y * sin,
+        delta.x * sin + delta.y * cos,
+    )
+}
+
+fn click_half_size(
+    t2d: &Transform2D,
+    sprite: Option<&bevy::sprite::Sprite>,
+    mask: Option<&CollisionMask>,
+) -> Vec2 {
+    let base = click_base_size(sprite, mask);
+
+    Vec2::new(base.x * t2d.scale.x.abs(), base.y * t2d.scale.y.abs()) / 2.0
+}
+
+fn click_base_size(
+    sprite: Option<&bevy::sprite::Sprite>,
+    mask: Option<&CollisionMask>,
+) -> Vec2 {
+    sprite
+        .and_then(|value| value.custom_size)
+        .or_else(|| mask.map(|value| Vec2::new(value.width as f32, value.height as f32)))
+        .unwrap_or(Vec2::new(50.0, 50.0))
+}
+
+fn click_circle_radius(
+    t2d: &Transform2D,
+    shape: &CollisionShape,
+    sprite: Option<&bevy::sprite::Sprite>,
+    mask: Option<&CollisionMask>,
+) -> f32 {
+    if let Some(radius) = shape.radius {
+        radius * t2d.scale.x.abs().max(t2d.scale.y.abs())
+    } else {
+        let half = click_half_size(t2d, sprite, mask);
+        half.x.max(half.y)
+    }
+}
+
+fn play_sound_command(world: &mut World, path: &str, volume: Option<f64>) {
+    world.resource_scope(|world, mut audio_manager: Mut<AudioManager>| {
+        let audio = world.resource::<Audio>();
+        let asset_server = world.resource::<AssetServer>();
+
+        let previous_volume = audio_manager.sound_volume;
+        if let Some(value) = volume {
+            audio_manager.set_sound_volume(value);
+        }
+        audio_manager.play_sound(audio, asset_server, path);
+        if volume.is_some() {
+            audio_manager.set_sound_volume(previous_volume);
+        }
+    });
+}
+
+fn play_music_command(world: &mut World, path: &str, _loops: i32, volume: Option<f64>) {
+    world.resource_scope(|world, mut audio_manager: Mut<AudioManager>| {
+        let audio = world.resource::<Audio>();
+        let asset_server = world.resource::<AssetServer>();
+        let looped = _loops < 0;
+
+        let previous_volume = audio_manager.music_volume;
+        if let Some(value) = volume {
+            audio_manager.set_music_volume(value);
+        }
+        audio_manager.play_music(audio, asset_server, looped, path);
+        if volume.is_some() {
+            audio_manager.set_music_volume(previous_volume);
+        }
+    });
+}
+
+fn stop_music_command(world: &mut World) {
+    world.resource_scope(|world, mut audio_manager: Mut<AudioManager>| {
+        let mut audio_instances = world.resource_mut::<Assets<bevy_kira_audio::AudioInstance>>();
+        audio_manager.stop_music(&mut audio_instances);
+    });
+}
+
+fn pause_music_command(world: &mut World) {
+    world.resource_scope(|world, audio_manager: Mut<AudioManager>| {
+        let mut audio_instances = world.resource_mut::<Assets<bevy_kira_audio::AudioInstance>>();
+        audio_manager.pause_music(&mut audio_instances);
+    });
+}
+
+fn resume_music_command(world: &mut World) {
+    world.resource_scope(|world, audio_manager: Mut<AudioManager>| {
+        let mut audio_instances = world.resource_mut::<Assets<bevy_kira_audio::AudioInstance>>();
+        audio_manager.resume_music(&mut audio_instances);
+    });
+}
+
+fn sprite_position_for_ptr(sprites: &[PythonSpriteInstance], ptr_id: usize) -> Vec2 {
+    sprites
+        .iter()
+        .find(|sprite| Python::with_gil(|py| sprite.py_object.bind(py).as_ptr() as usize == ptr_id))
+        .map(|sprite| {
+            Python::with_gil(|py| {
+                let obj = sprite.py_object.bind(py);
+                let x = obj.getattr("x").and_then(|v| v.extract::<f32>()).unwrap_or(400.0);
+                let y = obj.getattr("y").and_then(|v| v.extract::<f32>()).unwrap_or(300.0);
+                Vec2::new(x, y)
+            })
+        })
+        .unwrap_or(Vec2::new(400.0, 300.0))
+}
+
+fn sync_pen_state_from_python(
+    world: &mut World,
+    entity: Entity,
+    obj: &Bound<'_, PyAny>,
+    previous_position: Option<Vec2>,
+) {
+    let current_position = world
+        .get::<Transform2D>(entity)
+        .map(|transform| transform.position)
+        .or(previous_position);
+
+    let pen_down = obj
+        .getattr("_pen_down")
+        .and_then(|value| value.extract::<bool>())
+        .unwrap_or(false);
+
+    let pen_color = obj
+        .getattr("_pen_color")
+        .and_then(|value| value.extract::<(u8, u8, u8)>())
+        .map(|(r, g, b)| Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0))
+        .unwrap_or(Color::BLACK);
+
+    let pen_size = obj
+        .getattr("_pen_size")
+        .and_then(|value| value.extract::<f32>())
+        .unwrap_or(2.0);
+
+    let Some(mut pen) = world.get_mut::<PenState>(entity) else {
+        return;
+    };
+
+    pen.down = pen_down;
+    pen.color = pen_color;
+    pen.size = pen_size;
+
+    let (Some(from), Some(to)) = (previous_position, current_position) else {
+        return;
+    };
+
+    if !pen.down || from.distance_squared(to) <= f32::EPSILON {
+        return;
+    }
+
+    if pen.path.last().copied() != Some(from) {
+        pen.path.push(from);
+    }
+    pen.path.push(to);
+}
+
+fn find_text_display_entity(world: &mut World, ptr_id: usize, kind: TextDisplayKind) -> Option<Entity> {
+    let mut text_query = world.query::<(Entity, &ScrawlTextDisplay)>();
+    for (entity, display) in text_query.iter(world) {
+        if display.owner_ptr == ptr_id && display.kind == kind {
+            return Some(entity);
+        }
+    }
+    None
+}
+
+fn despawn_text_displays_for_owner(world: &mut World, ptr_id: usize) {
+    let mut to_despawn = Vec::new();
+
+    {
+        let mut text_query = world.query::<(Entity, &ScrawlTextDisplay)>();
+        for (entity, display) in text_query.iter(world) {
+            if display.owner_ptr == ptr_id {
+                to_despawn.push(entity);
+            }
+        }
+    }
+
+    for entity in to_despawn {
+        world.despawn(entity);
+    }
+}
+
+fn upsert_text_display(
+    world: &mut World,
+    sprites: &[PythonSpriteInstance],
+    ptr_id: usize,
+    kind: TextDisplayKind,
+    text: String,
+    font_size: f32,
+    color: [f32; 3],
+    y_offset: f32,
+    expires_at: Option<Instant>,
+) {
+    let existing = find_text_display_entity(world, ptr_id, kind);
+
+    if text.is_empty() {
+        if let Some(entity) = existing {
+            world.despawn(entity);
+        }
+        return;
+    }
+
+    let sprite_pos = sprite_position_for_ptr(sprites, ptr_id);
+
+    if let Some(entity) = existing {
+        if let Some(mut text_value) = world.get_mut::<Text2d>(entity) {
+            **text_value = text;
+        }
+        if let Some(mut text_font) = world.get_mut::<TextFont>(entity) {
+            text_font.font_size = font_size;
+        }
+        if let Some(mut text_color) = world.get_mut::<TextColor>(entity) {
+            text_color.0 = Color::srgb(color[0], color[1], color[2]);
+        }
+        if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+            transform.translation.x = sprite_pos.x;
+            transform.translation.y = sprite_pos.y + y_offset;
+        }
+        if let Some(mut display) = world.get_mut::<ScrawlTextDisplay>(entity) {
+            display.expires_at = expires_at;
+            display.y_offset = y_offset;
+        }
+        return;
+    }
+
+    world.spawn((
+        ScrawlTextDisplay {
+            owner_ptr: ptr_id,
+            kind,
+            expires_at,
+            y_offset,
+        },
+        Text2d::new(text),
+        TextFont { font_size, ..default() },
+        TextColor(Color::srgb(color[0], color[1], color[2])),
+        Transform::from_xyz(sprite_pos.x, sprite_pos.y + y_offset, 500.0),
+    ));
+}
+
+fn sync_text_displays(world: &mut World, sprites: &[PythonSpriteInstance]) {
+    let now = Instant::now();
+    let mut to_despawn = Vec::new();
+    let mut updates = Vec::new();
+
+    {
+        let mut text_query = world.query::<(Entity, &ScrawlTextDisplay)>();
+        for (entity, display) in text_query.iter(world) {
+            if display.expires_at.is_some_and(|deadline| deadline <= now) {
+                to_despawn.push(entity);
+                continue;
+            }
+
+            let sprite_pos = sprite_position_for_ptr(sprites, display.owner_ptr);
+            updates.push((entity, sprite_pos.x, sprite_pos.y + display.y_offset));
+        }
+    }
+
+    for entity in to_despawn {
+        world.despawn(entity);
+    }
+
+    for (entity, x, y) in updates {
+        if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+            transform.translation.x = x;
+            transform.translation.y = y;
         }
     }
 }

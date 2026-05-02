@@ -16,7 +16,7 @@ pub fn draw_collision_debug(
         return;
     }
 
-    for (t2d, shape, vis, sprite, mask, name) in query.iter() {
+    for (t2d, shape, vis, sprite, mask, _name) in query.iter() {
         if !vis.0 {
             continue;
         }

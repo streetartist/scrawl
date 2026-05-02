@@ -11,8 +11,10 @@ crate-type = ["cdylib"]
 
 [dependencies]
 bevy = { workspace = true }
+bevy_kira_audio = { workspace = true }
 scrawl-core = { workspace = true }
 scrawl-render = { workspace = true }
+scrawl-audio = { workspace = true }
 scrawl-scripting = { workspace = true }
 pyo3 = { workspace = true }
 log = { workspace = true }

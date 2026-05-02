@@ -22,6 +22,52 @@ except ImportError:
 _scrawl_command_queue = []
 
 
+def queue_broadcast(event: str):
+    """Queue a broadcast for the runtime."""
+    _scrawl_command_queue.append(("broadcast", event))
+
+
+def queue_text(sprite, text: str, font_size: float = 20.0, color: tuple = (255, 255, 255)):
+    """Queue persistent text attached to a sprite."""
+    _scrawl_command_queue.append(("text", sprite, text, font_size, color))
+
+
+def queue_say(sprite, text: str, duration: int = 2000):
+    """Queue temporary speech text attached to a sprite."""
+    _scrawl_command_queue.append(("say", sprite, text, int(duration)))
+
+
+def queue_play_sound(path: str, volume: float = None):
+    """Queue a one-shot sound effect."""
+    if volume is None:
+        _scrawl_command_queue.append(("play_sound", path))
+    else:
+        _scrawl_command_queue.append(("play_sound", path, float(volume)))
+
+
+def queue_play_music(path: str, loops: int = -1, volume: float = None):
+    """Queue background music playback."""
+    if volume is None:
+        _scrawl_command_queue.append(("play_music", path, int(loops)))
+    else:
+        _scrawl_command_queue.append(("play_music", path, int(loops), float(volume)))
+
+
+def queue_stop_music():
+    """Queue background music stop."""
+    _scrawl_command_queue.append(("stop_music",))
+
+
+def queue_pause_music():
+    """Queue background music pause."""
+    _scrawl_command_queue.append(("pause_music",))
+
+
+def queue_resume_music():
+    """Queue background music resume."""
+    _scrawl_command_queue.append(("resume_music",))
+
+
 class _Vec2Proxy:
     """Mimics pygame.Vector2 for v1 compat: sprite.pos.x / sprite.pos.y"""
     def __init__(self, sprite):
@@ -234,12 +280,12 @@ class Sprite:
         self._visible = False
 
     def say(self, text: str, duration: int = 2000):
-        pass  # TODO
+        queue_say(self, text, duration)
 
     def set_text(self, text: str, font_size: float = 20.0, color: tuple = (255, 255, 255)):
         """Display persistent text at this sprite's position.
         Call with empty string to clear."""
-        _scrawl_command_queue.append(("text", self, text, font_size, color))
+        queue_text(self, text, font_size, color)
 
     # ========================================================================
     # Clone / Delete
@@ -273,12 +319,13 @@ class Sprite:
 
     def broadcast(self, event: str):
         """Send a broadcast message. v1 compat."""
-        _scrawl_command_queue.append(("broadcast", event))
+        queue_broadcast(event)
 
     def play_sound(self, name: str):
         """Play a named sound. v1 compat."""
-        # TODO: delegate to audio system
-        pass
+        if self.game is None:
+            return
+        self.game.play_sound(name)
 
     # ========================================================================
     # Pen

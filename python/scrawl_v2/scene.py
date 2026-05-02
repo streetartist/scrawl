@@ -2,6 +2,8 @@
 Scene class - a container for sprites with a background.
 """
 
+from .sprite import queue_broadcast
+
 try:
     from scrawl_v2.scrawl_native import NativeScene
     _HAS_NATIVE = True
@@ -29,6 +31,7 @@ class Scene:
         self._sprites = []
         self._background_color = (255, 255, 255)
         self._background_image = None
+        self.game = None
 
         if _HAS_NATIVE:
             self._native = NativeScene(name=self.name)
@@ -39,6 +42,7 @@ class Scene:
         """Add a sprite to this scene."""
         self._sprites.append(sprite)
         sprite.scene = self
+        sprite.game = self.game
         if self._native and hasattr(sprite, '_native'):
             self._native.add_sprite(sprite._native)
 
@@ -46,6 +50,7 @@ class Scene:
         """Remove a sprite from this scene."""
         self._sprites.remove(sprite)
         sprite.scene = None
+        sprite.game = None
 
     def set_background_color(self, r: int = 255, g: int = 255, b: int = 255):
         """Set the background color."""
@@ -61,8 +66,7 @@ class Scene:
 
     def broadcast(self, event: str):
         """Send a broadcast message to all sprites in this scene."""
-        if self._native:
-            self._native.broadcast(event)
+        queue_broadcast(event)
 
     @property
     def sprites(self):

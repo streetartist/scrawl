@@ -57,34 +57,51 @@ impl AudioManager {
         &mut self,
         audio: &Audio,
         asset_server: &AssetServer,
+        looped: bool,
         path: &str,
     ) {
-        self.stop_music(audio);
+        self.music_instance = None;
         let handle: Handle<bevy_kira_audio::AudioSource> = asset_server.load(path);
-        let instance = audio
-            .play(handle)
-            .looped()
-            .with_volume(self.music_volume)
-            .handle();
+        let instance = if looped {
+            audio
+                .play(handle)
+                .looped()
+                .with_volume(self.music_volume)
+                .handle()
+        } else {
+            audio
+                .play(handle)
+                .with_volume(self.music_volume)
+                .handle()
+        };
         self.music_instance = Some(instance);
     }
 
     /// Stop background music.
-    pub fn stop_music(&mut self, audio: &Audio) {
-        if self.music_instance.is_some() {
-            audio.stop();
-            self.music_instance = None;
+    pub fn stop_music(&mut self, audio_instances: &mut Assets<AudioInstance>) {
+        if let Some(handle) = self.music_instance.take() {
+            if let Some(instance) = audio_instances.get_mut(&handle) {
+                instance.stop(AudioTween::default());
+            }
         }
     }
 
     /// Pause background music.
-    pub fn pause_music(&self, audio: &Audio) {
-        audio.pause();
+    pub fn pause_music(&self, audio_instances: &mut Assets<AudioInstance>) {
+        if let Some(handle) = &self.music_instance {
+            if let Some(instance) = audio_instances.get_mut(handle) {
+                instance.pause(AudioTween::default());
+            }
+        }
     }
 
     /// Resume background music.
-    pub fn resume_music(&self, audio: &Audio) {
-        audio.resume();
+    pub fn resume_music(&self, audio_instances: &mut Assets<AudioInstance>) {
+        if let Some(handle) = &self.music_instance {
+            if let Some(instance) = audio_instances.get_mut(handle) {
+                instance.resume(AudioTween::default());
+            }
+        }
     }
 
     /// Set music volume (0.0 - 1.0).
