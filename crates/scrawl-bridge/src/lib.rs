@@ -21,7 +21,7 @@ fn scrawl_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<py_sprite::PyPhysicsSprite>()?;
 
     // Version info
-    m.add("__version__", "2.0.5")?;
+    m.add("__version__", "2.1.0")?;
     m.add("ENGINE_NAME", "Scrawl Engine (Bevy)")?;
 
     Ok(())
