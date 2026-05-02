@@ -312,8 +312,16 @@ fn python_frame_system(world: &mut World) {
                 }
             }
 
+            let has_image_costume = world
+                .get::<CostumeSet>(entity)
+                .and_then(|costumes| costumes.current_costume())
+                .and_then(|costume| costume.handle.as_ref())
+                .is_some();
+
             if let Some(mut sprite_color) = world.get_mut::<SpriteColor>(entity) {
-                if let Ok((r, g, b)) = obj.getattr("color").and_then(|v| v.extract::<(u8, u8, u8)>()) {
+                if has_image_costume {
+                    sprite_color.0 = Color::WHITE;
+                } else if let Ok((r, g, b)) = obj.getattr("color").and_then(|v| v.extract::<(u8, u8, u8)>()) {
                     sprite_color.0 = Color::srgb(
                         r as f32 / 255.0,
                         g as f32 / 255.0,

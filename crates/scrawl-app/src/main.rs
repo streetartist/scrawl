@@ -53,7 +53,7 @@ fn main() {
     env_logger::init();
     let cli = Cli::parse();
 
-    log::info!("Scrawl Engine v2.1.1 starting...");
+    log::info!("Scrawl Engine v2.1.2 starting...");
     log::info!(
         "Mode: {}",
         if cli.editor { "Editor" } else { "Standalone" }

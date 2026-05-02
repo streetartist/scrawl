@@ -4366,7 +4366,7 @@ checksum = "94143f37725109f92c262ed2cf5e59bce7498c01bcc1502d7b9afe439a4e9f49"
 
 [[package]]
 name = "scrawl-animation"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "log",
@@ -4375,7 +4375,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-app"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "clap",
@@ -4388,7 +4388,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-audio"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "bevy_kira_audio",
@@ -4398,7 +4398,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-bridge"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "bevy_kira_audio",
@@ -4414,7 +4414,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-core"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "log",
@@ -4426,7 +4426,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-editor-protocol"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "rmp-serde",
  "serde",
@@ -4434,7 +4434,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-editor-server"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "log",
@@ -4446,7 +4446,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-navigation"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "scrawl-core",
@@ -4454,7 +4454,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-particles"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "bevy_hanabi",
@@ -4463,7 +4463,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-physics"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "bevy_rapier2d",
@@ -4473,7 +4473,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-render"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "log",
@@ -4484,7 +4484,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-scripting"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "log",
@@ -4495,7 +4495,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-tilemap"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "bevy_ecs_tilemap",
@@ -4505,7 +4505,7 @@ dependencies = [
 
 [[package]]
 name = "scrawl-ui"
-version = "2.1.1"
+version = "2.1.2"
 dependencies = [
  "bevy",
  "scrawl-core",
