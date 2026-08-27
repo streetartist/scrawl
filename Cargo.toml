@@ -18,11 +18,11 @@ members = [
 ]
 
 [workspace.package]
-version = "2.1.2"
+version = "2.2.0"
 edition = "2021"
-license = "MIT"
+license = "GPL-3.0-only"
 authors = ["Streetartist"]
-repository = "https://github.com/nicopyright/scrawl"
+repository = "https://github.com/streetartist/scrawl"
 
 [workspace.dependencies]
 # Bevy engine

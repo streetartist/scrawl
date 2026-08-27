@@ -312,7 +312,7 @@ class SpriteModel:
     # Collision
     collision_type: str = "rect"  # "rect", "circle", "mask"
 
-    # Node type (scrawl_v2)
+    # Scrawl node type
     node_type: str = "Sprite"  # Sprite, PhysicsSprite, RigidBody2D, KinematicBody2D, etc.
 
     # Physics properties

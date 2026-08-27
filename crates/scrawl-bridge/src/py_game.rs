@@ -19,7 +19,7 @@ use crate::runtime::{
 ///
 /// Usage from Python:
 /// ```python
-/// from scrawl_v2 import *
+/// from scrawl import Game
 /// game = Game(width=800, height=600, title="My Game")
 /// game.set_scene(my_scene)
 /// game.run()
@@ -133,6 +133,20 @@ impl PyGame {
                 y: obj.getattr("y")?.extract::<f32>()?,
                 direction: obj.getattr("direction")?.extract::<f32>()?,
                 size: obj.getattr("size")?.extract::<f32>()?,
+                width: obj
+                    .getattr("width")
+                    .ok()
+                    .and_then(|v| v.extract::<Option<f32>>().ok())
+                    .flatten(),
+                height: obj
+                    .getattr("height")
+                    .ok()
+                    .and_then(|v| v.extract::<Option<f32>>().ok())
+                    .flatten(),
+                z_index: obj
+                    .getattr("z_index")
+                    .and_then(|v| v.extract::<i32>())
+                    .unwrap_or(0),
                 visible: obj.getattr("visible")?.extract::<bool>()?,
                 collision_type: obj
                     .getattr("collision_type")
@@ -260,6 +274,9 @@ struct SpriteSpawnData {
     y: f32,
     direction: f32,
     size: f32,
+    width: Option<f32>,
+    height: Option<f32>,
+    z_index: i32,
     visible: bool,
     collision_type: String,
     color: [f32; 3],
@@ -335,18 +352,20 @@ fn spawn_sprites_from_python(
             }
 
             // Build the Bevy Sprite
+            let custom_size = custom_sprite_size(data.width, data.height, first_image.is_some());
             let bevy_sprite = if let Some(ref img) = first_image {
                 // Has costume image: use WHITE (no tint), color is only for default shapes
                 Sprite {
                     image: img.clone(),
                     color: Color::WHITE,
+                    custom_size,
                     ..default()
                 }
             } else {
                 // No costume — render as colored shape
                 Sprite {
                     color: sprite_color,
-                    custom_size: Some(Vec2::new(40.0, 40.0)),
+                    custom_size,
                     ..default()
                 }
             };
@@ -354,7 +373,7 @@ fn spawn_sprites_from_python(
             let entity = commands
                 .spawn((
                     bevy_sprite,
-                    Transform::from_xyz(data.x, data.y, 0.0)
+                    Transform::from_xyz(data.x, data.y, data.z_index as f32)
                         .with_scale(Vec3::splat(data.size)),
                     ScrawlName(data.name.clone()),
                     ScrawlId::default(),
@@ -401,6 +420,7 @@ fn spawn_sprites_from_python(
             }
 
             // Register in the Python runtime
+            let _ = data.py_object.bind(py).call_method0("_take_dirty");
             runtime.sprites.push(PythonSpriteInstance {
                 py_object: data.py_object.clone_ref(py),
                 entity,
@@ -412,6 +432,13 @@ fn spawn_sprites_from_python(
             log::info!("Spawned sprite: {} (entity {:?})", data.name, entity);
         }
     });
+}
+
+fn custom_sprite_size(width: Option<f32>, height: Option<f32>, has_image: bool) -> Option<Vec2> {
+    match (width, height, has_image) {
+        (None, None, true) => None,
+        (width, height, _) => Some(Vec2::new(width.unwrap_or(40.0), height.unwrap_or(40.0))),
+    }
 }
 
 /// Extract scene info from a Python Scene object.

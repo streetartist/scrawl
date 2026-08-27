@@ -70,13 +70,12 @@ class GameRunner(QObject):
             env.insert("PYTHONUTF8", "1")
             env.insert("PYTHONUNBUFFERED", "1")  # Force unbuffered output
 
-            # Use local scrawl_v2 module from project root
+            # Use the local Scrawl package from the repository.
             ide_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
             scrawl_root = os.path.dirname(ide_dir)  # D:\Project\scrawl\scrawl
             python_dir = os.path.join(scrawl_root, "python")  # D:\Project\scrawl\scrawl\python
-            # Include both scrawl_root (for legacy scrawl) and python_dir (for scrawl_v2)
             existing_path = env.value("PYTHONPATH", "")
-            new_path = os.pathsep.join(filter(None, [python_dir, scrawl_root, existing_path]))
+            new_path = os.pathsep.join(filter(None, [python_dir, existing_path]))
             env.insert("PYTHONPATH", new_path)
 
             self._process.setProcessEnvironment(env)

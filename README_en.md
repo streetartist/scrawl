@@ -3,546 +3,267 @@
 [中文](README.md) | English
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
+  <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" alt="Scrawl logo" />
 </p>
 
 <p align="center">
-  <a href="#">
-    <img src="https://img.shields.io/badge/QQ_Group-1001578435-blue?style=for-the-badge&logo=tencentqq" alt="QQ Group" />
-  </a>
+  <a href="https://github.com/streetartist/scrawl"><img src="https://img.shields.io/badge/engine-Rust%20%2B%20Bevy-orange" alt="Rust and Bevy" /></a>
+  <a href="https://pypi.org/project/scrawl-engine/"><img src="https://img.shields.io/pypi/v/scrawl-engine" alt="PyPI version" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 license" /></a>
 </p>
 
----
+Scrawl is a Python-facing 2D game engine. It keeps the Scratch-style model of sprites, scenes, clones, broadcasts, and events while Rust and Bevy own the window, rendering, input, audio, and ECS runtime.
 
-## ✨ Interactive Visual IDE
+Starting with 2.2, `scrawl` is the only supported package and mainline API. The old Pygame backend and the `scrawl_v2` import path have been removed.
 
-Scrawl provides a **Godot-like visual IDE** for intuitive game development!
+## Features
 
-- 🎨 **Visual Scene Editor** - Drag & drop sprites, real-time preview
-- 📝 **Built-in Code Editor** - Syntax highlighting, instant editing
-- 🎮 **One-click Run** - Test your game directly in the IDE
-- 🔧 **Property Inspector** - Visually adjust sprite and scene properties
-- 🤖 **AI Programming Assistant** - Configure API Key to let AI help you write and modify game code!
+- Scratch-like `Game`, `Scene`, and `Sprite` model with clones and broadcasts.
+- Coroutine tasks where a yielded number is a delay in milliseconds.
+- Decorators for keyboard, mouse, sprite clicks, broadcasts, and collisions.
+- Native Rust/Bevy window, renderer, input, audio, and fixed-step runtime.
+- Shape and PNG/SVG sprites with visibility, scale, explicit dimensions, and `z_index`.
+- Persistent text, speech, pen trails, sound effects, music, and scene switching.
+- Dirty property synchronization so idle sprites do not resend every render property each frame.
+- A visual IDE with scene editing, an inspector, code editing, running, and an AI assistant.
 
-### 🤖 AI Assistant (New Feature!)
+> The generic Node, UI, physics node, TileMap, Particles, and Navigation models are importable, but some are not connected to `NativeGame` yet. Check the [runtime capability table](docs/MANUAL.md#native-runtime-status) before depending on them.
 
-After configuring an OpenAI-compatible API Key in settings, you can use the AI programming assistant:
+## Installation
 
-- 💬 **Smart Chat** - Describe your needs in natural language, AI generates code automatically
-- ✏️ **Code Modification** - AI can directly modify sprite and scene code
-- 🎛️ **Property Adjustment** - AI can modify sprite position, size and other properties
-- 📋 **One-click Apply** - Click "Apply" button to update AI-generated code to your project
+Scrawl requires Python 3.8 or newer.
 
-<p align="center">
-  <img src="demo/image/image1.png" width="45%" />
-  <img src="demo/image/image2.png" width="45%" />
-</p>
+```bash
+python -m pip install scrawl-engine
+```
 
----
+Upgrade an existing installation:
 
-Scrawl is a Scratch-like game engine based on Pygame, designed to provide developers with an intuitive programming experience similar to Scratch, while leveraging Python's powerful capabilities.
+```bash
+python -m pip install --upgrade scrawl-engine
+```
 
-## Best Demo
+Building from source also requires stable Rust:
 
-Witch Game: https://github.com/streetartist/scrawl_demo_witch
-
-## Core Features
-
--   🧩 **Scratch-like Development Paradigm**: Use decorators to mark main coroutines, clone coroutines, and event handler coroutines
--   🎮 **Built-in Game Object System**: Ready-to-use sprites, scenes, particle systems, and more
--   ⚙️ **Physics Engine Integration**: Supports physical properties like velocity, gravity, elasticity, etc.
--   📻 **Broadcast Messaging System**: Component communication mechanism
--   🔧 **Debugging Tools**: Real-time display of FPS, sprite count, and other debug information
--   🎨 **Drawing Tools**: Supports pen drawing
--   🚀 **Coroutine Task System**: Coroutine mechanism supports intuitive `while True` loops
+```bash
+git clone https://github.com/streetartist/scrawl.git
+cd scrawl
+python -m pip install -r requirements-dev.txt
+python -m maturin develop --release
+python -c "import scrawl; print(scrawl.__version__)"
+```
 
 ## Quick Start
 
-The following code demonstrates the basic usage of Scrawl:
-
-**Example 1:**
-
 ```python
-from scrawl import *
-import pygame
+from scrawl import Game, Scene, Sprite, as_main, on_edge_collision, on_key
 
-# svg files from https://scratch.mit.edu/projects/239626199/editor/
-
-# Create game instance
-game = Game()
-
-class Bat(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "Bat"
-        self.add_costume("costume1", pygame.image.load("bat2-b.svg").convert_alpha())
-        self.add_costume("costume2", pygame.image.load("bat2-a.svg").convert_alpha())
-        self.visible = False
-        self.set_size(0.5)
-
-    @as_clones
-    def clones1(self):
-        self.pos = pygame.Vector2(400, 300)
-        self.face_random_direction()
-        self.move(400)
-        self.face_towards("Witch")
-        self.visible = True
-        while True:
-            self.next_costume()
-            yield 300
-
-    @as_clones
-    def clones2(self):
-        while True:
-            self.move(5)
-            yield 200
-
-    @as_main
-    def main1(self):
-        while True:
-            yield 3000
-            # Add bat
-            self.clone()
-
-    @on_edge_collision()
-    def finish(self):
-        self.delete_self()
-
-    @on_sprite_collision("FireBall")
-    def hit_fireball(self, other):
-        self.delete_self()
-
-    @on_sprite_collision("Witch")
-    def hit_witch(self, other):
-        self.delete_self()
-
-class FireBall(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "FireBall"
-        self.add_costume("costume1", pygame.image.load("ball-a.svg").convert_alpha())
-        self.visible = False
-        self.set_size(0.2)
-
-    @as_clones
-    def clones1(self):
-        self.visible = True
-        while True:
-            self.move(10)
-            yield 100
-
-    @on_edge_collision()
-    def finish(self):
-        self.delete_self()
-
-class Witch(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "Witch"
-        self.add_costume("costume1", pygame.image.load("witch.svg").convert_alpha())
-        self.fireball = FireBall()
-
-    @on_key(pygame.K_s, "held")
-    def right_held(self):
-        self.turn_right(2)
-
-    @on_key(pygame.K_d, "held")
-    def left_held(self):
-        self.turn_left(2)
-
-    @on_key(pygame.K_SPACE, "held")
-    def space_pressed(self):
-        self.fireball.direction = self.direction
-        self.clone(self.fireball)
-
-# Define scene
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        bat = Bat()
-        self.add_sprite(bat)
-        witch = Witch()
-        self.add_sprite(witch)
-
-# Run game
-game.set_scene(MyScene())
-game.run(fps=60)
-```
-
-https://github.com/user-attachments/assets/7398ac8f-689e-4088-9d78-414272c99438
-
-**Example 2:**
-
-```python
-from scrawl import Game, Scene, Sprite, Cat, as_main
-
-# Create game instance
-game = Game()
-
-class MyCat(Cat):
-    def __init__(self):
-        super().__init__()
-
-    @as_main
-    def main1(self):
-        while True:
-            self.walk()
-            yield 500
-
-# Define scene
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        # Add sprite
-        cat = MyCat()
-        self.add_sprite(cat)
-
-# Run game
-game.set_scene(MyScene())
-game.run()
-```
-
-![Screen Capture 2025-06-15 090207](https://github.com/user-attachments/assets/2842db4a-147a-466e-ad69-4d74c24ba4b4)
-
-**Example 3:**
-
-```python
-from scrawl import *
-import time
-
-# Create game instance
-game = Game()
 
 class Ball(Sprite):
     def __init__(self):
         super().__init__()
+        self.name = "Ball"
+        self.pos = (400, 300)
+        self.direction = 45
+        self.color = (84, 193, 189)
+        self.set_dimensions(48, 48)
 
     @as_main
-    def main1(self):
+    def move_forever(self):
         while True:
-            self.turn_left(10)
-            self.move(10)
-            yield 100
-            self.clone()
+            self.move(3)
+            yield 16
 
-    @as_clones
-    def clones1(self):
-        while True:
-            self.turn_right(10)
-            self.move(100)
-            self.change_color_random()
-            yield 1000
+    @on_edge_collision("any")
+    def bounce(self):
+        self.turn_right(180)
 
-    @on_broadcast("event")
-    def event1(self):
-        self.say("hello")
 
-# Define scene
-class MyScene(Scene):
+class Player(Sprite):
     def __init__(self):
         super().__init__()
-        # Add sprite
-        ball = Ball()
-        self.add_sprite(ball)
+        self.name = "Player"
+        self.pos = (200, 200)
+        self.color = (240, 106, 95)
+        self.set_dimensions(56, 40)
+        self.z_index = 1
 
-    @as_main
-    def main1(self):
-        while True:
-            # Add particle system
-            explosion = ParticleSystem(400, 300)
-            self.add_particles(explosion)  # Add particle system to scene
-            self.broadcast("event")
-            yield 3000
+    @on_key("w", "held")
+    def up(self):
+        self.move_up(5)
 
-# Run game
-game.set_scene(MyScene())
-game.run()
-```
+    @on_key("s", "held")
+    def down(self):
+        self.move_down(5)
 
-https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
+    @on_key("a", "held")
+    def left(self):
+        self.move_left(5)
 
-## Core Concepts
+    @on_key("d", "held")
+    def right(self):
+        self.move_right(5)
 
-### 1. Game Main Loop (`Game` Class)
--   Handles event loop
--   Manages scene switching
--   Controls frame rate and debug information
 
-### 2. Scene (`Scene` Class)
--   Serves as game container
--   Manages sprites and particle systems
--   Handles global events and broadcast messages
+class MainScene(Scene):
+    def __init__(self):
+        super().__init__("main")
+        self.set_background_color(25, 32, 43)
+        self.add_sprite(Ball())
+        self.add_sprite(Player())
 
-### 3. Sprite (`Sprite` and `PhysicsSprite` Classes)
--   Basic game entities
--   Support properties like position, direction, size
--   Physics sprites support velocity, gravity, and other physical properties
 
-#### Common Methods:
--   `move()`, `goto()`, `turn_left()`, `turn_right()`
--   `say()`, `clone()`, `delete_self()`
--   `apply_impulse()`, `set_gravity()` (for physics sprites)
-
-### 4. Event System
--   **Broadcast Mechanism**: Component communication
--   **Key Binding**: Global and scene-level bindings
--   **Sprite Events**: Supports collision detection
-
-## Documentation Index
-
-1.  **Core Class Reference**
-    -   Game - Game Controller
-    -   Scene - Game Scene
-    -   Sprite - Base Sprite Class
-    -   PhysicsSprite - Physics Sprite Class
-2.  **Decorator System**
-    -   `@as_main` - Marks main behavior coroutine
-    -   `@as_clones` - Marks clone behavior
-    -   `@on_key` - Key event handler
-    -   `@on_mouse` - Mouse event handler
-    -   `@on_sprite_clicked` - Sprite click handler
-    -   `@on_broadcast` - Broadcast handler
-    -   `@on_edge_collision` - Edge collision handler
-    -   `@on_sprite_collision` - Sprite collision handler
-3.  **Advanced Features**
-    -   Particle Systems
-    -   Drawing Tools
-    -   Collision Detection
-    -   Physics System
-    -   Sound System
-    -   Cloud Variables
-
-## Installation
-
-```bash
-pip install scrawl-engine
-```
-
-Upgrade
-
-```bash
-pip install --upgrade scrawl-engine
-```
-
-## Development Documentation (Tentative Version)
-
-# Scrawl Library Usage Documentation
-
-## Table of Contents
-
-- Core Concepts
-  - Game Class
-  - Scene Class
-  - Sprite Class
-- Event Handling
-  - Key Events
-  - Collision Detection
-  - Broadcast Events
-- Sprite Cloning
-  - Creating Clones
-  - Clone Behavior
-- Resource Management
-  - Adding Images
-  - Using Fonts
-- Advanced Features
-  - Physics Sprites
-  - Particle Systems
-  - Pen Effects
-  - Sound System
-  - Cloud Variables
-- Debugging Tools
-  - Debug Mode
-  - Performance Monitoring
-
----
-
-## Core Concepts
-### Game Class
-Main game controller responsible for initialization and running game loop:
-```python
-game = Game(
-    width=800, 
-    height=600, 
-    title="Game Title",
-    font_path="font.ttf",
-    font_size=20,
-    fullscreen=False
-)
-game.set_scene(MyScene()) # Set scene
+game = Game(width=800, height=600, title="My Scrawl Game")
+game.set_scene(MainScene())
 game.run(fps=60, debug=True)
 ```
 
-### Scene Class
-Game scene container for managing sprites and particle systems:
-```python
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        # Add sprite
-        self.add_sprite(MySprite())
-    
-    @as_main    
-    def main1():
-        pass # Scene main function
-# Set scene
-game.set_scene(MyScene())
+The coordinate origin is at the bottom left. X increases to the right and Y increases upward. Directions use compass degrees: `0` points up and `90` points right.
+
+Run the repository examples with:
+
+```bash
+python examples/basic_movement.py
+python examples/witch.py
 ```
 
-### Sprite Class
-Basic elements in the game with properties like position, direction, size:
-```python
-class MySprite(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "Sprite Name"
-        self.pos = pygame.Vector2(100, 100)
-        self.direction = 90  # 0=right, 90=up
-        self.size = 1.0
-        self.visible = True
+The witch example demonstrates costume animation, clones, collisions, broadcasts, and persistent text. Costumes are filesystem paths; Pygame Surface objects are no longer supported.
 
-    @as_main   
-    def main1(self):
-        while True:
-            # Sprite main function
-            self.move(5)
-            yield 2000 # Delay 2000ms
-```
----
-## Event Handling
-### Key Events
-Handle key events using decorators:
+## Core Concepts
+
+### Game and Scene
+
+`Game` creates the native window, stores scenes, and starts the Bevy loop. `Scene` manages sprites, its background, and broadcasts.
+
 ```python
-@on_key(pygame.K_SPACE, "pressed")  # Triggered on press
-def space_pressed(self):
-    print("Space pressed")
-@on_key(pygame.K_LEFT, "held")  # Continuously triggered while held
-def left_held(self):
-    self.turn_left(2)
+game = Game(width=1280, height=720, title="Game title", fps=60)
+game.set_scene(MainScene("main"))
+game.add_scene(PauseScene("pause"))
+game.run(debug=False, vsync=True)
 ```
 
-### Collision Detection
-Handle collisions between sprites and with boundaries:
+### Sprite
+
+`Sprite` is currently the most complete game object in the native runtime.
+
+| Area | API |
+| --- | --- |
+| Transform | `x`, `y`, `pos`, `direction`, `size`, `move()`, `go_to()`, `point_towards()` |
+| Appearance | `color`, `visible`, `width`, `height`, `z_index`, `set_dimensions()` |
+| Costumes | `add_costume()`, `switch_costume()`, `next_costume()` |
+| Lifecycle | `clone()`, `delete_self()` |
+| Interaction | `say()`, `set_text()`, `broadcast()`, `play_sound()` |
+| Pen | `pen_down()`, `pen_up()`, `set_pen_color()`, `set_pen_size()` |
+
+Costumes must be filesystem paths:
+
 ```python
-# Edge collision detection
-@on_edge_collision("left")  # Collide with left edge
-def hit_left(self):
-    self.say("Hit left wall")
-# Sprite collision detection
-@on_sprite_collision("Enemy")  # Collide with sprite named "Enemy"
-def hit_enemy(self, other):
+self.add_costume("idle", "assets/player-idle.svg")
+self.add_costume("walk", "assets/player-walk.png")
+self.switch_costume("walk")
+```
+
+## Events and Coroutines
+
+Handlers may be regular functions or generators. The runtime resumes a generator after the number of milliseconds it yields.
+
+```python
+@as_main
+def main_task(self):
+    while True:
+        self.next_costume()
+        yield 200
+
+@as_clones
+def clone_task(self):
+    self.show()
+    while True:
+        self.move(5)
+        yield 16
+
+@on_key("space", "pressed")
+def fire(self):
+    self.clone(self.projectile)
+
+@on_mouse(1, "pressed")
+def mouse_down(self):
+    self.say("clicked")
+
+@on_sprite_clicked
+def selected(self):
+    self.color = (255, 200, 80)
+
+@on_broadcast("game_over")
+def game_over(self):
+    self.set_text("Game Over", 36, (255, 255, 255))
+
+@on_edge_collision("any")
+def hit_edge(self):
     self.delete_self()
+
+@on_sprite_collision("Enemy")
+def hit_enemy(self):
+    self.broadcast("lose_life")
 ```
 
-### Broadcast Events
-Communication mechanism between sprites and scenes:
-```python
-# Broadcast event
-self.broadcast("gameover")
-# Handle broadcast event
-@on_broadcast("gameover")
-def on_gameover(self):
-    self.visible = True
-```
----
-## Sprite Cloning
-### Creating Clones
-Clone existing sprites:
-```python
-# Clone self
-self.clone()
-# Clone other sprite
-self.clone(other_sprite)
-```
+Keys use string identifiers such as `"space"`, `"left"`, and `"a"`. Event modes are `"pressed"`, `"released"`, or `"held"`.
 
-### Clone Behavior
-Define logic specific to clones:
-```python
-class Bat(Sprite):
-    @as_clones  # Mark as clone task
-    def clones_behavior(self):
-        self.visible = True
-        while True:
-            self.move(5)
-            yield 200  # Move every 200ms
-```
----
-## Resource Management
-### Adding Images
-Add multiple costumes for sprites:
-```python
-self.add_costume("costume1", pygame.image.load("cat1.svg"))
-self.add_costume("costume2", pygame.image.load("cat2.svg"))
-self.switch_costume("costume1")  # Switch costume
-self.next_costume()  # Switch to next costume
-```
+## Text, Pen, and Audio
 
-### Using Fonts
-Game font settings:
 ```python
-game = Game(
-    font_path="Simhei.ttf",  # Supports Chinese fonts
-    font_size=20
-)
-```
----
-## Advanced Features
-### Physics Sprites
-Sprites with physical properties (velocity, gravity, friction):
-```python
-class PhysicsBall(PhysicsSprite):
-    def __init__(self):
-        super().__init__()
-        self.velocity = pygame.Vector2(0, 5)
-        self.gravity = pygame.Vector2(0, 0.2)
-        self.elasticity = 0.8  # Elasticity coefficient
-```
-
-### Particle Systems
-Create particle effects:
-```python
-# Create particle system at specified position
-self.scene.add_particles(
-    ParticleSystem(
-        x=100, 
-        y=100, 
-        count=50,
-        life_range=(500, 1500)
-    )
-)
-```
-
-### Pen Effects
-Implement drawing functionality:
-```python
-# Enable pen
-self.pen_down = True
-self.pen_color = (255, 0, 0)
-self.pen_size = 3
-# Automatically record path when moving
+self.say("Hello", duration=1500)
+self.set_text("Score: 10", font_size=24, color=(255, 240, 120))
+self.set_pen_color(255, 80, 80)
+self.set_pen_size(3)
+self.pen_down()
 self.move(100)
-# Clear pen trails
-self.clear_pen()
-```
----
-## Debugging Tools
-### Debug Mode
-Enable debug information display:
-```python
-game.run(debug=True)  # Enable debug mode
-# Log debug information
-game.log_debug("Sprite created")
+self.pen_up()
+
+game.load_sound("jump", "assets/jump.ogg")
+game.load_music("bgm", "assets/background.ogg")
+game.play_sound("jump")
+game.play_music("bgm", loops=-1, volume=0.7)
+game.stop_music()
 ```
 
-### Performance Monitoring
-Key performance metrics displayed on screen:
-1. Real-time FPS
-2. Number of sprites in scene
-3. Current scene name
-4. Custom debug information
+## Visual IDE
 
-## Contribution Guidelines
+`scrawl_ide` provides a scene tree, inspector, code editor, runner, and an OpenAI-compatible AI assistant. It is still under active development, so keep generated projects under version control.
 
-Welcome to submit issues and pull requests via GitHub:
-https://github.com/streetartist/scrawl
+```bash
+python -m pip install -r scrawl_ide/requirements.txt
+python scrawl_ide/main.py
+```
 
----
+Configure the AI endpoint, model, and API key in the IDE settings. Credentials are not written into generated game source files.
+
+## Repository Layout
+
+```text
+crates/              Rust engine crates and PyO3 bridge
+python/scrawl/       The only supported Python package
+examples/            Runnable examples and assets for the current API
+scrawl_ide/          Visual IDE
+docs/                Manual, migration guide, release notes, and roadmap
+tests/               Python API tests
+```
+
+## Documentation
+
+- [Runtime manual and capability table](docs/MANUAL.md)
+- [Migrating older projects to 2.2](docs/MIGRATION_2.2.md)
+- [2.2.0 release notes](docs/RELEASE_NOTES_2.2.0.md)
+- [Roadmap](docs/ROADMAP.md)
+
+## Development and Verification
+
+```bash
+cargo check -p scrawl-bridge
+cargo test -p scrawl-bridge
+python -m unittest discover -s tests -v
+git diff --check
+```
+
+GitHub issues and pull requests are welcome at https://github.com/streetartist/scrawl. The QQ group is `1001578435`.
+
+Scrawl is released under the [GNU General Public License v3.0](LICENSE).

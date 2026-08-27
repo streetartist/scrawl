@@ -6,8 +6,6 @@
 //! The bridge acts as a proxy between Python objects and the Bevy ECS World.
 
 mod py_game;
-mod py_scene;
-mod py_sprite;
 pub mod runtime;
 
 use pyo3::prelude::*;
@@ -16,12 +14,9 @@ use pyo3::prelude::*;
 #[pymodule]
 fn scrawl_native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<py_game::PyGame>()?;
-    m.add_class::<py_scene::PyScene>()?;
-    m.add_class::<py_sprite::PySprite>()?;
-    m.add_class::<py_sprite::PyPhysicsSprite>()?;
 
     // Version info
-    m.add("__version__", "2.1.2")?;
+    m.add("__version__", "2.2.0")?;
     m.add("ENGINE_NAME", "Scrawl Engine (Bevy)")?;
 
     Ok(())

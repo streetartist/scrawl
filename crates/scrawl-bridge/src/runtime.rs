@@ -14,6 +14,15 @@ use scrawl_core::components::*;
 use scrawl_core::events::*;
 use scrawl_core::schedule::ScrawlSet;
 
+const DIRTY_TRANSFORM: u8 = 1 << 0;
+const DIRTY_VISIBLE: u8 = 1 << 1;
+const DIRTY_COLOR: u8 = 1 << 2;
+const DIRTY_COSTUME: u8 = 1 << 3;
+const DIRTY_PEN: u8 = 1 << 4;
+const DIRTY_DIMENSIONS: u8 = 1 << 5;
+const DIRTY_DRAW_ORDER: u8 = 1 << 6;
+const DIRTY_ALL: u8 = (1 << 7) - 1;
+
 /// A registered Python sprite instance with its handlers.
 #[derive(Debug)]
 pub struct PythonSpriteInstance {
@@ -112,7 +121,7 @@ fn python_frame_system(world: &mut World) {
     let mut sprites = std::mem::take(&mut world.resource_mut::<PythonRuntime>().sprites);
 
     // === Single GIL acquisition for the entire frame ===
-    Python::with_gil(|py| {
+    let commands = Python::with_gil(|py| {
         let deadline = Instant::now() + Duration::from_millis(budget_ms);
 
         for sprite in sprites.iter_mut() {
@@ -290,59 +299,102 @@ fn python_frame_system(world: &mut World) {
             let obj = sprite.py_object.bind(py);
             let entity = sprite.entity;
             let mut previous_position = None;
+            let dirty = obj
+                .call_method0("_take_dirty")
+                .and_then(|value| value.extract::<u8>())
+                .unwrap_or(DIRTY_ALL);
 
-            if let Some(mut t2d) = world.get_mut::<Transform2D>(entity) {
-                previous_position = Some(t2d.position);
-                if let Ok(x) = obj.getattr("x").and_then(|v| v.extract::<f32>()) {
-                    t2d.position.x = x;
-                }
-                if let Ok(y) = obj.getattr("y").and_then(|v| v.extract::<f32>()) {
-                    t2d.position.y = y;
-                }
-                if let Ok(dir) = obj.getattr("direction").and_then(|v| v.extract::<f32>()) {
-                    t2d.rotation_degrees = dir; // rotation handled in sync_transform2d_to_bevy
-                }
-                if let Ok(size) = obj.getattr("size").and_then(|v| v.extract::<f32>()) {
-                    t2d.scale = Vec2::splat(size);
+            if dirty & DIRTY_TRANSFORM != 0 {
+                if let Some(mut t2d) = world.get_mut::<Transform2D>(entity) {
+                    previous_position = Some(t2d.position);
+                    if let Ok(x) = obj.getattr("x").and_then(|v| v.extract::<f32>()) {
+                        t2d.position.x = x;
+                    }
+                    if let Ok(y) = obj.getattr("y").and_then(|v| v.extract::<f32>()) {
+                        t2d.position.y = y;
+                    }
+                    if let Ok(dir) = obj.getattr("direction").and_then(|v| v.extract::<f32>()) {
+                        t2d.rotation_degrees = dir; // rotation handled in sync_transform2d_to_bevy
+                    }
+                    if let Ok(size) = obj.getattr("size").and_then(|v| v.extract::<f32>()) {
+                        t2d.scale = Vec2::splat(size);
+                    }
                 }
             }
-            if let Some(mut vis) = world.get_mut::<Visible>(entity) {
-                if let Ok(visible) = obj.getattr("visible").and_then(|v| v.extract::<bool>()) {
-                    vis.0 = visible;
-                }
-            }
-
-            let has_image_costume = world
-                .get::<CostumeSet>(entity)
-                .and_then(|costumes| costumes.current_costume())
-                .and_then(|costume| costume.handle.as_ref())
-                .is_some();
-
-            if let Some(mut sprite_color) = world.get_mut::<SpriteColor>(entity) {
-                if has_image_costume {
-                    sprite_color.0 = Color::WHITE;
-                } else if let Ok((r, g, b)) = obj.getattr("color").and_then(|v| v.extract::<(u8, u8, u8)>()) {
-                    sprite_color.0 = Color::srgb(
-                        r as f32 / 255.0,
-                        g as f32 / 255.0,
-                        b as f32 / 255.0,
-                    );
+            if dirty & DIRTY_VISIBLE != 0 {
+                if let Some(mut vis) = world.get_mut::<Visible>(entity) {
+                    if let Ok(visible) = obj.getattr("visible").and_then(|v| v.extract::<bool>()) {
+                        vis.0 = visible;
+                    }
                 }
             }
 
-            sync_pen_state_from_python(world, entity, &obj, previous_position);
+            if dirty & DIRTY_COLOR != 0 {
+                let has_image_costume = world
+                    .get::<CostumeSet>(entity)
+                    .and_then(|costumes| costumes.current_costume())
+                    .and_then(|costume| costume.handle.as_ref())
+                    .is_some();
+                if let Some(mut sprite_color) = world.get_mut::<SpriteColor>(entity) {
+                    if has_image_costume {
+                        sprite_color.0 = Color::WHITE;
+                    } else if let Ok((r, g, b)) = obj
+                        .getattr("color")
+                        .and_then(|v| v.extract::<(u8, u8, u8)>())
+                    {
+                        sprite_color.0 =
+                            Color::srgb(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0);
+                    }
+                }
+            }
+
+            if dirty & (DIRTY_TRANSFORM | DIRTY_PEN) != 0 {
+                sync_pen_state_from_python(world, entity, &obj, previous_position);
+            }
 
             // Sync current costume
-            if let Ok(costume_name) = obj.getattr("_current_costume").and_then(|v| v.extract::<String>()) {
-                if let Some(mut costumes) = world.get_mut::<CostumeSet>(entity) {
-                    costumes.switch_to(&costume_name);
+            if dirty & DIRTY_COSTUME != 0 {
+                if let Ok(costume_name) = obj
+                    .getattr("_current_costume")
+                    .and_then(|v| v.extract::<String>())
+                {
+                    if let Some(mut costumes) = world.get_mut::<CostumeSet>(entity) {
+                        costumes.switch_to(&costume_name);
+                    }
+                }
+            }
+
+            if dirty & DIRTY_DIMENSIONS != 0 {
+                let width = obj
+                    .getattr("width")
+                    .ok()
+                    .and_then(|v| v.extract::<Option<f32>>().ok())
+                    .flatten();
+                let height = obj
+                    .getattr("height")
+                    .ok()
+                    .and_then(|v| v.extract::<Option<f32>>().ok())
+                    .flatten();
+                let has_image = world
+                    .get::<CostumeSet>(entity)
+                    .and_then(|costumes| costumes.current_costume())
+                    .and_then(|costume| costume.handle.as_ref())
+                    .is_some();
+                if let Some(mut bevy_sprite) = world.get_mut::<Sprite>(entity) {
+                    bevy_sprite.custom_size = custom_sprite_size(width, height, has_image);
+                }
+            }
+
+            if dirty & DIRTY_DRAW_ORDER != 0 {
+                if let Ok(z_index) = obj.getattr("z_index").and_then(|v| v.extract::<i32>()) {
+                    if let Some(mut transform) = world.get_mut::<Transform>(entity) {
+                        transform.translation.z = z_index as f32;
+                    }
                 }
             }
         }
+        process_python_commands(py)
     });
-
-    // --- Process command queue from Python ---
-    let commands = Python::with_gil(process_python_commands);
 
     // Execute commands on the ECS world
     for cmd in commands {
@@ -445,12 +497,9 @@ struct ScrawlTextDisplay {
 fn process_python_commands(py: Python<'_>) -> Vec<PythonCommand> {
     let mut commands = Vec::new();
 
-    let module = match py.import("scrawl_v2.sprite") {
+    let module = match py.import("scrawl.sprite") {
         Ok(m) => m,
-        Err(_) => match py.import("scrawl.sprite") {
-            Ok(m) => m,
-            Err(_) => return commands,
-        },
+        Err(_) => return commands,
     };
 
     let queue = match module.getattr("_scrawl_command_queue") {
@@ -953,11 +1002,28 @@ fn spawn_clone(
     Python::with_gil(|py| {
         let obj = py_sprite.bind(py);
 
-        let name = obj.getattr("name").and_then(|v| v.extract::<String>()).unwrap_or_else(|_| "Clone".into());
+        let name = obj
+            .getattr("name")
+            .and_then(|v| v.extract::<String>())
+            .unwrap_or_else(|_| "Clone".into());
         let x = obj.getattr("x").and_then(|v| v.extract::<f32>()).unwrap_or(400.0);
         let y = obj.getattr("y").and_then(|v| v.extract::<f32>()).unwrap_or(300.0);
         let dir = obj.getattr("direction").and_then(|v| v.extract::<f32>()).unwrap_or(90.0);
         let size = obj.getattr("size").and_then(|v| v.extract::<f32>()).unwrap_or(1.0);
+        let width = obj
+            .getattr("width")
+            .ok()
+            .and_then(|v| v.extract::<Option<f32>>().ok())
+            .flatten();
+        let height = obj
+            .getattr("height")
+            .ok()
+            .and_then(|v| v.extract::<Option<f32>>().ok())
+            .flatten();
+        let z_index = obj
+            .getattr("z_index")
+            .and_then(|v| v.extract::<i32>())
+            .unwrap_or(0);
         let visible = obj.getattr("visible").and_then(|v| v.extract::<bool>()).unwrap_or(true);
         let collision_type = obj.getattr("collision_type").and_then(|v| v.extract::<String>()).unwrap_or_else(|_| "rect".into());
 
@@ -1001,15 +1067,25 @@ fn spawn_clone(
             }
         }
 
+        let custom_size = custom_sprite_size(width, height, first_image.is_some());
         let bevy_sprite = if let Some(ref img) = first_image {
-            Sprite { image: img.clone(), color: Color::WHITE, ..default() }
+            Sprite {
+                image: img.clone(),
+                color: Color::WHITE,
+                custom_size,
+                ..default()
+            }
         } else {
-            Sprite { color, custom_size: Some(Vec2::new(40.0, 40.0)), ..default() }
+            Sprite {
+                color,
+                custom_size,
+                ..default()
+            }
         };
 
         let entity = world.spawn((
             bevy_sprite,
-            Transform::from_xyz(x, y, 0.0).with_scale(Vec3::splat(size)),
+            Transform::from_xyz(x, y, z_index as f32).with_scale(Vec3::splat(size)),
             ScrawlName(name.clone()),
             ScrawlId::default(),
             Transform2D {
@@ -1045,6 +1121,7 @@ fn spawn_clone(
         // (so face_towards etc. can find other sprites)
         // obj is the new clone's Python object
 
+        let _ = obj.call_method0("_take_dirty");
         sprites.push(PythonSpriteInstance {
             py_object: py_sprite.clone_ref(py),
             entity,
@@ -1053,6 +1130,13 @@ fn spawn_clone(
             handlers,
         });
     });
+}
+
+fn custom_sprite_size(width: Option<f32>, height: Option<f32>, has_image: bool) -> Option<Vec2> {
+    match (width, height, has_image) {
+        (None, None, true) => None,
+        (width, height, _) => Some(Vec2::new(width.unwrap_or(40.0), height.unwrap_or(40.0))),
+    }
 }
 
 /// Convert a Bevy KeyCode to the string format used by scrawl Python API.

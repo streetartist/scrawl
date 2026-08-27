@@ -2,7 +2,7 @@
 Code Snippets for Scrawl IDE
 
 Defines decorator and function templates for quick insertion.
-Uses scrawl_v2 API.
+Uses the Scrawl API.
 """
 
 from typing import List, Dict, Any

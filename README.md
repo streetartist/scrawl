@@ -3,680 +3,374 @@
 中文 | [English](README_en.md)
 
 <p align="center">
-  <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" />
+  <img src="https://github.com/user-attachments/assets/f3e9e30b-7132-47e6-abd5-c39332a920be" width="200" alt="Scrawl logo" />
 </p>
 
-# 热烈邀请大家到QQ群：1001578435交流！！！ 
-
 <p align="center">
-  <a href="#">
-    <img src="https://img.shields.io/badge/QQ群-1001578435-blue?style=for-the-badge&logo=tencentqq" alt="QQ群" />
+  <a href="https://github.com/streetartist/scrawl">
+    <img src="https://img.shields.io/badge/engine-Rust%20%2B%20Bevy-orange" alt="Rust and Bevy" />
+  </a>
+  <a href="https://pypi.org/project/scrawl-engine/">
+    <img src="https://img.shields.io/pypi/v/scrawl-engine" alt="PyPI version" />
+  </a>
+  <a href="LICENSE">
+    <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0 license" />
+  </a>
+  <a href="#社区">
+    <img src="https://img.shields.io/badge/QQ%E7%BE%A4-1001578435-blue" alt="QQ群 1001578435" />
   </a>
 </p>
 
----
+Scrawl 是一个面向 Python 的 2D 游戏引擎，保留 Scratch 风格的精灵、场景、克隆、广播和事件编程体验，同时由 Rust 与 Bevy 负责窗口、渲染、输入、音频和 ECS 运行时。
 
-## ✨ 交互式可视化 IDE
-
-Scrawl 提供了一个**类 Godot 的可视化 IDE**，让游戏开发更加直观便捷！
-
-- 🎨 **可视化场景编辑器** - 拖拽精灵、实时预览
-- 📝 **内置代码编辑器** - 语法高亮、即时编辑
-- 🎮 **一键运行** - 直接在 IDE 中测试游戏
-- 🔧 **属性检查器** - 可视化调整精灵和场景属性
-- 🤖 **AI 编程助手** - 配置 API Key 后，AI 可以帮你编写和修改游戏代码！
-
-<p align="center">
-  <img src="demo/image/image1.png" width="45%" />
-  <img src="demo/image/image2.png" width="45%" />
-</p>
-
-### 🤖 AI 助手功能（新功能！）
-
-> ⚠️ **注意：Scrawl IDE 目前处于初步开发阶段**，功能持续完善中，欢迎反馈建议！
-
-#### 🎁 免费 AI API 试玩
-
-为感谢大家的支持，我们为大家提供了**免费的 AI API**，无需自行配置即可体验 AI 编程助手！
-
-- 🆓 **开箱即用** - 默认选择免费模型，无需配置 API Key
-- 🤖 **多模型可选** - 提供 Gemini、GLM、Kimi、MiniMax 等多种免费模型
-- ⏱️ **每日限额** - 每个模型每日 500 次调用（所有用户共享）
-- ⚙️ **支持自定义** - 也可在设置中配置自己的 OpenAI 兼容 API
-
-#### 功能特性
-
-- 💬 **智能对话** - 用自然语言描述需求，AI 自动生成代码
-- ✏️ **代码修改** - AI 可以直接修改精灵和场景的代码
-- 🎛️ **属性调整** - AI 可以修改精灵位置、大小等属性
-- 📋 **一键应用** - 点击"应用"按钮即可将 AI 生成的代码更新到项目中
-
-第一次AI对话：
-
-https://github.com/user-attachments/assets/f58c2f57-b0d3-4aa7-a38b-742ec3046761
-
-四次AI对话后成品：
-
-https://github.com/user-attachments/assets/9d1c0071-3832-4b30-aa36-729c271c6749
-
----
-
-## 简介
-
-Scrawl 是一个基于 Pygame 的类 Scratch 游戏引擎，旨在为开发者提供类似 Scratch 的直观编程体验，同时利用 Python 的强大功能。
-
-## 最佳示例
-
-女巫游戏: https://github.com/streetartist/scrawl_demo_witch
+从 2.2 开始，`scrawl` 就是唯一正式包和主线 API。旧 Pygame 后端及 `scrawl_v2` 入口均已移除。
 
 ## 核心特性
 
--   🧩 **类 Scratch 开发范式**: 使用装饰器标记主协程、克隆协程和事件处理协程
--   🎮 **内置游戏对象系统**: 开箱即用的精灵、场景、粒子系统等
--   ⚙️ **物理引擎集成**: 支持速度、重力、弹性等物理属性
--   📻 **广播消息系统**: 组件间通信机制
--   🔧 **调试工具**: 实时显示 FPS、精灵数量等调试信息
--   🎨 **绘图工具**: 支持画笔绘制
--   🚀 **协程任务系统**: 协程机制支持直观的 `while True` 循环
+- 类 Scratch 编程模型：`Game`、`Scene`、`Sprite`、克隆和广播。
+- 协程任务：生成器中 `yield` 的数字表示等待的毫秒数。
+- 事件装饰器：键盘、鼠标、精灵点击、广播、边缘碰撞和精灵碰撞。
+- Rust/Bevy 原生运行时：窗口、渲染、输入、音频及固定时间步主循环。
+- 精灵渲染：纯色形状、PNG/SVG 造型、显隐、缩放、自定义宽高和 `z_index`。
+- 游戏能力：文字与对话、画笔轨迹、音效、背景音乐和场景切换。
+- Python 属性脏标记：静止精灵不会在每帧重复同步全部渲染属性。
+- 可视化 IDE：场景编辑、属性检查、代码编辑、运行与 AI 编程助手。
+
+> `Node`、UI、物理节点、TileMap、Particles 和 Navigation 等数据模型可以导入，但其中一部分仍未连接到 `NativeGame`。开始项目之前请查看[运行时能力表](docs/MANUAL.md#native-runtime-status)。
+
+## 安装
+
+Scrawl 需要 Python 3.8 或更高版本。
+
+```bash
+python -m pip install scrawl-engine
+```
+
+升级已安装版本：
+
+```bash
+python -m pip install --upgrade scrawl-engine
+```
+
+### 从源码开发
+
+源码构建还需要 Rust stable：
+
+```bash
+git clone https://github.com/streetartist/scrawl.git
+cd scrawl
+python -m pip install -r requirements-dev.txt
+python -m maturin develop --release
+```
+
+安装完成后可验证导入：
+
+```bash
+python -c "import scrawl; print(scrawl.__version__)"
+```
 
 ## 快速开始
 
-### 1. 安装 Scrawl 引擎
-
-```bash
-pip install scrawl-engine
-```
-
-升级到最新版本：
-
-```bash
-pip install --upgrade scrawl-engine
-```
-
-### 2. 使用可视化 IDE（推荐）
-
-克隆代码库：
-
-```bash
-git clone https://github.com/streetartist/scrawl
-cd scrawl
-```
-
-安装 IDE 依赖：
-
-```bash
-pip install -r scrawl_ide/requirements.txt
-```
-
-运行 IDE：
-
-```bash
-python scrawl_ide/main.py
-```
-
-即可启动可视化 IDE，通过拖拽和 AI 助手快速创建游戏！
-
-### 3. 代码示例
-
-以下代码演示了 Scrawl 的基本用法：
-
-**示例 1：**
+下面的示例创建两个精灵：小球自动移动并在边缘转向，玩家使用 WASD 移动。
 
 ```python
-from scrawl import *
-import pygame
+from scrawl import Game, Scene, Sprite, as_main, on_edge_collision, on_key
 
-# svg files from https://scratch.mit.edu/projects/239626199/editor/
-
-# 创建游戏实例
-game = Game()
-
-class Bat(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "Bat"
-        self.add_costume("costume1", pygame.image.load("bat2-b.svg").convert_alpha())
-        self.add_costume("costume2", pygame.image.load("bat2-a.svg").convert_alpha())
-        self.visible = False
-        self.set_size(0.5)
-
-    @as_clones
-    def clones1(self):
-        self.pos = pygame.Vector2(400, 300)
-        self.face_random_direction()
-        self.move(400)
-        self.face_towards("Witch")
-        self.visible = True
-        while True:
-            self.next_costume()
-            yield 300
-
-    @as_clones
-    def clones2(self):
-        while True:
-            self.move(5)
-            yield 200
-
-    @as_main
-    def main1(self):
-        while True:
-            yield 3000
-            # 添加蝙蝠
-            self.clone()
-
-    @on_edge_collision()
-    def finish(self):
-        self.delete_self()
-
-    @on_sprite_collision("FireBall")
-    def hit_fireball(self, other):
-        self.delete_self()
-
-    @on_sprite_collision("Witch")
-    def hit_witch(self, other):
-        self.delete_self()
-
-class FireBall(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "FireBall"
-        self.add_costume("costume1", pygame.image.load("ball-a.svg").convert_alpha())
-        self.visible = False
-        self.set_size(0.2)
-
-    @as_clones
-    def clones1(self):
-        self.visible = True
-        while True:
-            self.move(10)
-            yield 100
-
-    @on_edge_collision()
-    def finish(self):
-        self.delete_self()
-
-class Witch(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "Witch"
-        self.add_costume("costume1", pygame.image.load("witch.svg").convert_alpha())
-        self.fireball = FireBall()
-
-    @on_key(pygame.K_s, "held")
-    def right_held(self):
-        self.turn_right(2)
-
-    @on_key(pygame.K_d, "held")
-    def left_held(self):
-        self.turn_left(2)
-
-    @on_key(pygame.K_SPACE, "held")
-    def space_pressed(self):
-        self.fireball.direction = self.direction
-        self.clone(self.fireball)
-
-# 定义场景
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        bat = Bat()
-        self.add_sprite(bat)
-        witch = Witch()
-        self.add_sprite(witch)
-
-# 运行游戏
-game.set_scene(MyScene())
-game.run(fps=60)
-```
-
-https://github.com/user-attachments/assets/7398ac8f-689e-4088-9d78-414272c99438
-
-**示例 2：**
-
-```python
-from scrawl import Game, Scene, Sprite, Cat, as_main
-
-# 创建游戏实例
-game = Game()
-
-class MyCat(Cat):
-    def __init__(self):
-        super().__init__()
-
-    @as_main
-    def main1(self):
-        while True:
-            self.walk()
-            yield 500
-
-# 定义场景
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        # 添加精灵
-        cat = MyCat()
-        self.add_sprite(cat)
-
-# 运行游戏
-game.set_scene(MyScene())
-game.run()
-```
-
-![Screen Capture 2025-06-15 090207](https://github.com/user-attachments/assets/2842db4a-147a-466e-ad69-4d74c24ba4b4)
-
-**示例 3：**
-
-```python
-from scrawl import *
-import time
-
-# 创建游戏实例
-game = Game()
 
 class Ball(Sprite):
     def __init__(self):
         super().__init__()
+        self.name = "Ball"
+        self.pos = (400, 300)
+        self.direction = 45
+        self.color = (84, 193, 189)
+        self.set_dimensions(48, 48)
 
     @as_main
-    def main1(self):
+    def move_forever(self):
         while True:
-            self.turn_left(10)
-            self.move(10)
-            yield 100
-            self.clone()
+            self.move(3)
+            yield 16
 
-    @as_clones
-    def clones1(self):
-        while True:
-            self.turn_right(10)
-            self.move(100)
-            self.change_color_random()
-            yield 1000
+    @on_edge_collision("any")
+    def bounce(self):
+        self.turn_right(180)
 
-    @on_broadcast("event")
-    def event1(self):
-        self.say("hello")
 
-# 定义场景
-class MyScene(Scene):
+class Player(Sprite):
     def __init__(self):
         super().__init__()
-        # 添加精灵
-        ball = Ball()
-        self.add_sprite(ball)
+        self.name = "Player"
+        self.pos = (200, 200)
+        self.color = (240, 106, 95)
+        self.set_dimensions(56, 40)
+        self.z_index = 1
 
-    @as_main
-    def main1(self):
-        while True:
-            # 添加粒子系统
-            explosion = ParticleSystem(400, 300)
-            self.add_particles(explosion)
-            self.broadcast("event")
-            yield 3000
+    @on_key("w", "held")
+    def up(self):
+        self.move_up(5)
 
-# 运行游戏
-game.set_scene(MyScene())
-game.run()
-```
+    @on_key("s", "held")
+    def down(self):
+        self.move_down(5)
 
-https://github.com/user-attachments/assets/ef1a03d8-28b6-4bff-acf7-5f96be02f35a
+    @on_key("a", "held")
+    def left(self):
+        self.move_left(5)
 
-## 核心概念
+    @on_key("d", "held")
+    def right(self):
+        self.move_right(5)
 
-### 1. 游戏主循环（`Game` 类）
--   处理事件循环
--   管理场景切换
--   控制帧率和调试信息
 
-### 2. 场景（`Scene` 类）
--   作为游戏容器
--   管理精灵和粒子系统
--   处理全局事件和广播消息
+class MainScene(Scene):
+    def __init__(self):
+        super().__init__("main")
+        self.set_background_color(25, 32, 43)
+        self.add_sprite(Ball())
+        self.add_sprite(Player())
 
-### 3. 精灵（`Sprite` 和 `PhysicsSprite` 类）
--   基本游戏实体
--   支持位置、方向、大小等属性
--   物理精灵支持速度、重力等物理属性
 
-#### 常用方法：
--   `move()`, `goto()`, `turn_left()`, `turn_right()`
--   `say()`, `clone()`, `delete_self()`
--   `apply_impulse()`, `set_gravity()`（物理精灵）
-
-### 4. 事件系统
--   **广播机制**: 组件间通信
--   **按键绑定**: 全局和场景级别绑定
--   **精灵事件**: 支持碰撞检测
-
-## 开发文档
-
-### 目录
-
-- 核心概念
-  - Game 类
-  - Scene 类
-  - Sprite 类
-- 事件处理
-  - 按键事件
-  - 碰撞检测
-  - 广播事件
-- 精灵克隆
-  - 创建克隆
-  - 克隆行为
-- 资源管理
-  - 添加图片
-  - 使用字体
-- 高级功能
-  - 物理精灵
-  - 粒子系统
-  - 画笔效果
-- 调试工具
-  - 调试模式
-  - 性能监控
-
----
-
-### 核心概念
-
-#### Game 类
-游戏主控制器，负责初始化和运行游戏循环：
-```python
-game = Game(
-    width=800,
-    height=600,
-    title="游戏标题",
-    font_path="font.ttf",
-    font_size=20,
-    fullscreen=False
-)
-game.set_scene(MyScene()) # 设置场景
+game = Game(width=800, height=600, title="My Scrawl Game")
+game.set_scene(MainScene())
 game.run(fps=60, debug=True)
 ```
 
-#### Scene 类
-游戏场景容器，管理精灵和粒子系统：
-```python
-class MyScene(Scene):
-    def __init__(self):
-        super().__init__()
-        # 添加精灵
-        self.add_sprite(MySprite())
+坐标原点位于窗口左下角，X 向右、Y 向上。方向使用罗盘角度：`0` 向上，`90` 向右。
 
-    @as_main
-    def main1():
-        pass # 场景主函数
-# 设置场景
-game.set_scene(MyScene())
+仓库提供了两个可运行示例：
+
+```bash
+python examples/basic_movement.py
+python examples/witch.py
 ```
 
-#### Sprite 类
-游戏中的基本元素，具有位置、方向、大小等属性：
-```python
-class MySprite(Sprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "精灵名称"
-        self.pos = pygame.Vector2(100, 100)
-        self.direction = 90  # 0=右, 90=上
-        self.size = 1.0
-        self.visible = True
+女巫示例包含造型动画、克隆、碰撞、广播和持久文字。素材来自 Scratch 项目，造型直接传入文件路径，不再经过 Pygame Surface。
 
-    @as_main
-    def main1(self):
-        while True:
-            # 精灵主函数
-            self.move(5)
-            yield 2000 # 延迟 2000ms
-```
+## 核心概念
 
----
+### Game
 
-### 事件处理
+`Game` 创建原生窗口、保存场景并启动 Bevy 主循环。
 
-#### 按键事件
-使用装饰器处理按键事件：
-```python
-@on_key(pygame.K_SPACE, "pressed")  # 按下时触发
-def space_pressed(self):
-    print("空格键被按下")
-
-@on_key(pygame.K_LEFT, "held")  # 按住时持续触发
-def left_held(self):
-    self.turn_left(2)
-```
-
-#### 鼠标事件
-处理鼠标点击事件：
-```python
-@on_mouse("clicked", 1)  # 鼠标左键点击
-def on_click(self):
-    print("鼠标点击")
-
-@on_sprite_clicked  # 精灵被点击时触发
-def on_self_clicked(self):
-    self.say("你点击了我！")
-```
-
-#### 碰撞检测
-处理精灵之间和边界的碰撞：
-```python
-# 设置碰撞类型（rect/circle/mask）
-self.set_collision_type("circle")
-
-# 检测是否与其他精灵碰撞
-if self.is_colliding_with(other_sprite):
-    print("碰撞了！")
-
-# 检测是否触碰指定颜色
-if self.is_touching_color((255, 0, 0)):
-    print("碰到红色了！")
-
-# 边缘碰撞检测（装饰器）
-@on_edge_collision("left")  # 可选：left/right/top/bottom/any
-def hit_left(self):
-    self.say("碰到左墙")
-
-# 精灵碰撞检测（装饰器）
-@on_sprite_collision("Enemy")  # 与名为 "Enemy" 的精灵碰撞
-def hit_enemy(self, other):
-    self.delete_self()
-```
-
-#### 广播事件
-精灵和场景之间的通信机制：
-```python
-# 广播事件
-self.broadcast("gameover")
-
-# 处理广播事件
-@on_broadcast("gameover")
-def on_gameover(self):
-    self.visible = True
-```
-
----
-
-### 精灵克隆
-
-#### 创建克隆
-克隆现有精灵：
-```python
-# 克隆自身
-self.clone()
-
-# 克隆其他精灵
-self.clone(other_sprite)
-```
-
-#### 克隆行为
-定义克隆体特有的逻辑：
-```python
-class Bat(Sprite):
-    @as_clones  # 标记为克隆任务
-    def clones_behavior(self):
-        self.visible = True
-        while True:
-            self.move(5)
-            yield 200  # 每 200ms 移动一次
-```
-
----
-
-### 资源管理
-
-#### 添加图片
-为精灵添加多个造型：
-```python
-self.add_costume("costume1", pygame.image.load("cat1.svg"))
-self.add_costume("costume2", pygame.image.load("cat2.svg"))
-self.switch_costume("costume1")  # 切换造型
-self.next_costume()  # 切换到下一个造型
-```
-
-#### 使用字体
-游戏字体设置：
 ```python
 game = Game(
-    font_path="Simhei.ttf",  # 支持中文字体
-    font_size=20
+    width=1280,
+    height=720,
+    title="Game title",
+    fps=60,
+    fullscreen=False,
 )
+game.set_scene(MainScene())
+game.run(debug=False, vsync=True)
 ```
 
----
+可以通过 `add_scene()` 注册其他场景，再用场景名称切换：
 
-### 高级功能
-
-#### 物理精灵
-具有物理属性（速度、重力、摩擦力）的精灵：
 ```python
-class PhysicsBall(PhysicsSprite):
+game.add_scene(PauseScene("pause"))
+game.switch_scene("pause")
+```
+
+### Scene
+
+`Scene` 管理精灵、背景和广播。添加精灵时会自动建立 `sprite.scene` 与 `sprite.game` 引用。
+
+```python
+class MainScene(Scene):
+    def __init__(self):
+        super().__init__("main")
+        self.set_background_color(30, 35, 45)
+        self.set_background_image("assets/background.png")
+        self.add_sprite(Player())
+```
+
+### Sprite
+
+`Sprite` 是原生运行时当前最完整的游戏对象。常用属性和方法包括：
+
+| 类别 | API |
+| --- | --- |
+| 变换 | `x`, `y`, `pos`, `direction`, `size`, `move()`, `go_to()`, `point_towards()` |
+| 外观 | `color`, `visible`, `width`, `height`, `z_index`, `set_dimensions()` |
+| 造型 | `add_costume()`, `switch_costume()`, `next_costume()` |
+| 生命周期 | `clone()`, `delete_self()` |
+| 交互 | `say()`, `set_text()`, `broadcast()`, `play_sound()` |
+| 画笔 | `pen_down()`, `pen_up()`, `set_pen_color()`, `set_pen_size()` |
+
+造型必须传入文件系统路径：
+
+```python
+self.add_costume("idle", "assets/player-idle.svg")
+self.add_costume("walk", "assets/player-walk.png")
+self.switch_costume("walk")
+```
+
+## 事件与协程
+
+事件处理器可以是普通函数，也可以是生成器。生成器每次 `yield` 一个毫秒数后由运行时继续调度。
+
+```python
+from scrawl import (
+    as_clones,
+    as_main,
+    on_broadcast,
+    on_edge_collision,
+    on_key,
+    on_mouse,
+    on_sprite_clicked,
+    on_sprite_collision,
+)
+
+
+@as_main
+def main_task(self):
+    while True:
+        self.next_costume()
+        yield 200
+
+
+@as_clones
+def clone_task(self):
+    self.show()
+    while True:
+        self.move(5)
+        yield 16
+
+
+@on_key("space", "pressed")
+def fire(self):
+    self.clone(self.projectile)
+
+
+@on_mouse(1, "pressed")
+def mouse_down(self):
+    self.say("clicked")
+
+
+@on_sprite_clicked
+def selected(self):
+    self.color = (255, 200, 80)
+
+
+@on_broadcast("game_over")
+def game_over(self):
+    self.set_text("Game Over", 36, (255, 255, 255))
+
+
+@on_edge_collision("any")
+def hit_edge(self):
+    self.delete_self()
+
+
+@on_sprite_collision("Enemy")
+def hit_enemy(self):
+    self.broadcast("lose_life")
+```
+
+按键使用字符串名称，例如 `"space"`、`"left"`、`"a"`。事件模式为 `"pressed"`、`"released"` 或 `"held"`。
+
+## 克隆与广播
+
+`clone()` 克隆当前精灵，`clone(other)` 在当前精灵的位置克隆另一个精灵。使用 `@as_clones` 定义克隆体启动后的行为。
+
+```python
+class Spawner(Sprite):
     def __init__(self):
         super().__init__()
-        self.velocity = pygame.Vector2(0, 5)
-        self.gravity = pygame.Vector2(0, 0.2)
-        self.elasticity = 0.8  # 弹性系数
-        self.friction = 0.02   # 摩擦力
+        self.projectile = Projectile()
 
-    @as_main
-    def main(self):
-        # 设置物理属性
-        self.set_gravity(0, 0.5)
-        self.set_elasticity(0.9)
-        self.set_friction(0.1)
-
-        while True:
-            # 施加力
-            self.apply_force(1, 0)
-            # 施加冲量
-            self.apply_impulse(0, -10)
-            yield 0
+    @on_key("space", "pressed")
+    def fire(self):
+        self.projectile.direction = self.direction
+        self.clone(self.projectile)
 ```
 
-#### 粒子系统
-创建粒子效果：
+任意精灵或场景都可以发送广播：
+
 ```python
-# 在指定位置创建粒子系统
-self.scene.add_particles(
-    ParticleSystem(
-        x=100,
-        y=100,
-        count=50,
-        life_range=(500, 1500)
-    )
-)
+self.broadcast("score_changed")
 ```
 
-#### 画笔效果
-实现绘图功能：
+所有带有 `@on_broadcast("score_changed")` 的处理器会收到该事件。
+
+## 文字、画笔与音频
+
 ```python
-# 启用画笔
-self.put_pen_down()
-self.set_pen_color((255, 0, 0))
+self.say("Hello", duration=1500)
+self.set_text("Score: 10", font_size=24, color=(255, 240, 120))
+
+self.set_pen_color(255, 80, 80)
 self.set_pen_size(3)
-
-# 移动时自动记录路径
+self.pen_down()
 self.move(100)
-
-# 抬起画笔
-self.put_pen_up()
-
-# 清除画笔轨迹
-self.clear_pen()
+self.pen_up()
 ```
 
-#### 声音系统
-播放音效和背景音乐：
+音频先在 `Game` 注册，也可以直接传文件路径：
+
 ```python
-# 在场景中加载音效和音乐
-self.game.load_sound("jump", "sounds/jump.ogg")
-self.game.load_music("bgm", "sounds/background.mp3")
-
-# 播放音效
-self.play_sound("jump")
-
-# 播放背景音乐（循环）
-self.play_music("bgm", loops=-1)
-
-# 播放音符（C4-C5）
-self.play_note("C4", 500)
-
-# 播放鼓声（bass/snare/hihat/cymbal）
-self.play_drum("snare", 100)
-
-# 停止音乐
-self.stop_music()
+game.load_sound("jump", "assets/jump.ogg")
+game.load_music("bgm", "assets/background.ogg")
+game.play_sound("jump")
+game.play_music("bgm", loops=-1, volume=0.7)
+game.pause_music()
+game.unpause_music()
+game.stop_music()
 ```
 
-#### 云变量
-支持多人游戏的云变量同步：
-```python
-from scrawl import CloudVariablesClient
+## 可视化 IDE
 
-# 方式1：自动注册新项目（获取新的project_id）
-cloud = CloudVariablesClient()
-print(f"项目ID: {cloud.project_id}")  # 保存此ID以便下次使用
+`scrawl_ide` 提供场景树、属性检查器、代码编辑器、运行器和 OpenAI 兼容的 AI 助手。IDE 仍在持续开发，建议同时保留项目版本控制。
 
-# 方式2：使用已有的项目ID
-cloud = CloudVariablesClient(project_id="your-project-uuid")
-
-# 设置变量
-cloud.set_variable("score", 100)
-
-# 获取变量
-score = cloud.get_variable("score", default=0)
-
-# 获取所有变量
-all_vars = cloud.get_all_variables()
-
-# 关闭连接
-cloud.close()
+```bash
+python -m pip install -r scrawl_ide/requirements.txt
+python scrawl_ide/main.py
 ```
 
-> 注意：首次使用会自动注册项目并返回project_id，请保存此ID以便后续使用同一项目。
+AI 服务地址、模型和 API Key 在 IDE 设置中配置；凭据不会写入生成的游戏源码。
 
----
+## 项目结构
 
-### 调试工具
-
-#### 调试模式
-启用调试信息显示：
-```python
-game.run(debug=True)  # 启用调试模式
-
-# 记录调试信息
-game.log_debug("精灵已创建")
+```text
+crates/
+  scrawl-core/       ECS、场景和调度基础
+  scrawl-render/     Bevy 渲染实现
+  scrawl-input/      输入系统
+  scrawl-audio/      音频系统
+  scrawl-bridge/     PyO3 原生模块与 Python bridge
+python/scrawl/       唯一正式 Python 包
+examples/            当前 API 的可运行示例与素材
+scrawl_ide/          可视化 IDE
+docs/                手册、迁移说明、发布说明与路线图
+tests/               Python API 测试
 ```
 
-#### 性能监控
-屏幕上显示的关键性能指标：
-1. 实时 FPS
-2. 场景中精灵数量
-3. 当前场景名称
-4. 自定义调试信息
+## 文档
 
-## 贡献指南
+- [运行时手册与能力表](docs/MANUAL.md)
+- [从旧版迁移到 2.2](docs/MIGRATION_2.2.md)
+- [2.2.0 发布说明](docs/RELEASE_NOTES_2.2.0.md)
+- [路线图](docs/ROADMAP.md)
 
-欢迎通过 GitHub 提交 issue 和 pull request：
-https://github.com/streetartist/scrawl
+## 开发与验证
 
----
+```bash
+cargo check -p scrawl-bridge
+cargo test -p scrawl-bridge
+python -m unittest discover -s tests -v
+```
+
+提交前建议同时运行：
+
+```bash
+git diff --check
+python examples/runtime_smoke.py
+```
+
+## 社区
+
+- GitHub Issues / Pull Requests: https://github.com/streetartist/scrawl
+- QQ 群：1001578435
+
+Scrawl 使用 [GNU General Public License v3.0](LICENSE) 发布。

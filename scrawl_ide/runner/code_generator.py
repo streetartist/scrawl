@@ -270,13 +270,13 @@ class CodeGenerator:
         return re.sub(pattern, replacement, code)
 
     def _generate_costume_code(self, sprite: SpriteModel) -> str:
-        """Generate costume loading code using scrawl_v2 API."""
+        """Generate costume loading code using the Scrawl API."""
         lines = []
         for costume in sprite.costumes:
             costume_name = costume.name
 
             if costume.is_code_drawn():
-                # Code-drawn costume - use scrawl_v2 drawing API
+                # Code-drawn costume - use the Scrawl drawing API
                 lines.append(f'        # 代码绘制造型: {costume_name}')
                 lines.append(f'        _width, _height = {costume.width}, {costume.height}')
                 # Add the drawing code with proper indentation
@@ -288,7 +288,7 @@ class CodeGenerator:
                     lines.extend(draw_lines)
                 lines.append(f'        self.add_costume("{costume_name}", (_width, _height))')
             else:
-                # Image file costume - use path string directly (scrawl_v2 handles loading)
+                # Image file costume - Scrawl loads the path directly
                 costume_path = costume.path
                 if costume_path:
                     if os.path.isabs(costume_path):
