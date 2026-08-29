@@ -5,6 +5,8 @@ import random
 import os
 from typing import Optional, Tuple
 
+from .node import Node, _scrawl_command_queue
+
 
 _DIRTY_TRANSFORM = 1 << 0
 _DIRTY_VISIBLE = 1 << 1
@@ -14,11 +16,6 @@ _DIRTY_PEN = 1 << 4
 _DIRTY_DIMENSIONS = 1 << 5
 _DIRTY_DRAW_ORDER = 1 << 6
 _DIRTY_ALL = (1 << 7) - 1
-
-# Global command queue: Rust drains this each frame via _scrawl_command_queue
-# Commands: ("clone", sprite_instance), ("delete", sprite_instance), ("broadcast", event_name)
-_scrawl_command_queue = []
-
 
 def queue_broadcast(event: str):
     """Queue a broadcast for the runtime."""
@@ -94,12 +91,14 @@ class _Vec2Proxy:
         return f"Vec2({self._sprite._x}, {self._sprite._y})"
 
 
-class Sprite:
+class Sprite(Node):
     """A renderable, scriptable object in a :class:`Scene`."""
 
+    _scrawl_node_kind = "sprite"
+
     def __init__(self):
+        super().__init__("Sprite")
         self._scrawl_dirty = _DIRTY_ALL
-        self._name = "Sprite"
         self._x = 400.0
         self._y = 300.0
         self._direction = 90.0
@@ -115,8 +114,6 @@ class Sprite:
         self._pen_color = (0, 0, 0)
         self._pen_size = 2
         self.collision_type = "mask"
-        self.scene = None
-        self.game = None
         self.is_clones = False
 
         self._pos_proxy = _Vec2Proxy(self)
@@ -310,7 +307,7 @@ class Sprite:
     def face_towards(self, target_name: str):
         """Point towards a named sprite in the current scene."""
         if self.scene:
-            for s in self.scene._sprites:
+            for s in self.scene.sprites:
                 if s.name == target_name:
                     self.point_towards(s.x, s.y)
                     return
@@ -369,6 +366,9 @@ class Sprite:
         target = other if other is not None else self
         new_sprite = object.__new__(type(target))
         new_sprite.__dict__.update(target.__dict__)
+        new_sprite._scrawl_node_id = next(Node._scrawl_id_source)
+        new_sprite._parent = None
+        new_sprite._children = []
         new_sprite._pos_proxy = _Vec2Proxy(new_sprite)
         new_sprite.is_clones = True
         new_sprite._costumes = dict(target._costumes)
@@ -377,15 +377,18 @@ class Sprite:
         new_sprite._direction = target._direction
         new_sprite._visible = target._visible
         new_sprite._scrawl_dirty = _DIRTY_ALL
-        new_sprite.scene = self.scene  # Inherit scene reference
-        if self.scene:
-            self.scene._sprites.append(new_sprite)
-        _scrawl_command_queue.append(("clone", new_sprite))
+        parent = self.get_parent() or self.scene
+        if parent:
+            parent.add_child(new_sprite)
         return new_sprite
 
     def delete_self(self):
         """Delete this sprite from the scene."""
-        _scrawl_command_queue.append(("delete", self))
+        parent = self.get_parent()
+        if parent is not None:
+            parent.remove_child(self)
+        elif self._runtime_bridge_active():
+            _scrawl_command_queue.append(("node_remove", self))
 
     # ========================================================================
     # Events / Broadcast

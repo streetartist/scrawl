@@ -12,7 +12,8 @@ use scrawl_render::ScrawlRenderPlugin;
 use scrawl_scripting::ScrawlScriptingPlugin;
 
 use crate::runtime::{
-    scan_python_handlers, HandlerKind, PythonRuntime, PythonRuntimePlugin, PythonSpriteInstance,
+    scan_python_handlers, HandlerKind, PythonNodeId, PythonRuntime, PythonRuntimePlugin,
+    PythonSpriteInstance,
 };
 
 /// The main Game class exposed to Python.
@@ -44,7 +45,15 @@ struct SceneInfo {
     _name: String,
     background_color: [f32; 4],
     _background_image: Option<String>,
-    sprites: Vec<Py<PyAny>>,
+    nodes: Vec<PythonNodeRecord>,
+}
+
+#[derive(Debug)]
+struct PythonNodeRecord {
+    node_id: u64,
+    parent_id: Option<u64>,
+    kind: String,
+    py_object: Py<PyAny>,
 }
 
 #[pymethods]
@@ -96,9 +105,23 @@ impl PyGame {
         let bg_color = scene.background_color;
         let bg_image = scene._background_image.clone();
 
-        // Collect sprite initial states and Python objects
+        // Collect the complete scene tree. Sprite payloads keep their existing
+        // rendering/event path; other nodes receive structural ECS entities.
+        let generic_nodes = scene
+            .nodes
+            .iter()
+            .filter(|record| record.kind != "sprite")
+            .map(|record| extract_generic_node_spawn_data(py, record))
+            .collect::<PyResult<Vec<_>>>()?;
+        let parent_links = scene
+            .nodes
+            .iter()
+            .map(|record| (record.node_id, record.parent_id))
+            .collect::<Vec<_>>();
+
         let mut sprite_data: Vec<SpriteSpawnData> = Vec::new();
-        for sprite_py in &scene.sprites {
+        for node_record in scene.nodes.iter().filter(|record| record.kind == "sprite") {
+            let sprite_py = &node_record.py_object;
             let obj = sprite_py.bind(py);
 
             // Extract costumes: dict {name: path} → Vec<(name, path)>
@@ -116,7 +139,7 @@ impl PyGame {
                 Vec::new()
             };
 
-            // Extract color (v1 uses self.color = (r, g, b) as plain attribute)
+            // Extract the Python Sprite's (r, g, b) color property.
             let color = if let Ok(c) = obj.getattr("color") {
                 if let Ok((r, g, b)) = c.extract::<(u8, u8, u8)>() {
                     [r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0]
@@ -128,6 +151,7 @@ impl PyGame {
             };
 
             let data = SpriteSpawnData {
+                node_id: node_record.node_id,
                 name: obj.getattr("name")?.extract::<String>()?,
                 x: obj.getattr("x")?.extract::<f32>()?,
                 y: obj.getattr("y")?.extract::<f32>()?,
@@ -180,29 +204,27 @@ impl PyGame {
                 bevy::window::PresentMode::AutoNoVsync
             };
 
-            app.add_plugins(
-                DefaultPlugins.set(WindowPlugin {
-                    primary_window: Some(Window {
-                        title: title.clone(),
-                        resolution: (width as f32, height as f32).into(),
-                        present_mode,
-                        mode: if fullscreen {
-                            bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
-                        } else {
-                            bevy::window::WindowMode::Windowed
-                        },
-                        // Disable system maximize button to avoid Windows modal loop freeze.
-                        // Use F11 for fullscreen toggle instead.
-                        enabled_buttons: bevy::window::EnabledButtons {
-                            maximize: false,
-                            ..default()
-                        },
-                        resizable: true,
+            app.add_plugins(DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    title: title.clone(),
+                    resolution: (width as f32, height as f32).into(),
+                    present_mode,
+                    mode: if fullscreen {
+                        bevy::window::WindowMode::BorderlessFullscreen(MonitorSelection::Current)
+                    } else {
+                        bevy::window::WindowMode::Windowed
+                    },
+                    // Disable system maximize button to avoid Windows modal loop freeze.
+                    // Use F11 for fullscreen toggle instead.
+                    enabled_buttons: bevy::window::EnabledButtons {
+                        maximize: false,
                         ..default()
-                    }),
+                    },
+                    resizable: true,
                     ..default()
                 }),
-            );
+                ..default()
+            }));
 
             // Scrawl plugins
             app.insert_resource(ScrawlConfig {
@@ -225,20 +247,25 @@ impl PyGame {
             // ClearColor = black (for letterbox bars outside viewport)
             // Scene background color is set on the camera (clears within viewport)
             app.insert_resource(ClearColor(Color::BLACK));
-            app.insert_resource(scrawl_render::camera::SceneBackgroundColor(
-                Color::srgba(bg_color[0], bg_color[1], bg_color[2], bg_color[3]),
-            ));
+            app.insert_resource(scrawl_render::camera::SceneBackgroundColor(Color::srgba(
+                bg_color[0],
+                bg_color[1],
+                bg_color[2],
+                bg_color[3],
+            )));
 
-            // Store sprite data for the startup system
-            app.insert_resource(PendingSprites(sprite_data));
+            app.insert_resource(PendingNodes {
+                generic_nodes,
+                sprites: sprite_data,
+                parent_links,
+            });
             app.insert_resource(PendingBackground {
                 image_path: bg_image,
                 width: width as f32,
                 height: height as f32,
             });
 
-            // Startup system to spawn entities
-            app.add_systems(Startup, (spawn_scene_background, spawn_sprites_from_python));
+            app.add_systems(Startup, (spawn_scene_background, spawn_nodes_from_python));
 
             app.run();
         });
@@ -269,6 +296,7 @@ impl PyGame {
 
 /// Temporary data for spawning sprites.
 struct SpriteSpawnData {
+    node_id: u64,
     name: String,
     x: f32,
     y: f32,
@@ -286,7 +314,30 @@ struct SpriteSpawnData {
 }
 
 #[derive(Resource)]
-struct PendingSprites(Vec<SpriteSpawnData>);
+struct PendingNodes {
+    generic_nodes: Vec<GenericNodeSpawnData>,
+    sprites: Vec<SpriteSpawnData>,
+    parent_links: Vec<(u64, Option<u64>)>,
+}
+
+struct GenericNodeSpawnData {
+    node_id: u64,
+    name: String,
+    kind: GenericNodeKind,
+    py_object: Py<PyAny>,
+}
+
+enum GenericNodeKind {
+    Scene,
+    Empty,
+    Node2D {
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        z_index: i32,
+        visible: bool,
+    },
+}
 
 #[derive(Resource)]
 struct PendingBackground {
@@ -317,16 +368,73 @@ fn spawn_scene_background(
     ));
 }
 
-/// Startup system: spawn ECS entities from Python sprite data.
-fn spawn_sprites_from_python(
+/// Startup system: spawn the Python scene tree as Bevy entities.
+fn spawn_nodes_from_python(
     mut commands: Commands,
-    pending: Res<PendingSprites>,
+    pending: Res<PendingNodes>,
     mut runtime: ResMut<PythonRuntime>,
     asset_server: Res<AssetServer>,
     _config: Res<ScrawlConfig>,
 ) {
+    let mut entity_by_node_id = HashMap::new();
+
+    for data in &pending.generic_nodes {
+        let entity = match &data.kind {
+            GenericNodeKind::Scene => commands
+                .spawn((
+                    Transform::default(),
+                    ScrawlName(data.name.clone()),
+                    ScrawlId::default(),
+                    NodeType(NodeKind::Empty),
+                    PythonNodeId(data.node_id),
+                    SceneRoot,
+                ))
+                .id(),
+            GenericNodeKind::Empty => commands
+                .spawn((
+                    Transform::default(),
+                    ScrawlName(data.name.clone()),
+                    ScrawlId::default(),
+                    NodeType(NodeKind::Empty),
+                    PythonNodeId(data.node_id),
+                ))
+                .id(),
+            GenericNodeKind::Node2D {
+                position,
+                rotation,
+                scale,
+                z_index,
+                visible,
+            } => commands
+                .spawn((
+                    Transform::from_xyz(position.x, position.y, *z_index as f32)
+                        .with_rotation(Quat::from_rotation_z(*rotation))
+                        .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+                    if *visible {
+                        Visibility::Inherited
+                    } else {
+                        Visibility::Hidden
+                    },
+                    ScrawlName(data.name.clone()),
+                    ScrawlId::default(),
+                    NodeType(NodeKind::Empty),
+                    PythonNodeId(data.node_id),
+                    Visible(*visible),
+                ))
+                .id(),
+        };
+        entity_by_node_id.insert(data.node_id, entity);
+        runtime.nodes.insert(data.node_id, entity);
+    }
+
     Python::with_gil(|py| {
-        for data in &pending.0 {
+        for data in &pending.generic_nodes {
+            runtime
+                .node_objects
+                .insert(data.node_id, data.py_object.clone_ref(py));
+            let _ = data.py_object.bind(py).call_method0("_take_node_dirty");
+        }
+        for data in &pending.sprites {
             let collision_kind = match data.collision_type.as_str() {
                 "circle" => CollisionKind::Circle,
                 "mask" => CollisionKind::Mask,
@@ -383,13 +491,18 @@ fn spawn_sprites_from_python(
                         scale: Vec2::splat(data.size),
                     },
                     Visible(data.visible),
-                    SpriteColor(if first_image.is_some() { Color::WHITE } else { sprite_color }),
+                    SpriteColor(if first_image.is_some() {
+                        Color::WHITE
+                    } else {
+                        sprite_color
+                    }),
                     CollisionShape {
                         kind: collision_kind,
                         radius: None,
                     },
                     PenState::default(),
                     NodeType(NodeKind::Sprite),
+                    PythonNodeId(data.node_id),
                     costume_set,
                 ))
                 .id();
@@ -405,8 +518,7 @@ fn spawn_sprites_from_python(
                     match obj.call_method0(method_name.as_str()) {
                         Ok(gen) => {
                             if gen.hasattr("__next__").unwrap_or(false) {
-                                coroutines
-                                    .insert(format!("main_{}", method_name), gen.unbind());
+                                coroutines.insert(format!("main_{}", method_name), gen.unbind());
                             }
                         }
                         Err(e) => {
@@ -422,6 +534,7 @@ fn spawn_sprites_from_python(
             // Register in the Python runtime
             let _ = data.py_object.bind(py).call_method0("_take_dirty");
             runtime.sprites.push(PythonSpriteInstance {
+                node_id: data.node_id,
                 py_object: data.py_object.clone_ref(py),
                 entity,
                 coroutines,
@@ -429,15 +542,96 @@ fn spawn_sprites_from_python(
                 handlers: data.handlers.clone(),
             });
 
+            entity_by_node_id.insert(data.node_id, entity);
+            runtime.nodes.insert(data.node_id, entity);
+            runtime
+                .node_objects
+                .insert(data.node_id, data.py_object.clone_ref(py));
+
             log::info!("Spawned sprite: {} (entity {:?})", data.name, entity);
         }
     });
+
+    for (node_id, parent_id) in &pending.parent_links {
+        let Some(parent_id) = parent_id else {
+            continue;
+        };
+        let Some(entity) = entity_by_node_id.get(node_id).copied() else {
+            continue;
+        };
+        let Some(parent_entity) = entity_by_node_id.get(parent_id).copied() else {
+            continue;
+        };
+        commands.entity(entity).set_parent(parent_entity);
+    }
 }
 
 fn custom_sprite_size(width: Option<f32>, height: Option<f32>, has_image: bool) -> Option<Vec2> {
     match (width, height, has_image) {
         (None, None, true) => None,
         (width, height, _) => Some(Vec2::new(width.unwrap_or(40.0), height.unwrap_or(40.0))),
+    }
+}
+
+fn extract_generic_node_spawn_data(
+    py: Python<'_>,
+    record: &PythonNodeRecord,
+) -> PyResult<GenericNodeSpawnData> {
+    let obj = record.py_object.bind(py);
+    let name = obj
+        .getattr("name")
+        .and_then(|value| value.extract::<String>())
+        .unwrap_or_else(|_| "Node".to_string());
+
+    let kind = match record.kind.as_str() {
+        "scene" => GenericNodeKind::Scene,
+        "node2d" => {
+            let position = extract_vector2(&obj, "position", Vec2::ZERO);
+            let scale = extract_vector2(&obj, "scale", Vec2::ONE);
+            let rotation = obj
+                .getattr("rotation")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(0.0);
+            let z_index = obj
+                .getattr("z_index")
+                .and_then(|value| value.extract::<i32>())
+                .unwrap_or(0);
+            let visible = obj
+                .getattr("visible")
+                .and_then(|value| value.extract::<bool>())
+                .unwrap_or(true);
+            GenericNodeKind::Node2D {
+                position,
+                rotation,
+                scale,
+                z_index,
+                visible,
+            }
+        }
+        _ => GenericNodeKind::Empty,
+    };
+
+    Ok(GenericNodeSpawnData {
+        node_id: record.node_id,
+        name,
+        kind,
+        py_object: record.py_object.clone_ref(py),
+    })
+}
+
+fn extract_vector2(obj: &Bound<'_, PyAny>, attr: &str, fallback: Vec2) -> Vec2 {
+    let Ok(value) = obj.getattr(attr) else {
+        return fallback;
+    };
+    let x = value
+        .getattr("x")
+        .and_then(|component| component.extract::<f32>());
+    let y = value
+        .getattr("y")
+        .and_then(|component| component.extract::<f32>());
+    match (x, y) {
+        (Ok(x), Ok(y)) => Vec2::new(x, y),
+        _ => fallback,
     }
 }
 
@@ -464,25 +658,30 @@ fn extract_scene_info(_py: Python<'_>, scene: &Bound<'_, PyAny>) -> PyResult<Sce
         .and_then(|v| v.extract::<Option<String>>().ok())
         .flatten();
 
-    let sprites_list = scene.getattr("_sprites")?;
-    let mut sprites = Vec::new();
-    for item in sprites_list.try_iter()? {
-        sprites.push(item?.unbind());
+    let records = scene.call_method0("_scrawl_tree_records")?;
+    let mut nodes = Vec::new();
+    for item in records.try_iter()? {
+        let item = item?;
+        let (node_id, parent_id, kind, py_object) =
+            item.extract::<(u64, Option<u64>, String, Py<PyAny>)>()?;
+        nodes.push(PythonNodeRecord {
+            node_id,
+            parent_id,
+            kind,
+            py_object,
+        });
     }
 
     Ok(SceneInfo {
         _name: name,
         background_color: bg_color,
         _background_image: bg_image,
-        sprites,
+        nodes,
     })
 }
 
 /// F11 toggles borderless fullscreen (avoids the Windows modal loop freeze).
-fn toggle_fullscreen_on_f11(
-    keyboard: Res<ButtonInput<KeyCode>>,
-    mut windows: Query<&mut Window>,
-) {
+fn toggle_fullscreen_on_f11(keyboard: Res<ButtonInput<KeyCode>>, mut windows: Query<&mut Window>) {
     if keyboard.just_pressed(KeyCode::F11) {
         if let Ok(mut window) = windows.get_single_mut() {
             window.mode = match window.mode {
@@ -492,5 +691,63 @@ fn toggle_fullscreen_on_f11(
                 _ => bevy::window::WindowMode::Windowed,
             };
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn generic_nodes_create_a_registered_ecs_hierarchy() {
+        let (scene_object, node_object) = Python::with_gil(|py| (py.None(), py.None()));
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_resource::<PythonRuntime>();
+        app.insert_resource(ScrawlConfig::default());
+        app.insert_resource(PendingNodes {
+            generic_nodes: vec![
+                GenericNodeSpawnData {
+                    node_id: 1,
+                    name: "scene".to_string(),
+                    kind: GenericNodeKind::Scene,
+                    py_object: scene_object,
+                },
+                GenericNodeSpawnData {
+                    node_id: 2,
+                    name: "group".to_string(),
+                    kind: GenericNodeKind::Node2D {
+                        position: Vec2::new(12.0, 34.0),
+                        rotation: 0.5,
+                        scale: Vec2::new(2.0, 3.0),
+                        z_index: 4,
+                        visible: true,
+                    },
+                    py_object: node_object,
+                },
+            ],
+            sprites: Vec::new(),
+            parent_links: vec![(1, None), (2, Some(1))],
+        });
+        app.add_systems(Startup, spawn_nodes_from_python);
+
+        app.update();
+
+        let runtime = app.world().resource::<PythonRuntime>();
+        let root = runtime.nodes[&1];
+        let child = runtime.nodes[&2];
+        assert_eq!(
+            app.world().get::<PythonNodeId>(root),
+            Some(&PythonNodeId(1))
+        );
+        assert!(app.world().get::<SceneRoot>(root).is_some());
+        assert!(app
+            .world()
+            .get::<Children>(root)
+            .is_some_and(|children| children.contains(&child)));
+
+        let transform = app.world().get::<Transform>(child).unwrap();
+        assert_eq!(transform.translation, Vec3::new(12.0, 34.0, 4.0));
+        assert_eq!(transform.scale, Vec3::new(2.0, 3.0, 1.0));
     }
 }

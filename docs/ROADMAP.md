@@ -4,9 +4,12 @@ This file tracks gaps between the public Python data model and the Rust NativeGa
 
 ## P0: unified node bridge
 
-- Traverse the Scene Node tree instead of consuming only `Scene.sprites`.
-- Map Node2D transforms, visibility and hierarchy to ECS entities.
-- Define creation, deletion and reparenting commands for runtime nodes.
+- [x] Make `Scene` the Node tree root and traverse it in parent-first order.
+- [x] Create registered ECS entities for Scene, Node, Node2D and Sprite nodes at startup.
+- [x] Map initial Node2D transforms, visibility and hierarchy to Bevy entities.
+- [x] Synchronize Node2D transform, z-index and visibility changes after the game loop starts.
+- [x] Define creation, deletion and same-scene reparenting commands for runtime nodes.
+- [x] Migrate clone/delete commands onto the unified node lifecycle.
 
 ## P1: feature mappings
 

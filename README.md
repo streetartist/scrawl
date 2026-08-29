@@ -34,6 +34,8 @@ Scrawl 是一个面向 Python 的 2D 游戏引擎，保留 Scratch 风格的精�
 - 精灵渲染：纯色形状、PNG/SVG 造型、显隐、缩放、自定义宽高和 `z_index`。
 - 游戏能力：文字与对话、画笔轨迹、音效、背景音乐和场景切换。
 - Python 属性脏标记：静止精灵不会在每帧重复同步全部渲染属性。
+- 统一场景树：启动时递归映射 `Scene`、`Node`、`Node2D` 和 `Sprite` 的父子层级。
+- 运行时树同步：Node2D 的位置、旋转、缩放、层级和显隐变化，以及活动场景内 Node 的新增、删除、重挂载和克隆，均通过统一 bridge 队列同步到 ECS。
 - 可视化 IDE：场景编辑、属性检查、代码编辑、运行与 AI 编程助手。
 
 > `Node`、UI、物理节点、TileMap、Particles 和 Navigation 等数据模型可以导入，但其中一部分仍未连接到 `NativeGame`。开始项目之前请查看[运行时能力表](docs/MANUAL.md#native-runtime-status)。
@@ -138,14 +140,17 @@ game.run(fps=60, debug=True)
 
 坐标原点位于窗口左下角，X 向右、Y 向上。方向使用罗盘角度：`0` 向上，`90` 向右。
 
-仓库提供了两个可运行示例：
+仓库提供了三个可运行示例：
 
 ```bash
 python examples/basic_movement.py
+python examples/node_hierarchy.py
 python examples/witch.py
 ```
 
 女巫示例包含造型动画、克隆、碰撞、广播和持久文字。素材来自 Scratch 项目，造型直接传入文件路径，不再经过 Pygame Surface。
+
+Node hierarchy 示例覆盖启动时树映射，以及运行中的 Node2D 属性同步、子树新增、重挂载和删除。
 
 ## 核心概念
 

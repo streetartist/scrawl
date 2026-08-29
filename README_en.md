@@ -25,6 +25,8 @@ Starting with 2.2, `scrawl` is the only supported package and mainline API. The 
 - Shape and PNG/SVG sprites with visibility, scale, explicit dimensions, and `z_index`.
 - Persistent text, speech, pen trails, sound effects, music, and scene switching.
 - Dirty property synchronization so idle sprites do not resend every render property each frame.
+- A unified startup scene tree for `Scene`, `Node`, `Node2D`, and `Sprite` hierarchy mapping.
+- Runtime tree sync for Node2D transform, layer, and visibility changes plus node add, remove, same-scene reparent, and clone operations through one bridge queue.
 - A visual IDE with scene editing, an inspector, code editing, running, and an AI assistant.
 
 > The generic Node, UI, physics node, TileMap, Particles, and Navigation models are importable, but some are not connected to `NativeGame` yet. Check the [runtime capability table](docs/MANUAL.md#native-runtime-status) before depending on them.
@@ -124,10 +126,13 @@ Run the repository examples with:
 
 ```bash
 python examples/basic_movement.py
+python examples/node_hierarchy.py
 python examples/witch.py
 ```
 
 The witch example demonstrates costume animation, clones, collisions, broadcasts, and persistent text. Costumes are filesystem paths; Pygame Surface objects are no longer supported.
+
+The node hierarchy example covers startup hierarchy mapping plus runtime Node2D property sync, subtree creation, reparenting, and removal.
 
 ## Core Concepts
 

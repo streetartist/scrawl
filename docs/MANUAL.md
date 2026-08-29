@@ -13,7 +13,7 @@ There is no `scrawl_v2` compatibility package and no Pygame backend.
 ## Core lifecycle
 
 1. Subclass `Sprite` and attach decorated event handlers.
-2. Add Sprite instances to a `Scene` with `add_sprite()`.
+2. Build a Scene tree with `add_child()`, or use `add_sprite()` for direct Sprite children.
 3. Attach the Scene to `Game` with `set_scene()`.
 4. Call `game.run()` to enter the Rust/Bevy loop.
 
@@ -27,6 +27,29 @@ class Ball(Sprite):
             self.move(3)
             yield 16
 ```
+
+## Scene tree
+
+`Scene`, `Node`, `Node2D` and `Sprite` now share one Python tree. The native bridge traverses the tree in deterministic parent-before-child order and creates the matching Bevy entity hierarchy at startup.
+
+```python
+from scrawl import Node2D, Scene, Sprite
+
+
+scene = Scene("main")
+group = Node2D("group")
+group.position = (400, 300)
+
+player = Sprite()
+player.pos = (40, 0)  # local to group
+
+group.add_child(player)
+scene.add_child(group)
+```
+
+Every Node receives a stable `_scrawl_node_id` used internally by the bridge. User code should use Node references and paths rather than depending on that private identifier.
+
+At this stage, the tree is mapped when `game.run()` starts. Runtime `add_child()`, `remove_child()` and `reparent()` synchronization is the next bridge milestone; mutating the Python tree while the window is running does not yet create or move generic native entities.
 
 ## Sprite properties
 
@@ -90,13 +113,14 @@ Key identifiers are strings. Integer Pygame constants are intentionally rejected
 | Persistent text and speech | Connected |
 | Pen drawing | Connected |
 | Sound effects and music | Connected |
-| Generic Node tree | Python model only |
+| Scene / Node / Node2D startup hierarchy | Connected |
+| Runtime Node creation, deletion and same-scene reparenting | Connected |
 | Physics Node mapping | Partial / experimental |
 | UI Node mapping | Python model only |
 | TileMap, Particles and Navigation mapping | Python model only |
 
-An importable Python class does not imply NativeGame integration. The final four rows remain tracked in [ROADMAP.md](ROADMAP.md).
+An importable Python class does not imply NativeGame integration. Remaining mappings are tracked in [ROADMAP.md](ROADMAP.md).
 
 ## Performance model
 
-The bridge acquires the GIL once during a normal fixed-update frame. Each Sprite exposes a dirty bitset, so unchanged render properties are not repeatedly extracted from Python. Script work is bounded by the runtime frame budget; long AI inference or blocking I/O should run outside event handlers and return results through a queue.
+The bridge acquires the GIL once during a normal fixed-update frame. Each Sprite exposes a dirty bitset and each Node2D exposes a transform dirty flag, so unchanged properties are not repeatedly extracted from Python. Script work is bounded by the runtime frame budget; long AI inference or blocking I/O should run outside event handlers and return results through a queue.

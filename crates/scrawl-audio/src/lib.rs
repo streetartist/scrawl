@@ -17,7 +17,7 @@ impl Plugin for ScrawlAudioPlugin {
 
 /// High-level audio manager resource.
 ///
-/// Provides a simple API matching scrawl v1:
+/// Provides Scrawl's simple audio API:
 /// ```ignore
 /// audio.play_sound("explosion.ogg");
 /// audio.play_music("bgm.ogg");

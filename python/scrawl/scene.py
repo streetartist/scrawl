@@ -1,11 +1,10 @@
-"""
-Scene class - a container for sprites with a background.
-"""
+"""Scene tree root with a background and Sprite convenience methods."""
 
+from .node import Node
 from .sprite import queue_broadcast
 
 
-class Scene:
+class Scene(Node):
     """A game scene that contains sprites.
 
     Subclass this to create your game scenes:
@@ -17,23 +16,23 @@ class Scene:
     """
 
     def __init__(self, name: str = None):
-        self.name = name or self.__class__.__name__
-        self._sprites = []
+        super().__init__(name or self.__class__.__name__)
+        self._scrawl_node_kind = "scene"
         self._background_color = (255, 255, 255)
         self._background_image = None
-        self.game = None
+        self._set_scene(self)
 
     def add_sprite(self, sprite):
-        """Add a sprite to this scene."""
-        self._sprites.append(sprite)
-        sprite.scene = self
-        sprite.game = self.game
+        """Add a Sprite as a direct child of this scene."""
+        if getattr(sprite, "_scrawl_node_kind", None) != "sprite":
+            raise TypeError("add_sprite expects a Sprite or PhysicsSprite")
+        self.add_child(sprite)
 
     def remove_sprite(self, sprite):
         """Remove a sprite from this scene."""
-        self._sprites.remove(sprite)
-        sprite.scene = None
-        sprite.game = None
+        parent = sprite.get_parent()
+        if parent is not None:
+            parent.remove_child(sprite)
 
     def set_background_color(self, r: int = 255, g: int = 255, b: int = 255):
         """Set the background color."""
@@ -49,5 +48,9 @@ class Scene:
 
     @property
     def sprites(self):
-        """List of sprites in this scene."""
-        return list(self._sprites)
+        """All Sprite descendants in deterministic tree order."""
+        return [
+            node
+            for node in self.iter_tree(include_self=False)
+            if getattr(node, "_scrawl_node_kind", None) == "sprite"
+        ]

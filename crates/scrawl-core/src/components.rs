@@ -363,7 +363,7 @@ pub struct PythonScriptRef {
 pub struct IsClone;
 
 // ============================================================================
-// Physics (basic, for use without Rapier - compatibility with v1 PhysicsSprite)
+// Physics (basic components for use without Rapier)
 // ============================================================================
 
 /// Simple velocity component (used by basic physics and synced to Rapier when available).

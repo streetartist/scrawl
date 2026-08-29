@@ -4,7 +4,7 @@
 //! - The `ScrawlScript` trait for Rust game scripts
 //! - `ScriptContext` for interacting with the ECS from scripts
 //! - Python runtime hosting via PyO3
-//! - Coroutine/generator scheduler (matching scrawl v1's yield-based pattern)
+//! - Coroutine/generator scheduler for Scrawl's yield-based task pattern
 //! - Hot-reload watching for Python scripts
 
 pub mod context;

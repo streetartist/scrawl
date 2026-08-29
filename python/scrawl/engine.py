@@ -55,9 +55,10 @@ class Game:
         self._music = {}
 
     def _attach_scene(self, scene):
-        scene.game = self
-        for sprite in scene.sprites:
-            sprite.game = self
+        scene._set_scene(scene)
+        scene._set_game(self)
+        if not scene.is_inside_tree():
+            scene._enter_tree()
 
     def set_scene(self, scene):
         """Set the active scene."""
@@ -142,7 +143,11 @@ class Game:
         else:
             raise RuntimeError("No scene set. Call game.set_scene() first.")
 
-        native.run()
+        self._native = native
+        try:
+            native.run()
+        finally:
+            self._native = None
 
     @property
     def screen_width(self) -> int:

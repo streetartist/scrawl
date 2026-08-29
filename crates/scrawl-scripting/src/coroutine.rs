@@ -1,6 +1,6 @@
 //! Coroutine scheduler for yield-based game scripts.
 //!
-//! This module implements the generator/coroutine pattern from scrawl v1,
+//! This module implements Scrawl's Python generator/coroutine pattern,
 //! where script handlers are Python generators that yield wait times in ms.
 //!
 //! Each entity can have multiple active coroutines (main task, key handlers, etc.).

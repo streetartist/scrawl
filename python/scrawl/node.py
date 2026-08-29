@@ -6,7 +6,7 @@
 节点类型层级:
     Node (基础节点)
     ├── Node2D (2D 变换节点)
-    │   ├── Sprite (精灵 - 兼容 v1)
+    │   ├── Sprite (精灵)
     │   ├── Camera2D (2D 摄像机)
     │   ├── Light2D (2D 光源)
     │   ├── RayCast2D (射线检测)
@@ -21,9 +21,30 @@
     └── Control (UI 控件基类)
 """
 
+from itertools import count
 from typing import List, Optional, Dict, Any, Callable
 from .math_utils import Vector2, Transform2D
 from .signals import Signal
+
+
+# Commands shared by every Python node type and drained by the Rust bridge.
+_scrawl_command_queue = []
+
+
+class _Node2DVector(Vector2):
+    """Vector2 that marks its owning Node2D dirty on component assignment."""
+
+    __slots__ = ("_owner",)
+
+    def __init__(self, owner, x=0.0, y=0.0):
+        super().__init__(x, y)
+        object.__setattr__(self, "_owner", owner)
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, float(value) if name in ("x", "y") else value)
+        owner = getattr(self, "_owner", None)
+        if owner is not None and name in ("x", "y"):
+            owner._mark_node_dirty()
 
 
 class Node:
@@ -38,10 +59,17 @@ class Node:
     ready_signal = Signal("ready")
     child_entered = Signal("child_entered")
 
+    _scrawl_node_kind = "node"
+    _scrawl_id_source = count(1)
+
     def __init__(self, name: str = ""):
+        self._scrawl_node_id = next(Node._scrawl_id_source)
         self.name = name or self.__class__.__name__
         self._parent: Optional['Node'] = None
         self._children: List['Node'] = []
+        self.scene = None
+        self.game = None
+        self._scrawl_node_dirty = False
         self._groups: List[str] = []
         self._is_ready = False
         self._is_in_tree = False
@@ -54,22 +82,75 @@ class Node:
 
     def add_child(self, node: 'Node'):
         """添加子节点。"""
+        if not isinstance(node, Node):
+            raise TypeError("child must be a Node")
+        if node is self:
+            raise ValueError("a node cannot be its own child")
+        ancestor = self
+        while ancestor is not None:
+            if ancestor is node:
+                raise ValueError("adding this child would create a node cycle")
+            ancestor = ancestor._parent
+        if node._parent is self:
+            return
+        old_parent = node._parent
+        old_runtime = old_parent is not None and old_parent._runtime_bridge_active()
+        new_runtime = self._runtime_bridge_active()
+        same_runtime_scene = (
+            old_runtime
+            and new_runtime
+            and old_parent is not None
+            and old_parent.scene is self.scene
+        )
         if node._parent:
-            node._parent.remove_child(node)
+            node._parent._detach_child(node)
         node._parent = self
         self._children.append(node)
+        node._set_scene(self.scene)
+        node._set_game(self.game)
         node._is_in_tree = self._is_in_tree
         if node._is_in_tree:
             node._enter_tree()
         self.child_entered.emit(node)
+        if new_runtime:
+            command = "node_reparent" if same_runtime_scene else "node_add"
+            _scrawl_command_queue.append((command, node, self))
+        elif old_runtime:
+            _scrawl_command_queue.append(("node_remove", node))
 
     def remove_child(self, node: 'Node'):
         """移除子节点。"""
         if node in self._children:
-            self._children.remove(node)
-            if node._is_in_tree:
-                node._exit_tree()
-            node._parent = None
+            runtime = self._runtime_bridge_active()
+            self._detach_child(node)
+            if runtime:
+                _scrawl_command_queue.append(("node_remove", node))
+
+    def _detach_child(self, node: 'Node'):
+        """Detach a child without emitting a bridge command."""
+        self._children.remove(node)
+        if node._is_in_tree:
+            node._exit_tree()
+        node._parent = None
+        node._set_scene(None)
+        node._set_game(None)
+
+    def _runtime_bridge_active(self) -> bool:
+        """Whether this node belongs to the scene currently running natively."""
+        game = self.game
+        return bool(
+            game is not None
+            and getattr(game, "_native", None) is not None
+            and getattr(game, "_active_scene", None) is self.scene
+        )
+
+    def _take_node_dirty(self) -> bool:
+        dirty = self._scrawl_node_dirty
+        self._scrawl_node_dirty = False
+        return dirty
+
+    def _mark_node_dirty(self):
+        self._scrawl_node_dirty = True
 
     def get_child(self, index: int) -> Optional['Node']:
         if 0 <= index < len(self._children):
@@ -150,9 +231,38 @@ class Node:
             self._children.insert(new_index, child)
 
     def reparent(self, new_parent: 'Node'):
-        if self._parent:
-            self._parent.remove_child(self)
         new_parent.add_child(self)
+
+    def iter_tree(self, include_self: bool = True):
+        """Yield this node tree in deterministic parent-before-child order."""
+        if include_self:
+            yield self
+        for child in self._children:
+            yield from child.iter_tree(include_self=True)
+
+    def _set_scene(self, scene):
+        self.scene = scene
+        for child in self._children:
+            child._set_scene(scene)
+
+    def _set_game(self, game):
+        self.game = game
+        for child in self._children:
+            child._set_game(game)
+
+    def _scrawl_tree_records(self):
+        """Return the stable, structured scene-tree contract used by Rust."""
+        records = []
+
+        def visit(node, parent_id):
+            records.append(
+                (node._scrawl_node_id, parent_id, node._scrawl_node_kind, node)
+            )
+            for child in node._children:
+                visit(child, node._scrawl_node_id)
+
+        visit(self, None)
+        return records
 
     # === 分组 ===
 
@@ -262,11 +372,13 @@ class Node2D(Node):
     带有 2D 变换（位置、旋转、缩放）的节点。
     """
 
+    _scrawl_node_kind = "node2d"
+
     def __init__(self, name: str = ""):
         super().__init__(name)
-        self._position = Vector2()
+        self._position = _Node2DVector(self)
         self._rotation = 0.0  # 弧度
-        self._scale = Vector2(1, 1)
+        self._scale = _Node2DVector(self, 1, 1)
         self._z_index = 0
         self._z_as_relative = True
         self._visible = True
@@ -281,9 +393,11 @@ class Node2D(Node):
     @position.setter
     def position(self, value: Vector2):
         if isinstance(value, (tuple, list)):
-            self._position = Vector2(float(value[0]), float(value[1]))
+            x, y = value[0], value[1]
         else:
-            self._position = value
+            x, y = value.x, value.y
+        self._position = _Node2DVector(self, x, y)
+        self._mark_node_dirty()
 
     @property
     def global_position(self) -> Vector2:
@@ -294,10 +408,14 @@ class Node2D(Node):
 
     @global_position.setter
     def global_position(self, value: Vector2):
+        if isinstance(value, (tuple, list)):
+            value = Vector2(float(value[0]), float(value[1]))
         if self._parent and isinstance(self._parent, Node2D):
-            self._position = value - self._parent.global_position
+            value = value - self._parent.global_position
         else:
-            self._position = value
+            value = Vector2(value.x, value.y)
+        self._position = _Node2DVector(self, value.x, value.y)
+        self._mark_node_dirty()
 
     # === 旋转 ===
 
@@ -309,6 +427,7 @@ class Node2D(Node):
     @rotation.setter
     def rotation(self, value: float):
         self._rotation = float(value)
+        self._mark_node_dirty()
 
     @property
     def rotation_degrees(self) -> float:
@@ -320,6 +439,7 @@ class Node2D(Node):
     def rotation_degrees(self, value: float):
         import math
         self._rotation = math.radians(value)
+        self._mark_node_dirty()
 
     @property
     def global_rotation(self) -> float:
@@ -336,11 +456,13 @@ class Node2D(Node):
     @scale.setter
     def scale(self, value):
         if isinstance(value, (tuple, list)):
-            self._scale = Vector2(float(value[0]), float(value[1]))
+            x, y = value[0], value[1]
         elif isinstance(value, (int, float)):
-            self._scale = Vector2(float(value), float(value))
+            x = y = value
         else:
-            self._scale = value
+            x, y = value.x, value.y
+        self._scale = _Node2DVector(self, x, y)
+        self._mark_node_dirty()
 
     @property
     def global_scale(self) -> Vector2:
@@ -358,6 +480,7 @@ class Node2D(Node):
     @z_index.setter
     def z_index(self, value: int):
         self._z_index = value
+        self._mark_node_dirty()
 
     # === 可见性 ===
 
@@ -368,12 +491,15 @@ class Node2D(Node):
     @visible.setter
     def visible(self, value: bool):
         self._visible = value
+        self._mark_node_dirty()
 
     def show(self):
         self._visible = True
+        self._mark_node_dirty()
 
     def hide(self):
         self._visible = False
+        self._mark_node_dirty()
 
     @property
     def modulate(self):
@@ -382,6 +508,7 @@ class Node2D(Node):
     @modulate.setter
     def modulate(self, value):
         self._modulate = value
+        self._mark_node_dirty()
 
     # === 变换 ===
 
@@ -404,15 +531,17 @@ class Node2D(Node):
         import math
         diff = target - self.global_position
         self._rotation = math.atan2(diff.y, diff.x)
+        self._mark_node_dirty()
 
     def rotate(self, angle: float):
         """旋转指定弧度。"""
         self._rotation += angle
+        self._mark_node_dirty()
 
     def translate(self, offset: Vector2):
         """平移。"""
-        self._position = self._position + offset
+        self.position = self._position + offset
 
     def apply_scale(self, ratio: Vector2):
         """应用缩放。"""
-        self._scale = Vector2(self._scale.x * ratio.x, self._scale.y * ratio.y)
+        self.scale = Vector2(self._scale.x * ratio.x, self._scale.y * ratio.y)
