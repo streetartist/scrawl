@@ -82,11 +82,41 @@ impl Plugin for PythonRuntimePlugin {
             FixedUpdate,
             python_frame_system.in_set(ScrawlSet::ScriptExec),
         );
+        app.add_systems(
+            FixedUpdate,
+            sync_physics_nodes_to_python.after(ScrawlSet::Physics),
+        );
     }
 }
 
 /// Single exclusive system that does ALL Python work in one GIL acquisition.
 fn python_frame_system(world: &mut World) {
+    let fixed_delta = world
+        .get_resource::<Time<Fixed>>()
+        .map(|time| time.delta_secs())
+        .unwrap_or(1.0 / 60.0);
+
+    // Generic Node2D descendants (including physics bodies) do not live in the
+    // sprite handler list. Run the scene tree callback once so kinematic bodies
+    // and user-defined node logic participate in the same fixed tick.
+    let scene_roots: Vec<Py<PyAny>> = {
+        let runtime = world.resource::<PythonRuntime>();
+        Python::with_gil(|py| {
+            runtime
+                .node_objects
+                .values()
+                .filter_map(|object| {
+                    let bound = object.bind(py);
+                    let kind = bound
+                        .getattr("_scrawl_node_kind")
+                        .and_then(|value| value.extract::<String>())
+                        .ok()?;
+                    (kind == "scene").then(|| object.clone_ref(py))
+                })
+                .collect()
+        })
+    };
+
     // Collect events from the world before acquiring GIL
     let key_events: Vec<KeyInputEvent> = world
         .resource_mut::<Events<KeyInputEvent>>()
@@ -133,6 +163,15 @@ fn python_frame_system(world: &mut World) {
     // === Single GIL acquisition for the entire frame ===
     let commands = Python::with_gil(|py| {
         let deadline = Instant::now() + Duration::from_millis(budget_ms);
+
+        for scene in &scene_roots {
+            if let Err(error) = scene
+                .bind(py)
+                .call_method1("_physics_process_tree", (fixed_delta,))
+            {
+                eprintln!("[Scrawl] Error in scene physics processing: {error}");
+            }
+        }
 
         for sprite in sprites.iter_mut() {
             // Clone handlers to avoid borrow conflict with start_handler
@@ -544,7 +583,16 @@ fn sync_python_nodes(world: &mut World, py: Python<'_>) {
             .getattr("_scrawl_node_kind")
             .and_then(|value| value.extract::<String>())
             .unwrap_or_default();
-        if kind != "node2d" {
+        let is_node2d = matches!(
+            kind.as_str(),
+            "node2d"
+                | "static_body2d"
+                | "rigid_body2d"
+                | "kinematic_body2d"
+                | "physics_body2d"
+                | "collision_shape2d"
+        );
+        if !is_node2d {
             continue;
         }
 
@@ -588,7 +636,143 @@ fn sync_python_nodes(world: &mut World, py: Python<'_>) {
                 Visibility::Hidden
             };
         }
+
+        if matches!(
+            kind.as_str(),
+            "static_body2d" | "rigid_body2d" | "kinematic_body2d" | "physics_body2d"
+        ) {
+            let body_type = match kind.as_str() {
+                "static_body2d" => PhysicsBodyType::Static,
+                "kinematic_body2d" => PhysicsBodyType::Kinematic,
+                _ => match object
+                    .getattr("mode")
+                    .and_then(|value| value.extract::<i32>())
+                    .unwrap_or(0)
+                {
+                    1 => PhysicsBodyType::Static,
+                    2 => PhysicsBodyType::Kinematic,
+                    _ => PhysicsBodyType::Dynamic,
+                },
+            };
+            if let Some(mut props) = world.get_mut::<PhysicsProps>(entity) {
+                props.gravity_scale = object
+                    .getattr("gravity_scale")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(props.gravity_scale);
+                props.friction = object
+                    .getattr("friction")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(props.friction);
+                props.restitution = object
+                    .getattr("bounce")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(props.restitution);
+                props.body_type = body_type;
+            }
+            let velocity_attr = if kind == "kinematic_body2d" {
+                "velocity"
+            } else {
+                "linear_velocity"
+            };
+            if let Some(mut velocity) = world.get_mut::<Velocity2D>(entity) {
+                velocity.linear = extract_python_vec2(object, velocity_attr, velocity.linear);
+                velocity.angular = object
+                    .getattr("angular_velocity")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(velocity.angular);
+            }
+            if let Some(mut config) = world.get_mut::<PhysicsBodyConfig>(entity) {
+                config.mass = object
+                    .getattr("mass")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(config.mass);
+                config.linear_damp = object
+                    .getattr("linear_damp")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(config.linear_damp);
+                config.angular_damp = object
+                    .getattr("angular_damp")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(config.angular_damp);
+                config.collision_layer = object
+                    .getattr("collision_layer")
+                    .and_then(|value| value.extract::<u32>())
+                    .unwrap_or(config.collision_layer);
+                config.collision_mask = object
+                    .getattr("collision_mask")
+                    .and_then(|value| value.extract::<u32>())
+                    .unwrap_or(config.collision_mask);
+                config.can_sleep = object
+                    .getattr("can_sleep")
+                    .and_then(|value| value.extract::<bool>())
+                    .unwrap_or(config.can_sleep);
+                config.sleeping = object
+                    .getattr("sleeping")
+                    .and_then(|value| value.extract::<bool>())
+                    .unwrap_or(config.sleeping);
+                config.freeze = object
+                    .getattr("freeze")
+                    .and_then(|value| value.extract::<bool>())
+                    .unwrap_or(config.freeze);
+            }
+        } else if kind == "collision_shape2d" {
+            if let Some(mut physics_shape) = world.get_mut::<PhysicsShape>(entity) {
+                *physics_shape = extract_runtime_physics_shape(object);
+            }
+        }
     }
+}
+
+/// Copy Rapier-backed body state into Python after the physics writeback phase.
+/// The Python helper writes private fields directly and clears its dirty bit,
+/// so native simulation does not fight the regular Python-to-ECS sync.
+fn sync_physics_nodes_to_python(world: &mut World) {
+    let bodies: Vec<(Entity, Py<PyAny>)> = {
+        let runtime = world.resource::<PythonRuntime>();
+        runtime
+            .node_objects
+            .iter()
+            .filter_map(|(node_id, object)| {
+                let entity = runtime.nodes.get(node_id).copied()?;
+                let kind = Python::with_gil(|py| {
+                    object
+                        .bind(py)
+                        .getattr("_scrawl_node_kind")
+                        .and_then(|value| value.extract::<String>())
+                        .unwrap_or_default()
+                });
+                if matches!(
+                    kind.as_str(),
+                    "static_body2d" | "rigid_body2d" | "kinematic_body2d" | "physics_body2d"
+                ) {
+                    let object = Python::with_gil(|py| object.clone_ref(py));
+                    Some((entity, object))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    };
+
+    Python::with_gil(|py| {
+        for (entity, object) in bodies {
+            let Some(transform) = world.get::<Transform2D>(entity).cloned() else {
+                continue;
+            };
+            let velocity = world.get::<Velocity2D>(entity).cloned().unwrap_or_default();
+            let _ = object.bind(py).call_method1(
+                "_scrawl_sync_physics_state",
+                (
+                    transform.position.x,
+                    transform.position.y,
+                    transform.rotation_degrees,
+                    velocity.linear.x,
+                    velocity.linear.y,
+                    velocity.angular,
+                ),
+            );
+        }
+    });
 }
 
 /// Spawn a Python node and all of its descendants after the game has started.
@@ -659,6 +843,140 @@ fn spawn_dynamic_subtree(
                         NodeType(NodeKind::Empty),
                         PythonNodeId(node_id),
                         Visible(visible),
+                    ))
+                    .id()
+            } else if kind == "collision_shape2d" {
+                let position = extract_python_vec2(object_bound, "position", Vec2::ZERO);
+                let scale = extract_python_vec2(object_bound, "scale", Vec2::ONE);
+                let rotation = object_bound
+                    .getattr("rotation")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(0.0);
+                let visible = object_bound
+                    .getattr("visible")
+                    .and_then(|value| value.extract::<bool>())
+                    .unwrap_or(true);
+                world
+                    .spawn((
+                        Transform::from_xyz(position.x, position.y, 0.0)
+                            .with_rotation(Quat::from_rotation_z(rotation))
+                            .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+                        if visible {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        },
+                        ScrawlName(name),
+                        ScrawlId::default(),
+                        NodeType(NodeKind::Empty),
+                        PythonNodeId(node_id),
+                        Visible(visible),
+                        extract_runtime_physics_shape(object_bound),
+                    ))
+                    .id()
+            } else if matches!(
+                kind.as_str(),
+                "static_body2d" | "rigid_body2d" | "kinematic_body2d" | "physics_body2d"
+            ) {
+                let position = extract_python_vec2(object_bound, "position", Vec2::ZERO);
+                let scale = extract_python_vec2(object_bound, "scale", Vec2::ONE);
+                let rotation = object_bound
+                    .getattr("rotation")
+                    .and_then(|value| value.extract::<f32>())
+                    .unwrap_or(0.0);
+                let z_index = object_bound
+                    .getattr("z_index")
+                    .and_then(|value| value.extract::<i32>())
+                    .unwrap_or(0);
+                let visible = object_bound
+                    .getattr("visible")
+                    .and_then(|value| value.extract::<bool>())
+                    .unwrap_or(true);
+                let body_type = runtime_physics_body_type(object_bound, &kind);
+                let velocity_attr = if kind == "kinematic_body2d" {
+                    "velocity"
+                } else {
+                    "linear_velocity"
+                };
+                let props = PhysicsProps {
+                    gravity_scale: object_bound
+                        .getattr("gravity_scale")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(1.0),
+                    friction: object_bound
+                        .getattr("friction")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(0.02),
+                    restitution: object_bound
+                        .getattr("bounce")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(0.0),
+                    body_type,
+                };
+                let config = PhysicsBodyConfig {
+                    mass: object_bound
+                        .getattr("mass")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(1.0),
+                    linear_damp: object_bound
+                        .getattr("linear_damp")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(0.0),
+                    angular_damp: object_bound
+                        .getattr("angular_damp")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(0.0),
+                    collision_layer: object_bound
+                        .getattr("collision_layer")
+                        .and_then(|value| value.extract::<u32>())
+                        .unwrap_or(1),
+                    collision_mask: object_bound
+                        .getattr("collision_mask")
+                        .and_then(|value| value.extract::<u32>())
+                        .unwrap_or(1),
+                    can_sleep: object_bound
+                        .getattr("can_sleep")
+                        .and_then(|value| value.extract::<bool>())
+                        .unwrap_or(true),
+                    sleeping: object_bound
+                        .getattr("sleeping")
+                        .and_then(|value| value.extract::<bool>())
+                        .unwrap_or(false),
+                    freeze: object_bound
+                        .getattr("freeze")
+                        .and_then(|value| value.extract::<bool>())
+                        .unwrap_or(false),
+                };
+                let velocity = Velocity2D {
+                    linear: extract_python_vec2(object_bound, velocity_attr, Vec2::ZERO),
+                    angular: object_bound
+                        .getattr("angular_velocity")
+                        .and_then(|value| value.extract::<f32>())
+                        .unwrap_or(0.0),
+                };
+                world
+                    .spawn((
+                        Transform::from_xyz(position.x, position.y, z_index as f32)
+                            .with_rotation(Quat::from_rotation_z(rotation))
+                            .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+                        if visible {
+                            Visibility::Inherited
+                        } else {
+                            Visibility::Hidden
+                        },
+                        ScrawlName(name),
+                        ScrawlId::default(),
+                        NodeType(NodeKind::PhysicsBody),
+                        PythonNodeId(node_id),
+                        Visible(visible),
+                        Transform2D {
+                            position,
+                            rotation_degrees: 90.0 - rotation.to_degrees(),
+                            scale,
+                        },
+                        props,
+                        config,
+                        velocity,
                     ))
                     .id()
             } else {
@@ -787,6 +1105,64 @@ fn extract_python_vec2(object: &Bound<'_, PyAny>, attr: &str, fallback: Vec2) ->
     match (x, y) {
         (Ok(x), Ok(y)) => Vec2::new(x, y),
         _ => fallback,
+    }
+}
+
+fn extract_runtime_physics_shape(object: &Bound<'_, PyAny>) -> PhysicsShape {
+    let disabled = object
+        .getattr("disabled")
+        .and_then(|value| value.extract::<bool>())
+        .unwrap_or(false);
+    let Some(shape) = object.getattr("shape").ok() else {
+        return PhysicsShape {
+            disabled,
+            ..default()
+        };
+    };
+    let class_name = shape
+        .getattr("__class__")
+        .and_then(|class| class.getattr("__name__"))
+        .and_then(|name| name.extract::<String>())
+        .unwrap_or_default();
+    match class_name.as_str() {
+        "CircleShape2D" => PhysicsShape {
+            kind: CollisionKind::Circle,
+            size: None,
+            radius: shape
+                .getattr("radius")
+                .and_then(|value| value.extract::<f32>())
+                .ok(),
+            disabled,
+        },
+        "RectangleShape2D" => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: Some(extract_python_vec2(&shape, "size", Vec2::new(32.0, 32.0))),
+            radius: None,
+            disabled,
+        },
+        _ => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: Some(Vec2::new(32.0, 32.0)),
+            radius: None,
+            disabled,
+        },
+    }
+}
+
+fn runtime_physics_body_type(object: &Bound<'_, PyAny>, kind: &str) -> PhysicsBodyType {
+    match kind {
+        "static_body2d" => PhysicsBodyType::Static,
+        "kinematic_body2d" => PhysicsBodyType::Kinematic,
+        "rigid_body2d" => match object
+            .getattr("mode")
+            .and_then(|value| value.extract::<i32>())
+            .unwrap_or(0)
+        {
+            1 => PhysicsBodyType::Static,
+            2 => PhysicsBodyType::Kinematic,
+            _ => PhysicsBodyType::Dynamic,
+        },
+        _ => PhysicsBodyType::Dynamic,
     }
 }
 

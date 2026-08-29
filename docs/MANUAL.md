@@ -41,7 +41,7 @@ group = Node2D("group")
 group.position = (400, 300)
 
 player = Sprite()
-player.pos = (40, 0)  # local to group
+player.position = (40, 0)  # local to group
 
 group.add_child(player)
 scene.add_child(group)
@@ -49,13 +49,13 @@ scene.add_child(group)
 
 Every Node receives a stable `_scrawl_node_id` used internally by the bridge. User code should use Node references and paths rather than depending on that private identifier.
 
-At this stage, the tree is mapped when `game.run()` starts. Runtime `add_child()`, `remove_child()` and `reparent()` synchronization is the next bridge milestone; mutating the Python tree while the window is running does not yet create or move generic native entities.
+The bridge also applies runtime `add_child()`, `remove_child()` and same-scene `reparent()` operations through the same node lifecycle. New physics bodies and shape children use the same path.
 
 ## Sprite properties
 
 | Property | Meaning |
 | --- | --- |
-| `x`, `y`, `pos` | World position, using a bottom-left origin |
+| `position`, `x`, `y` | World position, using a bottom-left origin |
 | `direction` | Compass degrees: 0 up, 90 right |
 | `size` | Uniform scale |
 | `width`, `height` | Optional explicit render dimensions in pixels |
@@ -99,6 +99,29 @@ def hit_enemy(self):
     self.delete_self()
 ```
 
+## Native 2D physics
+
+`StaticBody2D`, `RigidBody2D` and `KinematicBody2D` are mapped to Rapier2D in the native fixed-update loop. Attach one or more `CollisionShape2D` children and configure a rectangle or circle:
+
+```python
+from scrawl import CollisionShape2D, RigidBody2D, Vector2
+
+ball = RigidBody2D("ball")
+ball.position = Vector2(400, 100)
+ball.gravity_scale = 1.0
+ball.bounce = 0.4
+
+shape = CollisionShape2D()
+shape.set_circle(18)
+ball.add_child(shape)
+```
+
+The native body writes position, rotation and velocity back to the Python object after each physics step. `mass`, `linear_damp`, `angular_damp`, `collision_layer`, `collision_mask`, `sleeping` and `freeze` are read from the corresponding Python properties and can be changed while the game is running. Shape changes (`set_rect`, `set_circle`, and `disabled`) are also applied to the live collider. A body without a shape receives a 32x32 fallback box.
+
+The scene tree's `_physics_process(delta)` callback runs once per fixed tick, so custom `KinematicBody2D` movement can update `position` or call `move_and_slide()` before Rapier steps. Native `RigidBody2D` instances use Rapier's gravity and do not run the Python fallback integrator a second time.
+
+The existing `Sprite` collision mode still supports `collision_type="mask"` with alpha masks. Native `CollisionShape2D` mask/polygon/capsule shapes currently use a rectangular fallback; dedicated native shape mappings and trigger/query APIs are tracked in the roadmap.
+
 Key identifiers are strings. Integer Pygame constants are intentionally rejected.
 
 ## Native runtime status
@@ -115,7 +138,8 @@ Key identifiers are strings. Integer Pygame constants are intentionally rejected
 | Sound effects and music | Connected |
 | Scene / Node / Node2D startup hierarchy | Connected |
 | Runtime Node creation, deletion and same-scene reparenting | Connected |
-| Physics Node mapping | Partial / experimental |
+| Physics bodies and rectangle/circle shapes | Connected |
+| Area2D, RayCast2D and native trigger/query APIs | Python model only |
 | UI Node mapping | Python model only |
 | TileMap, Particles and Navigation mapping | Python model only |
 

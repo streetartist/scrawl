@@ -65,7 +65,7 @@ class Ball(Sprite):
     def __init__(self):
         super().__init__()
         self.name = "Ball"
-        self.pos = (400, 300)
+        self.position = (400, 300)
         self.direction = 45
         self.color = (84, 193, 189)
         self.set_dimensions(48, 48)
@@ -85,7 +85,7 @@ class Player(Sprite):
     def __init__(self):
         super().__init__()
         self.name = "Player"
-        self.pos = (200, 200)
+        self.position = (200, 200)
         self.color = (240, 106, 95)
         self.set_dimensions(56, 40)
         self.z_index = 1
@@ -153,7 +153,7 @@ game.run(debug=False, vsync=True)
 
 | Area | API |
 | --- | --- |
-| Transform | `x`, `y`, `pos`, `direction`, `size`, `move()`, `go_to()`, `point_towards()` |
+| Transform | `position`, `x`, `y`, `direction`, `size`, `move()`, `go_to()`, `point_towards()` |
 | Appearance | `color`, `visible`, `width`, `height`, `z_index`, `set_dimensions()` |
 | Costumes | `add_costume()`, `switch_costume()`, `next_costume()` |
 | Lifecycle | `clone()`, `delete_self()` |

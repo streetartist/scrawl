@@ -17,6 +17,7 @@ path = "src/bench_bare.rs"
 bevy = { workspace = true }
 scrawl-core = { workspace = true }
 scrawl-render = { workspace = true }
+scrawl-physics = { workspace = true }
 scrawl-scripting = { workspace = true }
 log = { workspace = true }
 env_logger = { workspace = true }

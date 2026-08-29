@@ -31,7 +31,7 @@ class Bat1(Sprite):
 
     @as_clones
     def clones1(self):
-        self.pos = (400, 300)
+        self.position = (400, 300)
         self.face_random_direction()
         self.move(400)
         self.face_towards("Witch")
@@ -77,7 +77,7 @@ class Dragon(Sprite):
 
     @as_clones
     def clones1(self):
-        self.pos = (400, 300)
+        self.position = (400, 300)
         self.face_random_direction()
         self.move(400)
         self.face_towards("Witch")
@@ -121,7 +121,7 @@ class Hippo(Sprite):
 
     @as_clones
     def clones1(self):
-        self.pos = (400, 300)
+        self.position = (400, 300)
         self.face_random_direction()
         self.move(400)
         self.face_towards("Witch")
@@ -221,7 +221,7 @@ class Witch(Sprite):
     def left_held(self):
         self.turn_left(2)
 
-    @on_key("space", "held")
+    @on_key("space", "pressed")
     def space_pressed(self):
         self.fireball.direction = self.direction
         self.clone(self.fireball)

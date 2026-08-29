@@ -16,6 +16,9 @@ class SpriteStateTests(unittest.TestCase):
         self.sprite._take_dirty()
 
     def test_transform_mutations_are_tracked(self):
+        self.sprite.position = (10, 300)
+        self.assertEqual((self.sprite.position.x, self.sprite.position.y), (10, 300))
+        self.sprite._take_dirty()
         self.sprite.x = 10
         self.sprite.move_up(4)
         self.assertEqual(self.sprite._take_dirty(), _DIRTY_TRANSFORM)

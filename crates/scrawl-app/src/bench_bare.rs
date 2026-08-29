@@ -1,8 +1,8 @@
 //! Bare Bevy benchmark — no Python, no scrawl plugins, just 2 sprites.
 //! Run: cargo run --release --bin bench-bare
 
-use bevy::prelude::*;
 use bevy::diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin};
+use bevy::prelude::*;
 
 fn main() {
     App::new()

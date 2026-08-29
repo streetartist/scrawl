@@ -9,6 +9,7 @@ use clap::Parser;
 
 use scrawl_core::prelude::*;
 use scrawl_core::resources::ScrawlConfig;
+use scrawl_physics::ScrawlPhysicsPlugin;
 use scrawl_render::ScrawlRenderPlugin;
 use scrawl_scripting::ScrawlScriptingPlugin;
 
@@ -54,10 +55,7 @@ fn main() {
     let cli = Cli::parse();
 
     log::info!("Scrawl Engine v2.2.0 starting...");
-    log::info!(
-        "Mode: {}",
-        if cli.editor { "Editor" } else { "Standalone" }
-    );
+    log::info!("Mode: {}", if cli.editor { "Editor" } else { "Standalone" });
 
     let config = ScrawlConfig {
         width: cli.width,
@@ -71,16 +69,14 @@ fn main() {
     let mut app = App::new();
 
     // Default Bevy plugins with our window configuration
-    app.add_plugins(
-        DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: cli.title.clone(),
-                resolution: (cli.width as f32, cli.height as f32).into(),
-                ..default()
-            }),
+    app.add_plugins(DefaultPlugins.set(WindowPlugin {
+        primary_window: Some(Window {
+            title: cli.title.clone(),
+            resolution: (cli.width as f32, cli.height as f32).into(),
             ..default()
         }),
-    );
+        ..default()
+    }));
 
     // Scrawl core plugins
     app.insert_resource(config);
@@ -92,8 +88,8 @@ fn main() {
         ..default()
     });
 
-    // Phase 2+ plugins (uncomment as they become available):
-    // app.add_plugins(ScrawlPhysicsPlugin);
+    // Phase 2+ plugins:
+    app.add_plugins(ScrawlPhysicsPlugin);
     // app.add_plugins(ScrawlAudioPlugin);
     // app.add_plugins(ScrawlAnimationPlugin);
     // app.add_plugins(ScrawlTilemapPlugin);

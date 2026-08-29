@@ -5,9 +5,11 @@ use pyo3::prelude::*;
 use std::collections::HashMap;
 
 use scrawl_audio::ScrawlAudioPlugin;
+use scrawl_core::components::SceneRoot as ScrawlSceneRoot;
 use scrawl_core::components::*;
 use scrawl_core::resources::ScrawlConfig;
 use scrawl_core::ScrawlCorePlugin;
+use scrawl_physics::ScrawlPhysicsPlugin;
 use scrawl_render::ScrawlRenderPlugin;
 use scrawl_scripting::ScrawlScriptingPlugin;
 
@@ -237,6 +239,7 @@ impl PyGame {
             });
             app.add_plugins(ScrawlCorePlugin);
             app.add_plugins(ScrawlRenderPlugin);
+            app.add_plugins(ScrawlPhysicsPlugin);
             app.add_plugins(ScrawlAudioPlugin);
             app.add_plugins(ScrawlScriptingPlugin::default());
             app.add_plugins(PythonRuntimePlugin);
@@ -337,6 +340,23 @@ enum GenericNodeKind {
         z_index: i32,
         visible: bool,
     },
+    CollisionShape {
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        visible: bool,
+        shape: PhysicsShape,
+    },
+    PhysicsBody {
+        position: Vec2,
+        rotation: f32,
+        scale: Vec2,
+        z_index: i32,
+        visible: bool,
+        props: PhysicsProps,
+        config: PhysicsBodyConfig,
+        velocity: Velocity2D,
+    },
 }
 
 #[derive(Resource)]
@@ -387,7 +407,7 @@ fn spawn_nodes_from_python(
                     ScrawlId::default(),
                     NodeType(NodeKind::Empty),
                     PythonNodeId(data.node_id),
-                    SceneRoot,
+                    ScrawlSceneRoot,
                 ))
                 .id(),
             GenericNodeKind::Empty => commands
@@ -420,6 +440,64 @@ fn spawn_nodes_from_python(
                     NodeType(NodeKind::Empty),
                     PythonNodeId(data.node_id),
                     Visible(*visible),
+                ))
+                .id(),
+            GenericNodeKind::CollisionShape {
+                position,
+                rotation,
+                scale,
+                visible,
+                shape,
+            } => commands
+                .spawn((
+                    Transform::from_xyz(position.x, position.y, 0.0)
+                        .with_rotation(Quat::from_rotation_z(*rotation))
+                        .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+                    if *visible {
+                        Visibility::Inherited
+                    } else {
+                        Visibility::Hidden
+                    },
+                    ScrawlName(data.name.clone()),
+                    ScrawlId::default(),
+                    NodeType(NodeKind::Empty),
+                    PythonNodeId(data.node_id),
+                    Visible(*visible),
+                    shape.clone(),
+                ))
+                .id(),
+            GenericNodeKind::PhysicsBody {
+                position,
+                rotation,
+                scale,
+                z_index,
+                visible,
+                props,
+                config,
+                velocity,
+            } => commands
+                .spawn((
+                    Transform::from_xyz(position.x, position.y, *z_index as f32)
+                        .with_rotation(Quat::from_rotation_z(*rotation))
+                        .with_scale(Vec3::new(scale.x, scale.y, 1.0)),
+                    if *visible {
+                        Visibility::Inherited
+                    } else {
+                        Visibility::Hidden
+                    },
+                    ScrawlName(data.name.clone()),
+                    ScrawlId::default(),
+                    NodeType(NodeKind::PhysicsBody),
+                    PythonNodeId(data.node_id),
+                    Visible(*visible),
+                    Transform2D {
+                        position: *position,
+                        rotation_degrees: 90.0 - rotation.to_degrees(),
+                        scale: *scale,
+                    },
+                    props.clone(),
+                    config.clone(),
+                    velocity.clone(),
                 ))
                 .id(),
         };
@@ -608,6 +686,28 @@ fn extract_generic_node_spawn_data(
                 visible,
             }
         }
+        "collision_shape2d" => {
+            let position = extract_vector2(&obj, "position", Vec2::ZERO);
+            let scale = extract_vector2(&obj, "scale", Vec2::ONE);
+            let rotation = obj
+                .getattr("rotation")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(0.0);
+            let visible = obj
+                .getattr("visible")
+                .and_then(|value| value.extract::<bool>())
+                .unwrap_or(true);
+            GenericNodeKind::CollisionShape {
+                position,
+                rotation,
+                scale,
+                visible,
+                shape: extract_physics_shape(&obj),
+            }
+        }
+        "static_body2d" | "rigid_body2d" | "kinematic_body2d" | "physics_body2d" => {
+            extract_physics_body_spawn_data(&obj, record.kind.as_str())
+        }
         _ => GenericNodeKind::Empty,
     };
 
@@ -632,6 +732,157 @@ fn extract_vector2(obj: &Bound<'_, PyAny>, attr: &str, fallback: Vec2) -> Vec2 {
     match (x, y) {
         (Ok(x), Ok(y)) => Vec2::new(x, y),
         _ => fallback,
+    }
+}
+
+fn extract_physics_shape(obj: &Bound<'_, PyAny>) -> PhysicsShape {
+    let disabled = obj
+        .getattr("disabled")
+        .and_then(|value| value.extract::<bool>())
+        .unwrap_or(false);
+    let Some(shape) = obj.getattr("shape").ok() else {
+        return PhysicsShape {
+            disabled,
+            ..default()
+        };
+    };
+    let class_name = shape
+        .getattr("__class__")
+        .and_then(|class| class.getattr("__name__"))
+        .and_then(|name| name.extract::<String>())
+        .unwrap_or_default();
+    match class_name.as_str() {
+        "CircleShape2D" => PhysicsShape {
+            kind: CollisionKind::Circle,
+            size: None,
+            radius: shape
+                .getattr("radius")
+                .and_then(|value| value.extract::<f32>())
+                .ok(),
+            disabled,
+        },
+        "RectangleShape2D" => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: Some(extract_vector2(&shape, "size", Vec2::new(32.0, 32.0))),
+            radius: None,
+            disabled,
+        },
+        _ => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: Some(Vec2::new(32.0, 32.0)),
+            radius: None,
+            disabled,
+        },
+    }
+}
+
+fn extract_physics_body_spawn_data(obj: &Bound<'_, PyAny>, kind: &str) -> GenericNodeKind {
+    let position = extract_vector2(obj, "position", Vec2::ZERO);
+    let scale = extract_vector2(obj, "scale", Vec2::ONE);
+    let rotation = obj
+        .getattr("rotation")
+        .and_then(|value| value.extract::<f32>())
+        .unwrap_or(0.0);
+    let z_index = obj
+        .getattr("z_index")
+        .and_then(|value| value.extract::<i32>())
+        .unwrap_or(0);
+    let visible = obj
+        .getattr("visible")
+        .and_then(|value| value.extract::<bool>())
+        .unwrap_or(true);
+
+    let mut body_type = match kind {
+        "static_body2d" => PhysicsBodyType::Static,
+        "kinematic_body2d" => PhysicsBodyType::Kinematic,
+        _ => PhysicsBodyType::Dynamic,
+    };
+    if kind == "rigid_body2d" {
+        match obj
+            .getattr("mode")
+            .and_then(|value| value.extract::<i32>())
+            .unwrap_or(0)
+        {
+            1 => body_type = PhysicsBodyType::Static,
+            2 => body_type = PhysicsBodyType::Kinematic,
+            _ => {}
+        }
+    }
+
+    let gravity_scale = obj
+        .getattr("gravity_scale")
+        .and_then(|value| value.extract::<f32>())
+        .unwrap_or(1.0);
+    let friction = obj
+        .getattr("friction")
+        .and_then(|value| value.extract::<f32>())
+        .unwrap_or(0.02);
+    let restitution = obj
+        .getattr("bounce")
+        .and_then(|value| value.extract::<f32>())
+        .unwrap_or(0.0);
+    let collision_layer = obj
+        .getattr("collision_layer")
+        .and_then(|value| value.extract::<u32>())
+        .unwrap_or(1);
+    let collision_mask = obj
+        .getattr("collision_mask")
+        .and_then(|value| value.extract::<u32>())
+        .unwrap_or(1);
+    let velocity_attr = if kind == "kinematic_body2d" {
+        "velocity"
+    } else {
+        "linear_velocity"
+    };
+    let velocity = Velocity2D {
+        linear: extract_vector2(obj, velocity_attr, Vec2::ZERO),
+        angular: obj
+            .getattr("angular_velocity")
+            .and_then(|value| value.extract::<f32>())
+            .unwrap_or(0.0),
+    };
+
+    GenericNodeKind::PhysicsBody {
+        position,
+        rotation,
+        scale,
+        z_index,
+        visible,
+        props: PhysicsProps {
+            gravity_scale,
+            friction,
+            restitution,
+            body_type,
+        },
+        config: PhysicsBodyConfig {
+            mass: obj
+                .getattr("mass")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(1.0),
+            linear_damp: obj
+                .getattr("linear_damp")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(0.0),
+            angular_damp: obj
+                .getattr("angular_damp")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(0.0),
+            collision_layer,
+            collision_mask,
+            can_sleep: obj
+                .getattr("can_sleep")
+                .and_then(|value| value.extract::<bool>())
+                .unwrap_or(true),
+            sleeping: obj
+                .getattr("sleeping")
+                .and_then(|value| value.extract::<bool>())
+                .unwrap_or(false),
+            freeze: obj
+                .getattr("freeze")
+                .and_then(|value| value.extract::<bool>())
+                .unwrap_or(false),
+        },
+        velocity,
     }
 }
 
@@ -740,7 +991,7 @@ mod tests {
             app.world().get::<PythonNodeId>(root),
             Some(&PythonNodeId(1))
         );
-        assert!(app.world().get::<SceneRoot>(root).is_some());
+        assert!(app.world().get::<ScrawlSceneRoot>(root).is_some());
         assert!(app
             .world()
             .get::<Children>(root)
@@ -749,5 +1000,82 @@ mod tests {
         let transform = app.world().get::<Transform>(child).unwrap();
         assert_eq!(transform.translation, Vec3::new(12.0, 34.0, 4.0));
         assert_eq!(transform.scale, Vec3::new(2.0, 3.0, 1.0));
+    }
+
+    #[test]
+    fn physics_nodes_keep_shape_children_and_native_components() {
+        let (body_object, shape_object) = Python::with_gil(|py| (py.None(), py.None()));
+        let mut app = App::new();
+        app.add_plugins((MinimalPlugins, AssetPlugin::default()));
+        app.init_resource::<PythonRuntime>();
+        app.insert_resource(ScrawlConfig::default());
+        app.insert_resource(PendingNodes {
+            generic_nodes: vec![
+                GenericNodeSpawnData {
+                    node_id: 10,
+                    name: "body".to_string(),
+                    kind: GenericNodeKind::PhysicsBody {
+                        position: Vec2::new(100.0, 40.0),
+                        rotation: 0.0,
+                        scale: Vec2::ONE,
+                        z_index: 0,
+                        visible: true,
+                        props: PhysicsProps {
+                            gravity_scale: 1.0,
+                            friction: 0.5,
+                            restitution: 0.25,
+                            body_type: PhysicsBodyType::Dynamic,
+                        },
+                        config: PhysicsBodyConfig::default(),
+                        velocity: Velocity2D {
+                            linear: Vec2::new(3.0, 4.0),
+                            angular: 0.0,
+                        },
+                    },
+                    py_object: body_object,
+                },
+                GenericNodeSpawnData {
+                    node_id: 11,
+                    name: "shape".to_string(),
+                    kind: GenericNodeKind::CollisionShape {
+                        position: Vec2::ZERO,
+                        rotation: 0.0,
+                        scale: Vec2::ONE,
+                        visible: true,
+                        shape: PhysicsShape {
+                            kind: CollisionKind::Circle,
+                            size: None,
+                            radius: Some(12.0),
+                            disabled: false,
+                        },
+                    },
+                    py_object: shape_object,
+                },
+            ],
+            sprites: Vec::new(),
+            parent_links: vec![(10, None), (11, Some(10))],
+        });
+        app.add_systems(Startup, spawn_nodes_from_python);
+        app.update();
+
+        let runtime = app.world().resource::<PythonRuntime>();
+        let body = runtime.nodes[&10];
+        let shape = runtime.nodes[&11];
+        assert_eq!(
+            app.world().get::<PhysicsProps>(body).unwrap().body_type,
+            PhysicsBodyType::Dynamic
+        );
+        assert_eq!(
+            app.world().get::<Velocity2D>(body).unwrap().linear,
+            Vec2::new(3.0, 4.0)
+        );
+        assert_eq!(
+            app.world().get::<PhysicsShape>(shape).unwrap().radius,
+            Some(12.0)
+        );
+        assert!(app
+            .world()
+            .get::<Children>(body)
+            .is_some_and(|children| children.contains(&shape)));
     }
 }

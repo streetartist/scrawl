@@ -13,7 +13,10 @@ This file tracks gaps between the public Python data model and the Rust NativeGa
 
 ## P1: feature mappings
 
-- Map physics bodies and collision shapes to Rapier entities.
+- [x] Map StaticBody2D, RigidBody2D, KinematicBody2D and rectangle/circle CollisionShape2D nodes to Rapier entities.
+- [x] Sync native physics transforms and velocities back to Python, including runtime node additions.
+- Map native capsule, polygon and mask shapes without an AABB fallback.
+- Map Area2D, RayCast2D, collision signals and query APIs.
 - Map Control, Label, Button and layout containers to `scrawl-ui`.
 - Map TileMap, ParticleEmitter2D and navigation nodes to their plugins.
 - Add camera, light and path runtime mappings.
@@ -21,6 +24,6 @@ This file tracks gaps between the public Python data model and the Rust NativeGa
 ## P2: runtime architecture
 
 - Move the Python command queue into a per-Game bridge context.
-- Add a supported background-task/result API for model inference and I/O.
+- Add a supported background-task/result API for model inference, I/O and so on.
 - Add capability introspection and runtime contract tests for every exported node type.
 - Enable the complete plugin set in the standalone app after mappings are tested.

@@ -64,7 +64,7 @@ def queue_resume_music():
 
 
 class _Vec2Proxy:
-    """Mutable view used by ``sprite.pos.x`` and ``sprite.pos.y``."""
+    """Mutable view used by ``sprite.position.x`` and ``sprite.position.y``."""
     def __init__(self, sprite):
         self._sprite = sprite
 
@@ -116,7 +116,7 @@ class Sprite(Node):
         self.collision_type = "mask"
         self.is_clones = False
 
-        self._pos_proxy = _Vec2Proxy(self)
+        self._position_proxy = _Vec2Proxy(self)
 
     def _mark_dirty(self, flag: int):
         self._scrawl_dirty |= flag
@@ -131,12 +131,12 @@ class Sprite(Node):
     # ========================================================================
 
     @property
-    def pos(self):
+    def position(self):
         """Mutable two-dimensional position view."""
-        return self._pos_proxy
+        return self._position_proxy
 
-    @pos.setter
-    def pos(self, value):
+    @position.setter
+    def position(self, value):
         """Accept tuple, list, or Vector2-like"""
         if hasattr(value, 'x') and hasattr(value, 'y'):
             self._x = float(value.x)
@@ -145,7 +145,7 @@ class Sprite(Node):
             self._x = float(value[0])
             self._y = float(value[1])
         else:
-            raise TypeError("pos must be a two-item sequence or Vector2-like object")
+            raise TypeError("position must be a two-item sequence or Vector2-like object")
         self._mark_dirty(_DIRTY_TRANSFORM)
 
     @property
@@ -369,7 +369,7 @@ class Sprite(Node):
         new_sprite._scrawl_node_id = next(Node._scrawl_id_source)
         new_sprite._parent = None
         new_sprite._children = []
-        new_sprite._pos_proxy = _Vec2Proxy(new_sprite)
+        new_sprite._position_proxy = _Vec2Proxy(new_sprite)
         new_sprite.is_clones = True
         new_sprite._costumes = dict(target._costumes)
         new_sprite._x = self._x  # Clone spawns at cloner's position

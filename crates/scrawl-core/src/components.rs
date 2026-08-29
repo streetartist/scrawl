@@ -255,6 +255,32 @@ impl Default for CollisionShape {
     }
 }
 
+/// Explicit shape description used by native 2D physics nodes.
+///
+/// The shape stays on the Python `CollisionShape2D` entity so Rapier can use
+/// Bevy's normal parent/child transform propagation. A single body may own
+/// multiple shape children.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct PhysicsShape {
+    pub kind: CollisionKind,
+    /// Full dimensions for rectangular shapes in pixels.
+    pub size: Option<Vec2>,
+    /// Radius for circular shapes in pixels.
+    pub radius: Option<f32>,
+    pub disabled: bool,
+}
+
+impl Default for PhysicsShape {
+    fn default() -> Self {
+        Self {
+            kind: CollisionKind::Rect,
+            size: Some(Vec2::new(32.0, 32.0)),
+            radius: None,
+            disabled: false,
+        }
+    }
+}
+
 /// Pixel-perfect collision bitmask, generated from sprite image alpha channel.
 ///
 /// Each bit represents one pixel: 1 = solid (alpha > threshold), 0 = transparent.
@@ -380,6 +406,34 @@ pub struct PhysicsProps {
     pub friction: f32,
     pub restitution: f32,
     pub body_type: PhysicsBodyType,
+}
+
+/// Runtime settings that do not affect the body's basic type or gravity.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct PhysicsBodyConfig {
+    pub mass: f32,
+    pub linear_damp: f32,
+    pub angular_damp: f32,
+    pub collision_layer: u32,
+    pub collision_mask: u32,
+    pub can_sleep: bool,
+    pub sleeping: bool,
+    pub freeze: bool,
+}
+
+impl Default for PhysicsBodyConfig {
+    fn default() -> Self {
+        Self {
+            mass: 1.0,
+            linear_damp: 0.0,
+            angular_damp: 0.0,
+            collision_layer: 1,
+            collision_mask: 1,
+            can_sleep: true,
+            sleeping: false,
+            freeze: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

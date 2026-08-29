@@ -22,6 +22,14 @@ from .signals import Signal
 class CollisionShape2D(Node2D):
     """碰撞形状节点 - 参考 Godot CollisionShape2D。"""
 
+    _scrawl_node_kind = "collision_shape2d"
+    _scrawl_shape_fields = frozenset({"shape", "disabled", "one_way_collision"})
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name in CollisionShape2D._scrawl_shape_fields and "_scrawl_node_dirty" in self.__dict__:
+            self._mark_shape_dirty()
+
     def __init__(self, name: str = "CollisionShape2D"):
         super().__init__(name)
         self.shape: Optional['Shape2D'] = None
@@ -29,21 +37,29 @@ class CollisionShape2D(Node2D):
         self.one_way_collision = False
         self.debug_color = (0, 150, 255, 100)
 
+    def _mark_shape_dirty(self):
+        """Notify the native bridge that the shape definition changed."""
+        self._mark_node_dirty()
+
     def set_rect(self, width: float, height: float):
         """设置矩形碰撞。"""
         self.shape = RectangleShape2D(width, height)
+        self._mark_shape_dirty()
 
     def set_circle(self, radius: float):
         """设置圆形碰撞。"""
         self.shape = CircleShape2D(radius)
+        self._mark_shape_dirty()
 
     def set_capsule(self, radius: float, height: float):
         """设置胶囊碰撞。"""
         self.shape = CapsuleShape2D(radius, height)
+        self._mark_shape_dirty()
 
     def set_polygon(self, points: List[Vector2]):
         """设置多边形碰撞。"""
         self.shape = ConvexPolygonShape2D(points)
+        self._mark_shape_dirty()
 
 
 class Shape2D:
@@ -116,6 +132,18 @@ class KinematicCollision2D:
 class PhysicsBody2D(Node2D):
     """物理体基类。"""
 
+    _scrawl_node_kind = "physics_body2d"
+    _scrawl_physics_fields = frozenset({
+        "collision_layer", "collision_mask", "gravity_scale", "mass", "linear_velocity",
+        "angular_velocity", "linear_damp", "angular_damp", "bounce", "friction", "sleeping",
+        "can_sleep", "freeze", "mode", "velocity",
+    })
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, name, value)
+        if name in PhysicsBody2D._scrawl_physics_fields and "_scrawl_node_dirty" in self.__dict__:
+            self._mark_node_dirty()
+
     def __init__(self, name: str = ""):
         super().__init__(name)
         self.collision_layer: int = 1
@@ -159,6 +187,15 @@ class PhysicsBody2D(Node2D):
                     rect = rect.merge(sr_world)
         return rect or Rect2(self._position.x - 16, self._position.y - 16, 32, 32)
 
+    def _scrawl_sync_physics_state(
+        self, x: float, y: float, rotation_degrees: float,
+        velocity_x: float, velocity_y: float, angular_velocity: float,
+    ):
+        """Update native-owned transform/velocity without marking it dirty."""
+        self._position = type(self._position)(self, x, y)
+        self._rotation = math.radians(rotation_degrees)
+        self._scrawl_node_dirty = False
+
 
 class StaticBody2D(PhysicsBody2D):
     """静态体 - 参考 Godot StaticBody2D。
@@ -172,6 +209,8 @@ class StaticBody2D(PhysicsBody2D):
         ground.add_child(shape)
         ground.position = Vector2(400, 580)
     """
+
+    _scrawl_node_kind = "static_body2d"
 
     def __init__(self, name: str = "StaticBody2D"):
         super().__init__(name)
@@ -190,6 +229,8 @@ class RigidBody2D(PhysicsBody2D):
         ball.bounce = 0.8
         ball.mass = 1.0
     """
+
+    _scrawl_node_kind = "rigid_body2d"
 
     # 信号
     body_entered = Signal("body_entered")
@@ -236,8 +277,23 @@ class RigidBody2D(PhysicsBody2D):
         """施加中心冲量。"""
         self.linear_velocity = self.linear_velocity + impulse / self.mass
 
+    def _scrawl_sync_physics_state(
+        self, x: float, y: float, rotation_degrees: float,
+        velocity_x: float, velocity_y: float, angular_velocity: float,
+    ):
+        """Update native-owned state without creating a Python-to-native feedback loop."""
+        self._position = type(self._position)(self, x, y)
+        self._rotation = math.radians(rotation_degrees)
+        self.linear_velocity = Vector2(velocity_x, velocity_y)
+        self.angular_velocity = angular_velocity
+        self._scrawl_node_dirty = False
+
     def _physics_process(self, delta: float):
         """物理帧更新。"""
+        # Native Rapier owns the body while a Game is running. Keep this
+        # fallback integrator for pure-Python mode without applying gravity twice.
+        if getattr(getattr(self, "game", None), "_native", None) is not None:
+            return
         if self.freeze or self.sleeping or self.mode != self.MODE_DYNAMIC:
             return
 
@@ -288,6 +344,17 @@ class KinematicBody2D(PhysicsBody2D):
                 self.move_and_slide()
     """
 
+    _scrawl_node_kind = "kinematic_body2d"
+
+    def _scrawl_sync_physics_state(
+        self, x: float, y: float, rotation_degrees: float,
+        velocity_x: float, velocity_y: float, angular_velocity: float,
+    ):
+        self._position = type(self._position)(self, x, y)
+        self._rotation = math.radians(rotation_degrees)
+        self.velocity = Vector2(velocity_x, velocity_y)
+        self._scrawl_node_dirty = False
+
     # 信号
     body_entered = Signal("body_entered")
 
@@ -311,12 +378,12 @@ class KinematicBody2D(PhysicsBody2D):
             剩余速度
         """
         # 简化实现：直接移动位置
-        self._position = self._position + self.velocity * (1.0 / 60.0)
+        self.position = self._position + self.velocity * (1.0 / 60.0)
         return self.velocity
 
     def move_and_collide(self, motion: Vector2) -> Optional[KinematicCollision2D]:
         """按照给定运动向量移动，碰到第一个碰撞体时停止。"""
-        self._position = self._position + motion
+        self.position = self._position + motion
         return self._last_collision
 
     def is_on_floor(self) -> bool:

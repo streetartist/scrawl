@@ -4382,6 +4382,7 @@ dependencies = [
  "env_logger",
  "log",
  "scrawl-core",
+ "scrawl-physics",
  "scrawl-render",
  "scrawl-scripting",
 ]
@@ -4406,6 +4407,7 @@ dependencies = [
  "pyo3",
  "scrawl-audio",
  "scrawl-core",
+ "scrawl-physics",
  "scrawl-render",
  "scrawl-scripting",
  "serde",
