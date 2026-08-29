@@ -253,24 +253,24 @@ FUNCTION_SNIPPETS: List[Dict[str, Any]] = [
         "description": "等待（在生成器中使用）",
         "template": "yield from self.wait(1.0)",
     },
-    # Physics (PhysicsSprite)
+    # Physics (Godot-style body nodes)
     {
-        "name": "set_gravity(x, y)",
+        "name": "RigidBody2D.gravity_scale",
         "category": "物理",
-        "description": "设置重力",
-        "template": "self.set_gravity(0, 0.5)",
+        "description": "设置重力缩放",
+        "template": "self.gravity_scale = 1.0",
     },
     {
-        "name": "set_friction(value)",
+        "name": "RigidBody2D.friction",
         "category": "物理",
         "description": "设置摩擦力",
-        "template": "self.set_friction(0.1)",
+        "template": "self.friction = 0.1",
     },
     {
-        "name": "set_elasticity(value)",
+        "name": "RigidBody2D.bounce",
         "category": "物理",
         "description": "设置弹性",
-        "template": "self.set_elasticity(0.8)",
+        "template": "self.bounce = 0.8",
     },
     {
         "name": "apply_force(fx, fy)",
@@ -478,7 +478,7 @@ FUNCTION_SNIPPETS: List[Dict[str, Any]] = [
         agent.set_target(Vector2(400, 300))
         # 主循环中调用:
         # velocity = agent.get_next_velocity()
-        # self.pos += velocity * dt''',
+        # self.position += velocity * dt''',
     },
     {
         "name": "NavigationGrid",

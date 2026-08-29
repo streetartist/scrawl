@@ -4,7 +4,7 @@
 提供类型安全的信号连接和发射系统，替代简单的广播机制。
 
 用法:
-    class Player(Sprite):
+    class Player(Sprite2D):
         health_changed = Signal("health_changed", int)
         died = Signal("died")
 

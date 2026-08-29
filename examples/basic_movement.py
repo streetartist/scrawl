@@ -15,7 +15,7 @@ Run with: python examples/basic_movement.py
 from scrawl import *
 
 
-class Ball(Sprite):
+class Ball(Sprite2D):
     """A ball that bounces around the screen."""
 
     def __init__(self):
@@ -58,7 +58,7 @@ class Ball(Sprite):
         self.move(10)
 
 
-class Player(Sprite):
+class Player(Sprite2D):
     """A player controlled by WASD keys."""
 
     def __init__(self):
@@ -95,8 +95,8 @@ class MyScene(Scene):
     def __init__(self):
         super().__init__()
         self.set_background_color(50, 80, 130)
-        self.add_sprite(Ball())
-        self.add_sprite(Player())
+        self.add_child(Ball())
+        self.add_child(Player())
 
 
 # Create and run the game

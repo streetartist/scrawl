@@ -37,10 +37,14 @@ pub fn gather_input(
 
     for btn in [MouseButton::Left, MouseButton::Middle, MouseButton::Right] {
         if mouse_buttons.just_pressed(btn) {
-            buffer.mouse_events.push((btn, InputMode::Pressed, mouse_state.position));
+            buffer
+                .mouse_events
+                .push((btn, InputMode::Pressed, mouse_state.position));
         }
         if mouse_buttons.just_released(btn) {
-            buffer.mouse_events.push((btn, InputMode::Released, mouse_state.position));
+            buffer
+                .mouse_events
+                .push((btn, InputMode::Released, mouse_state.position));
         }
     }
 }
@@ -59,7 +63,11 @@ pub fn dispatch_input_events(
         key_events.send(KeyInputEvent { key, mode });
     }
     for (button, mode, position) in buffer.mouse_events.drain(..) {
-        mouse_events.send(MouseInputEvent { button, mode, position });
+        mouse_events.send(MouseInputEvent {
+            button,
+            mode,
+            position,
+        });
     }
 
     // Generate held events directly from current state (once per fixed tick)

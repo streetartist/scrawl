@@ -8,8 +8,8 @@ pub mod components;
 pub mod events;
 pub mod input;
 pub mod resources;
-pub mod schedule;
 pub mod scene;
+pub mod schedule;
 
 use bevy::prelude::*;
 

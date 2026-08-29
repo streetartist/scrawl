@@ -5,10 +5,37 @@ from scrawl import (
     Game,
     RigidBody2D,
     Scene,
-    Sprite,
+    Sprite2D,
     StaticBody2D,
     Vector2,
+    on_key
 )
+
+
+class Ball(RigidBody2D):
+    """A native rigid body with a collision shape and visual child."""
+
+    def __init__(self):
+        super().__init__("Ball")
+        self.position = Vector2(400, 500)
+        self.bounce = 0.45
+        self.friction = 0.35
+
+        shape = CollisionShape2D("BallShape")
+        shape.set_circle(18)
+        visual = Sprite2D()
+        visual.name = "BallVisual"
+        visual.position = Vector2(0, 0)
+        visual.width = 36
+        visual.height = 36
+        visual.color = (238, 174, 76)
+        self.add_child(shape)
+        self.add_child(visual)
+
+    @on_key("space", "pressed")
+    def jump(self):
+        # Scrawl's native 2D coordinates use +Y as up.
+        self.apply_central_impulse(Vector2(0, 520))
 
 
 class PhysicsScene(Scene):
@@ -21,7 +48,7 @@ class PhysicsScene(Scene):
         floor.position = Vector2(400, 40)
         floor_shape = CollisionShape2D("FloorShape")
         floor_shape.set_rect(720, 24)
-        floor_visual = Sprite()
+        floor_visual = Sprite2D()
         floor_visual.name = "FloorVisual"
         floor_visual.position = Vector2(0, 0)
         floor_visual.width = 720
@@ -31,24 +58,11 @@ class PhysicsScene(Scene):
         floor.add_child(floor_visual)
         self.add_child(floor)
 
-        ball = RigidBody2D("Ball")
-        ball.position = Vector2(400, 500)
-        ball.bounce = 0.45
-        ball.friction = 0.35
-        ball_shape = CollisionShape2D("BallShape")
-        ball_shape.set_circle(18)
-        ball_visual = Sprite()
-        ball_visual.name = "BallVisual"
-        ball_visual.position = Vector2(0, 0)
-        ball_visual.width = 36
-        ball_visual.height = 36
-        ball_visual.size = 1
-        ball_visual.color = (238, 174, 76)
-        ball.add_child(ball_shape)
-        ball.add_child(ball_visual)
+        ball = Ball()
         self.add_child(ball)
 
 
 game = Game(width=800, height=600, title="Scrawl - Native Physics")
 game.set_scene(PhysicsScene())
+print("Press SPACE to jump the ball.")
 game.run()

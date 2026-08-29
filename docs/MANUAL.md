@@ -5,22 +5,22 @@
 Use only `scrawl`:
 
 ```python
-from scrawl import Game, Scene, Sprite, as_main, on_key
+from scrawl import Game, Scene, Sprite2D, as_main, on_key
 ```
 
 There is no `scrawl_v2` compatibility package and no Pygame backend.
 
 ## Core lifecycle
 
-1. Subclass `Sprite` and attach decorated event handlers.
-2. Build a Scene tree with `add_child()`, or use `add_sprite()` for direct Sprite children.
+1. Subclass `Sprite2D` and attach decorated event handlers.
+2. Build a Scene tree with `add_child()`; `add_sprite()` remains a small convenience for direct Sprite2D children.
 3. Attach the Scene to `Game` with `set_scene()`.
 4. Call `game.run()` to enter the Rust/Bevy loop.
 
 Handlers may be normal functions or generators. A yielded number is a delay in milliseconds.
 
 ```python
-class Ball(Sprite):
+class Ball(Sprite2D):
     @as_main
     def move_forever(self):
         while True:
@@ -30,17 +30,17 @@ class Ball(Sprite):
 
 ## Scene tree
 
-`Scene`, `Node`, `Node2D` and `Sprite` now share one Python tree. The native bridge traverses the tree in deterministic parent-before-child order and creates the matching Bevy entity hierarchy at startup.
+`Scene`, `Node`, `Node2D` and `Sprite2D` now share one Python tree. The native bridge traverses the tree in deterministic parent-before-child order and creates the matching Bevy entity hierarchy at startup.
 
 ```python
-from scrawl import Node2D, Scene, Sprite
+from scrawl import Node2D, Scene, Sprite2D
 
 
 scene = Scene("main")
 group = Node2D("group")
 group.position = (400, 300)
 
-player = Sprite()
+player = Sprite2D()
 player.position = (40, 0)  # local to group
 
 group.add_child(player)
@@ -51,11 +51,11 @@ Every Node receives a stable `_scrawl_node_id` used internally by the bridge. Us
 
 The bridge also applies runtime `add_child()`, `remove_child()` and same-scene `reparent()` operations through the same node lifecycle. New physics bodies and shape children use the same path.
 
-## Sprite properties
+## Sprite2D properties
 
 | Property | Meaning |
 | --- | --- |
-| `position`, `x`, `y` | World position, using a bottom-left origin |
+| `position`, `x`, `y` | Local position; use `global_position` for world coordinates |
 | `direction` | Compass degrees: 0 up, 90 right |
 | `size` | Uniform scale |
 | `width`, `height` | Optional explicit render dimensions in pixels |
@@ -101,10 +101,10 @@ def hit_enemy(self):
 
 ## Native 2D physics
 
-`StaticBody2D`, `RigidBody2D` and `KinematicBody2D` are mapped to Rapier2D in the native fixed-update loop. Attach one or more `CollisionShape2D` children and configure a rectangle or circle:
+`StaticBody2D`, `RigidBody2D` and `KinematicBody2D` are mapped to Rapier2D in the native fixed-update loop. Follow the Godot-style tree: make the physics body the root, then attach `CollisionShape2D` and `Sprite2D` children:
 
 ```python
-from scrawl import CollisionShape2D, RigidBody2D, Vector2
+from scrawl import CollisionShape2D, RigidBody2D, Sprite2D, Vector2
 
 ball = RigidBody2D("ball")
 ball.position = Vector2(400, 100)
@@ -114,13 +114,18 @@ ball.bounce = 0.4
 shape = CollisionShape2D()
 shape.set_circle(18)
 ball.add_child(shape)
+
+visual = Sprite2D()
+visual.set_dimensions(36, 36)
+visual.color = (238, 174, 76)
+ball.add_child(visual)
 ```
 
-The native body writes position, rotation and velocity back to the Python object after each physics step. `mass`, `linear_damp`, `angular_damp`, `collision_layer`, `collision_mask`, `sleeping` and `freeze` are read from the corresponding Python properties and can be changed while the game is running. Shape changes (`set_rect`, `set_circle`, and `disabled`) are also applied to the live collider. A body without a shape receives a 32x32 fallback box.
+The native body writes position, rotation and velocity back to the Python object after each physics step. `mass`, `linear_damp`, `angular_damp`, `collision_layer`, `collision_mask`, `sleeping` and `freeze` are read from the corresponding Python properties and can be changed while the game is running. Shape changes (`set_rect`, `set_circle`, `set_capsule`, `set_polygon`, and `disabled`) are also applied to the live collider. A body without a shape receives a 32x32 fallback box.
 
-The scene tree's `_physics_process(delta)` callback runs once per fixed tick, so custom `KinematicBody2D` movement can update `position` or call `move_and_slide()` before Rapier steps. Native `RigidBody2D` instances use Rapier's gravity and do not run the Python fallback integrator a second time.
+The scene tree's `_physics_process(delta)` callback runs once per fixed tick, so custom `KinematicBody2D` movement can update `position` or call `move_and_slide()` before Rapier steps. Native `RigidBody2D` instances use Rapier's gravity and do not run the Python fallback integrator a second time. Physics and other Node2D subclasses can also declare `@on_key` handlers; the native bridge dispatches them alongside Sprite2D handlers.
 
-The existing `Sprite` collision mode still supports `collision_type="mask"` with alpha masks. Native `CollisionShape2D` mask/polygon/capsule shapes currently use a rectangular fallback; dedicated native shape mappings and trigger/query APIs are tracked in the roadmap.
+`Sprite2D` collision mode still supports `collision_type="mask"` with alpha masks. Native capsule and convex polygon shapes are mapped to Rapier; native pixel masks currently use their declared AABB as a fallback. Trigger/query APIs are tracked in the roadmap.
 
 Key identifiers are strings. Integer Pygame constants are intentionally rejected.
 
@@ -128,7 +133,7 @@ Key identifiers are strings. Integer Pygame constants are intentionally rejected
 
 | Capability | Status |
 | --- | --- |
-| Game, Scene and Sprite startup | Connected |
+| Game, Scene and Sprite2D startup | Connected |
 | Keyboard, mouse and sprite click events | Connected |
 | Broadcast, clone and delete | Connected |
 | Transform, dimensions, draw order, color, visibility and costume sync | Connected |
@@ -138,7 +143,7 @@ Key identifiers are strings. Integer Pygame constants are intentionally rejected
 | Sound effects and music | Connected |
 | Scene / Node / Node2D startup hierarchy | Connected |
 | Runtime Node creation, deletion and same-scene reparenting | Connected |
-| Physics bodies and rectangle/circle shapes | Connected |
+| Physics bodies and rectangle/circle/capsule/polygon shapes | Connected |
 | Area2D, RayCast2D and native trigger/query APIs | Python model only |
 | UI Node mapping | Python model only |
 | TileMap, Particles and Navigation mapping | Python model only |
@@ -147,4 +152,4 @@ An importable Python class does not imply NativeGame integration. Remaining mapp
 
 ## Performance model
 
-The bridge acquires the GIL once during a normal fixed-update frame. Each Sprite exposes a dirty bitset and each Node2D exposes a transform dirty flag, so unchanged properties are not repeatedly extracted from Python. Script work is bounded by the runtime frame budget; long AI inference or blocking I/O should run outside event handlers and return results through a queue.
+The bridge acquires the GIL once during a normal fixed-update frame. Each Sprite2D exposes a dirty bitset and each Node2D exposes a transform dirty flag, so unchanged properties are not repeatedly extracted from Python. Script work is bounded by the runtime frame budget; long AI inference or blocking I/O should run outside event handlers and return results through a queue.

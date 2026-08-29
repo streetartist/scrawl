@@ -27,18 +27,18 @@ Scrawl 是一个面向 Python 的 2D 游戏引擎，保留 Scratch 风格的精�
 
 ## 核心特性
 
-- 类 Scratch 编程模型：`Game`、`Scene`、`Sprite`、克隆和广播。
+- 类 Scratch 编程模型：`Game`、`Scene`、`Sprite2D`、克隆和广播。
 - 协程任务：生成器中 `yield` 的数字表示等待的毫秒数。
 - 事件装饰器：键盘、鼠标、精灵点击、广播、边缘碰撞和精灵碰撞。
 - Rust/Bevy 原生运行时：窗口、渲染、输入、音频及固定时间步主循环。
 - 精灵渲染：纯色形状、PNG/SVG 造型、显隐、缩放、自定义宽高和 `z_index`。
 - 游戏能力：文字与对话、画笔轨迹、音效、背景音乐和场景切换。
 - Python 属性脏标记：静止精灵不会在每帧重复同步全部渲染属性。
-- 统一场景树：启动时递归映射 `Scene`、`Node`、`Node2D` 和 `Sprite` 的父子层级。
+- 统一场景树：启动时递归映射 `Scene`、`Node`、`Node2D` 和 `Sprite2D` 的父子层级。
 - 运行时树同步：Node2D 的位置、旋转、缩放、层级和显隐变化，以及活动场景内 Node 的新增、删除、重挂载和克隆，均通过统一 bridge 队列同步到 ECS。
 - 可视化 IDE：场景编辑、属性检查、代码编辑、运行与 AI 编程助手。
 
-> `Node`、UI、物理节点、TileMap、Particles 和 Navigation 等数据模型可以导入，但其中一部分仍未连接到 `NativeGame`。开始项目之前请查看[运行时能力表](docs/MANUAL.md#native-runtime-status)。
+> `Node`、`Node2D`、`Sprite2D` 和基础物理节点已连接到 `NativeGame`；UI、TileMap、Particles 和 Navigation 仍在逐步接入。开始项目之前请查看[运行时能力表](docs/MANUAL.md#native-runtime-status)。
 
 ## 安装
 
@@ -76,10 +76,10 @@ python -c "import scrawl; print(scrawl.__version__)"
 下面的示例创建两个精灵：小球自动移动并在边缘转向，玩家使用 WASD 移动。
 
 ```python
-from scrawl import Game, Scene, Sprite, as_main, on_edge_collision, on_key
+from scrawl import Game, Scene, Sprite2D, as_main, on_edge_collision, on_key
 
 
-class Ball(Sprite):
+class Ball(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Ball"
@@ -99,7 +99,7 @@ class Ball(Sprite):
         self.turn_right(180)
 
 
-class Player(Sprite):
+class Player(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Player"
@@ -129,8 +129,8 @@ class MainScene(Scene):
     def __init__(self):
         super().__init__("main")
         self.set_background_color(25, 32, 43)
-        self.add_sprite(Ball())
-        self.add_sprite(Player())
+        self.add_child(Ball())
+        self.add_child(Player())
 
 
 game = Game(width=800, height=600, title="My Scrawl Game")
@@ -179,7 +179,7 @@ game.switch_scene("pause")
 
 ### Scene
 
-`Scene` 管理精灵、背景和广播。添加精灵时会自动建立 `sprite.scene` 与 `sprite.game` 引用。
+`Scene` 是节点树根，管理子节点、背景和广播。添加节点时会自动建立 `node.scene` 与 `node.game` 引用。
 
 ```python
 class MainScene(Scene):
@@ -187,12 +187,12 @@ class MainScene(Scene):
         super().__init__("main")
         self.set_background_color(30, 35, 45)
         self.set_background_image("assets/background.png")
-        self.add_sprite(Player())
+        self.add_child(Player())
 ```
 
-### Sprite
+### Sprite2D
 
-`Sprite` 是原生运行时当前最完整的游戏对象。常用属性和方法包括：
+`Sprite2D` 是原生运行时当前最完整的可视节点。它继承 `Node2D`，同时保留 Scrawl 风格的易用属性和方法：
 
 | 类别 | API |
 | --- | --- |
@@ -280,7 +280,7 @@ def hit_enemy(self):
 `clone()` 克隆当前精灵，`clone(other)` 在当前精灵的位置克隆另一个精灵。使用 `@as_clones` 定义克隆体启动后的行为。
 
 ```python
-class Spawner(Sprite):
+class Spawner(Sprite2D):
     def __init__(self):
         super().__init__()
         self.projectile = Projectile()

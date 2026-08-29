@@ -112,7 +112,7 @@ impl PyGame {
         let generic_nodes = scene
             .nodes
             .iter()
-            .filter(|record| record.kind != "sprite")
+            .filter(|record| record.kind != "sprite2d")
             .map(|record| extract_generic_node_spawn_data(py, record))
             .collect::<PyResult<Vec<_>>>()?;
         let parent_links = scene
@@ -122,7 +122,11 @@ impl PyGame {
             .collect::<Vec<_>>();
 
         let mut sprite_data: Vec<SpriteSpawnData> = Vec::new();
-        for node_record in scene.nodes.iter().filter(|record| record.kind == "sprite") {
+        for node_record in scene
+            .nodes
+            .iter()
+            .filter(|record| record.kind == "sprite2d")
+        {
             let sprite_py = &node_record.py_object;
             let obj = sprite_py.bind(py);
 
@@ -155,10 +159,10 @@ impl PyGame {
             let data = SpriteSpawnData {
                 node_id: node_record.node_id,
                 name: obj.getattr("name")?.extract::<String>()?,
-                x: obj.getattr("x")?.extract::<f32>()?,
-                y: obj.getattr("y")?.extract::<f32>()?,
-                direction: obj.getattr("direction")?.extract::<f32>()?,
-                size: obj.getattr("size")?.extract::<f32>()?,
+                x: extract_finite_f32(&obj, "x").unwrap_or(0.0),
+                y: extract_finite_f32(&obj, "y").unwrap_or(0.0),
+                direction: extract_finite_f32(&obj, "direction").unwrap_or(90.0),
+                size: extract_finite_f32(&obj, "size").unwrap_or(1.0),
                 width: obj
                     .getattr("width")
                     .ok()
@@ -510,7 +514,42 @@ fn spawn_nodes_from_python(
             runtime
                 .node_objects
                 .insert(data.node_id, data.py_object.clone_ref(py));
-            let _ = data.py_object.bind(py).call_method0("_take_node_dirty");
+            let object = data.py_object.bind(py);
+            let handlers = scan_python_handlers(py, object);
+            if !handlers.is_empty() {
+                let Some(&entity) = entity_by_node_id.get(&data.node_id) else {
+                    continue;
+                };
+                let mut coroutines = HashMap::new();
+                let wake_times = HashMap::new();
+                for (method_name, kind) in &handlers {
+                    if !matches!(kind, HandlerKind::Main) {
+                        continue;
+                    }
+                    match object.call_method0(method_name.as_str()) {
+                        Ok(generator) if generator.hasattr("__next__").unwrap_or(false) => {
+                            coroutines.insert(format!("main_{}", method_name), generator.unbind());
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            eprintln!(
+                                "[Scrawl] Error starting {}.{}: {}",
+                                data.name, method_name, error
+                            );
+                        }
+                    }
+                }
+                runtime.sprites.push(PythonSpriteInstance {
+                    node_id: data.node_id,
+                    py_object: data.py_object.clone_ref(py),
+                    entity,
+                    is_sprite: false,
+                    coroutines,
+                    wake_times,
+                    handlers,
+                });
+            }
+            let _ = object.call_method0("_take_node_dirty");
         }
         for data in &pending.sprites {
             let collision_kind = match data.collision_type.as_str() {
@@ -615,6 +654,7 @@ fn spawn_nodes_from_python(
                 node_id: data.node_id,
                 py_object: data.py_object.clone_ref(py),
                 entity,
+                is_sprite: true,
                 coroutines,
                 wake_times,
                 handlers: data.handlers.clone(),
@@ -666,10 +706,7 @@ fn extract_generic_node_spawn_data(
         "node2d" => {
             let position = extract_vector2(&obj, "position", Vec2::ZERO);
             let scale = extract_vector2(&obj, "scale", Vec2::ONE);
-            let rotation = obj
-                .getattr("rotation")
-                .and_then(|value| value.extract::<f32>())
-                .unwrap_or(0.0);
+            let rotation = extract_finite_f32(&obj, "rotation").unwrap_or(0.0);
             let z_index = obj
                 .getattr("z_index")
                 .and_then(|value| value.extract::<i32>())
@@ -689,10 +726,7 @@ fn extract_generic_node_spawn_data(
         "collision_shape2d" => {
             let position = extract_vector2(&obj, "position", Vec2::ZERO);
             let scale = extract_vector2(&obj, "scale", Vec2::ONE);
-            let rotation = obj
-                .getattr("rotation")
-                .and_then(|value| value.extract::<f32>())
-                .unwrap_or(0.0);
+            let rotation = extract_finite_f32(&obj, "rotation").unwrap_or(0.0);
             let visible = obj
                 .getattr("visible")
                 .and_then(|value| value.extract::<bool>())
@@ -730,9 +764,16 @@ fn extract_vector2(obj: &Bound<'_, PyAny>, attr: &str, fallback: Vec2) -> Vec2 {
         .getattr("y")
         .and_then(|component| component.extract::<f32>());
     match (x, y) {
-        (Ok(x), Ok(y)) => Vec2::new(x, y),
+        (Ok(x), Ok(y)) if x.is_finite() && y.is_finite() => Vec2::new(x, y),
         _ => fallback,
     }
+}
+
+fn extract_finite_f32(obj: &Bound<'_, PyAny>, attr: &str) -> Option<f32> {
+    obj.getattr(attr)
+        .and_then(|value| value.extract::<f32>())
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 fn extract_physics_shape(obj: &Bound<'_, PyAny>) -> PhysicsShape {
@@ -759,21 +800,63 @@ fn extract_physics_shape(obj: &Bound<'_, PyAny>) -> PhysicsShape {
                 .getattr("radius")
                 .and_then(|value| value.extract::<f32>())
                 .ok(),
+            points: None,
             disabled,
         },
         "RectangleShape2D" => PhysicsShape {
             kind: CollisionKind::Rect,
             size: Some(extract_vector2(&shape, "size", Vec2::new(32.0, 32.0))),
             radius: None,
+            points: None,
+            disabled,
+        },
+        "CapsuleShape2D" => {
+            let radius = shape
+                .getattr("radius")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(16.0);
+            let height = shape
+                .getattr("height")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(radius * 2.0);
+            PhysicsShape {
+                kind: CollisionKind::Rect,
+                size: Some(Vec2::new(radius * 2.0, height)),
+                radius: Some(radius),
+                points: None,
+                disabled,
+            }
+        }
+        "ConvexPolygonShape2D" => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: None,
+            radius: None,
+            points: extract_shape_points(&shape),
             disabled,
         },
         _ => PhysicsShape {
             kind: CollisionKind::Rect,
             size: Some(Vec2::new(32.0, 32.0)),
             radius: None,
+            points: None,
             disabled,
         },
     }
+}
+
+fn extract_shape_points(shape: &Bound<'_, PyAny>) -> Option<Vec<Vec2>> {
+    let points = shape.getattr("points").ok()?;
+    let points = points
+        .try_iter()
+        .ok()?
+        .filter_map(|point| {
+            let point = point.ok()?;
+            let x = point.getattr("x").ok()?.extract::<f32>().ok()?;
+            let y = point.getattr("y").ok()?.extract::<f32>().ok()?;
+            Some(Vec2::new(x, y))
+        })
+        .collect::<Vec<_>>();
+    (points.len() >= 3).then_some(points)
 }
 
 fn extract_physics_body_spawn_data(obj: &Bound<'_, PyAny>, kind: &str) -> GenericNodeKind {
@@ -809,18 +892,9 @@ fn extract_physics_body_spawn_data(obj: &Bound<'_, PyAny>, kind: &str) -> Generi
         }
     }
 
-    let gravity_scale = obj
-        .getattr("gravity_scale")
-        .and_then(|value| value.extract::<f32>())
-        .unwrap_or(1.0);
-    let friction = obj
-        .getattr("friction")
-        .and_then(|value| value.extract::<f32>())
-        .unwrap_or(0.02);
-    let restitution = obj
-        .getattr("bounce")
-        .and_then(|value| value.extract::<f32>())
-        .unwrap_or(0.0);
+    let gravity_scale = extract_finite_f32(obj, "gravity_scale").unwrap_or(1.0);
+    let friction = extract_finite_f32(obj, "friction").unwrap_or(0.02);
+    let restitution = extract_finite_f32(obj, "bounce").unwrap_or(0.0);
     let collision_layer = obj
         .getattr("collision_layer")
         .and_then(|value| value.extract::<u32>())
@@ -836,10 +910,7 @@ fn extract_physics_body_spawn_data(obj: &Bound<'_, PyAny>, kind: &str) -> Generi
     };
     let velocity = Velocity2D {
         linear: extract_vector2(obj, velocity_attr, Vec2::ZERO),
-        angular: obj
-            .getattr("angular_velocity")
-            .and_then(|value| value.extract::<f32>())
-            .unwrap_or(0.0),
+        angular: extract_finite_f32(obj, "angular_velocity").unwrap_or(0.0),
     };
 
     GenericNodeKind::PhysicsBody {
@@ -855,18 +926,9 @@ fn extract_physics_body_spawn_data(obj: &Bound<'_, PyAny>, kind: &str) -> Generi
             body_type,
         },
         config: PhysicsBodyConfig {
-            mass: obj
-                .getattr("mass")
-                .and_then(|value| value.extract::<f32>())
-                .unwrap_or(1.0),
-            linear_damp: obj
-                .getattr("linear_damp")
-                .and_then(|value| value.extract::<f32>())
-                .unwrap_or(0.0),
-            angular_damp: obj
-                .getattr("angular_damp")
-                .and_then(|value| value.extract::<f32>())
-                .unwrap_or(0.0),
+            mass: extract_finite_f32(obj, "mass").unwrap_or(1.0).max(0.001),
+            linear_damp: extract_finite_f32(obj, "linear_damp").unwrap_or(0.0),
+            angular_damp: extract_finite_f32(obj, "angular_damp").unwrap_or(0.0),
             collision_layer,
             collision_mask,
             can_sleep: obj
@@ -1046,6 +1108,7 @@ mod tests {
                             kind: CollisionKind::Circle,
                             size: None,
                             radius: Some(12.0),
+                            points: None,
                             disabled: false,
                         },
                     },

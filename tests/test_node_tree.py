@@ -1,6 +1,6 @@
 import unittest
 
-from scrawl import Game, Node, Node2D, PhysicsSprite, Scene, Sprite
+from scrawl import Game, Node, Node2D, PhysicsSprite, Scene, Sprite2D
 from scrawl.node import _scrawl_command_queue
 
 
@@ -11,7 +11,7 @@ class NodeTreeTests(unittest.TestCase):
     def test_scene_records_are_parent_first_with_stable_unique_ids(self):
         scene = Scene("main")
         group = Node2D("group")
-        player = Sprite()
+        player = Sprite2D()
         player.name = "player"
 
         scene.add_child(group)
@@ -23,7 +23,7 @@ class NodeTreeTests(unittest.TestCase):
             [
                 (None, "scene", "main"),
                 (scene._scrawl_node_id, "node2d", "group"),
-                (group._scrawl_node_id, "sprite", "player"),
+                (group._scrawl_node_id, "sprite2d", "player"),
             ],
         )
         self.assertEqual(len({record[0] for record in records}), len(records))
@@ -65,7 +65,7 @@ class NodeTreeTests(unittest.TestCase):
     def test_clone_gets_a_new_node_id_and_keeps_the_parent(self):
         scene = Scene("main")
         group = Node2D("group")
-        source = Sprite()
+        source = Sprite2D()
         scene.add_child(group)
         group.add_child(source)
 
@@ -98,7 +98,7 @@ class NodeTreeTests(unittest.TestCase):
     def test_runtime_clone_and_delete_share_the_node_lifecycle(self):
         game = Game()
         scene = Scene("main")
-        source = Sprite()
+        source = Sprite2D()
         scene.add_child(source)
         game.set_scene(scene)
         game._native = object()

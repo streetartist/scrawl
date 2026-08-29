@@ -1,9 +1,9 @@
 """Node2D hierarchy example for the unified scene-tree bridge."""
 
-from scrawl import Game, Node2D, Scene, Sprite, as_main
+from scrawl import Game, Node2D, Scene, Sprite2D, as_main
 
 
-class OrbitingTile(Sprite):
+class OrbitingTile(Sprite2D):
     def __init__(self, name, x, color):
         super().__init__()
         self.name = name
@@ -19,7 +19,7 @@ class OrbitingTile(Sprite):
             yield 16
 
 
-class HierarchyController(Sprite):
+class HierarchyController(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "hierarchy-controller"

@@ -7,7 +7,7 @@ Prints position changes to confirm the engine loop is working.
 from scrawl import *
 
 
-class Ball(Sprite):
+class Ball(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Ball"
@@ -44,7 +44,7 @@ class TestScene(Scene):
     def __init__(self):
         super().__init__()
         self.set_background_color(20, 20, 40)
-        self.add_sprite(Ball())
+        self.add_child(Ball())
 
 
 game = Game(width=800, height=600, title="Scrawl - Coroutine Test")

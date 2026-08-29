@@ -942,7 +942,7 @@ class PropertyEditor(QWidget):
             return
         self._sprite.node_type = text
         # Auto-enable physics for physics body types
-        physics_types = {"PhysicsSprite", "StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
+        physics_types = {"StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
         is_physics = text in physics_types
         self._sprite.is_physics = is_physics
         self._is_physics_check.setChecked(is_physics)

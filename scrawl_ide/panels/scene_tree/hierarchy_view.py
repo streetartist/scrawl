@@ -238,7 +238,7 @@ class HierarchyView(QTreeWidget):
 
             # Quick-add submenu for common types
             quick_menu = QMenu("快速添加", self)
-            for node_type in ["Sprite", "PhysicsSprite", "Camera2D", "Label", "Timer"]:
+            for node_type in ["Sprite2D", "RigidBody2D", "Camera2D", "Label", "Timer"]:
                 icon = NODE_ICONS.get(node_type, "")
                 act = QAction(f"{icon} {node_type}", self)
                 act.triggered.connect(lambda checked, nt=node_type: self._add_sprite(model, nt))
@@ -303,7 +303,7 @@ class HierarchyView(QTreeWidget):
                 self.refresh()
                 self.sprite_added.emit(scene, sprite)
 
-    def _add_sprite(self, scene: SceneModel, node_type: str = "Sprite"):
+    def _add_sprite(self, scene: SceneModel, node_type: str = "Sprite2D"):
         """Add a new sprite to a scene."""
         name, ok = QInputDialog.getText(
             self, tr("dialog.add_sprite_title"), tr("dialog.add_sprite_prompt"),

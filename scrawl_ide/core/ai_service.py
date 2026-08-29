@@ -150,8 +150,8 @@ class AIService(QObject):
 **在生成代码前，请先思考：**
 1. 用户的需求是什么？
 2. 是静态配置（精灵属性/造型）还是动态逻辑（移动/事件）？
-3. **坐标计算**：注意 (0,0) 是屏幕左上角，但**精灵坐标 (x,y) 是精灵的中心点**！
-   - 例如：放置在左上角的按钮(宽100,高50)，坐标应设为 x=50, y=25 (而不是 0,0)。
+3. **坐标计算**：Scrawl 使用左下角原点，**Sprite2D 的位置是节点局部坐标**，图片默认以中心为锚点。
+   - 例如：放置在左下角的按钮(宽100,高50)，坐标应设为 x=50, y=25。
 4. **关键判断**：除了scrawl，是否需要导入其他库（如math, random）？
 4. **安全检查**：
    - 是否定义了 `__init__` 并调用 `super().__init__()`？（**必须**）
@@ -159,7 +159,7 @@ class AIService(QObject):
 
 ## 🚫 严禁事项（Forbidden Patterns）
 1. **禁止在代码中加载资源**：严禁使用外部加载函数。所有造型**必须**通过IDE属性（JSON格式）添加。
-2. **禁止修改IDE托管属性**：`self.x`, `self.y`, `self.rect` 是IDE管理的。代码中**只读**，修改请用API（`self.pos.x`, `self.move`）。
+2. **变换属性**：`self.position`, `self.rotation`, `self.scale` 是 Godot 风格的节点变换；Scrawl 也保留 `self.x`, `self.y`, `self.direction`, `self.size` 便捷别名。
 3. **禁止阻塞主线程**：严禁 `time.sleep()`。必须用 `yield`。
 4. **禁止自定义字体**：优先使用 `self.game.font`，以保持风格统一。
 5. **禁止省略 __init__**：必须显示定义 `__init__` 并调用 `super().__init__()`。这是**强制要求**，否则会出问题。
@@ -183,7 +183,7 @@ class AIService(QObject):
 ```python:sprite:精灵名称
 import random  # 显式导入
 
-class 精灵类名(Sprite):
+class 精灵类名(Sprite2D):
     def __init__(self):
         super().__init__()  # 必须调用！
         self.hp = 100  # 逻辑属性
@@ -277,31 +277,31 @@ class 精灵类名(Sprite):
 | 物理属性初始值 | 运行时物理行为 |
 
 ### 坐标系与锚点（重要！）
-- **屏幕坐标**：(0, 0) 为屏幕左上角。x向右增加，y向下增加。
-- **精灵锚点**：精灵的 `(x, y)` 属性对应其**图片中心点**。
+- **世界坐标**：(0, 0) 为屏幕左下角。x向右增加，y向上增加。
+- **精灵锚点**：Sprite2D 的 `(position.x, position.y)` 对应其**图片中心点**。
 - **UI布局提示**：
     - 左上角对齐：`x = width/2`, `y = height/2`
     - 顶部居中：`x = SCREEN_WIDTH/2`, `y = height/2`
     - 右下角对齐：`x = SCREEN_WIDTH - width/2`, `y = SCREEN_HEIGHT - height/2`
 
-### Sprite类核心属性
+### Sprite2D类核心属性
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| self.pos | Vector2 | 位置，用self.pos.x和self.pos.y |
+| self.position | Vector2 | 局部位置，用self.position.x和self.position.y |
 | self.direction | float | 方向角度（0=右，90=上） |
 | self.size | float | 缩放比例 |
 | self.visible | bool | 是否可见 |
 | self.name | str | 精灵名称 |
 
-**重要：使用self.pos.x/self.pos.y，不是self.x/self.y**
+**节点树中优先使用 `add_child()` 和 `position`；需要快速写脚本时可直接使用 `x`/`y`。**
 
-### PhysicsSprite额外属性
+### RigidBody2D额外属性
 | 属性 | 类型 | 说明 |
 |------|------|------|
-| self.velocity | Vector2 | 速度向量 |
-| self.gravity | Vector2 | 重力向量 |
-| self.friction | float | 摩擦力(0-1) |
-| self.elasticity | float | 弹性系数 |
+| self.linear_velocity | Vector2 | 线性速度 |
+| self.gravity_scale | float | 重力缩放 |
+| self.friction | float | 摩擦力 |
+| self.bounce | float | 弹性系数 |
 
 """
         doc += self._get_movement_api()
@@ -563,7 +563,7 @@ def on_hit_other(self, other):
 
 #### 2. 碗的逻辑 (Bowl) - Python
 ```python:sprite:Bowl
-class Bowl(Sprite):
+class Bowl(Sprite2D):
     def __init__(self):
         super().__init__()
         self.speed = 8
@@ -573,11 +573,11 @@ class Bowl(Sprite):
         while True:
             # 左右移动控制
             direction = Input.get_vector("move_left", "move_right", "move_up", "move_down")
-            self.pos.x += direction.x * self.speed
+            self.position.x += direction.x * self.speed
             
             # 限制在屏幕内
-            if self.pos.x < 30: self.pos.x = 30
-            if self.pos.x > 770: self.pos.x = 770
+            if self.position.x < 30: self.position.x = 30
+            if self.position.x > 770: self.position.x = 770
             
             yield 0
 ```
@@ -600,7 +600,7 @@ class Bowl(Sprite):
 ```python:sprite:Apple
 import random  # 必须显式导入！
 
-class Apple(Sprite):
+class Apple(Sprite2D):
     def __init__(self):
         super().__init__()
         self.reset_position()
@@ -609,17 +609,17 @@ class Apple(Sprite):
     def main_loop(self):
         self.reset_position()
         while True:
-            self.pos.y += 5  # 下落
+            self.position.y -= 5  # 下落（Y 轴向上）
             
             # 掉出屏幕重置
-            if self.pos.y > 600:
+            if self.position.y < -20:
                 self.reset_position()
                 
             yield 0
 
     def reset_position(self):
-        self.pos.y = -50
-        self.pos.x = random.randint(50, 750)
+        self.position.y = 620
+        self.position.x = random.randint(50, 750)
 
     @on_sprite_collision("Bowl")
     def on_caught(self, bowl):
@@ -643,11 +643,11 @@ class Apple(Sprite):
 
 #### 6. 分数板逻辑 (ScoreBoard) - Python
 ```python:sprite:ScoreBoard
-class ScoreBoard(Sprite):
+class ScoreBoard(Sprite2D):
     def __init__(self):
         super().__init__()
         self.score = 0
-class ScoreBoard(Sprite):
+class ScoreBoard(Sprite2D):
     def __init__(self):
         super().__init__()
         self.score = 0
@@ -687,7 +687,7 @@ class ScoreBoard(Sprite):
 ```python:sprite:Snowflake
 import random
 
-class Snowflake(Sprite):
+class Snowflake(Sprite2D):
     def __init__(self):
         super().__init__()
         self.visible = False  # 本体隐藏，作为模板
@@ -704,14 +704,14 @@ class Snowflake(Sprite):
         \"\"\"克隆体逻辑\"\"\"
         # 1. 初始设置
         self.visible = True
-        self.pos.x = random.randint(0, 800)
-        self.pos.y = -10
+        self.position.x = random.randint(0, 800)
+        self.position.y = 610
         self.set_size(random.uniform(0.5, 1.5))
         
         # 2. 运动循环
-        while self.pos.y < 610:
-            self.pos.y += 3
-            self.pos.x += random.uniform(-1, 1) # 微微摆动
+        while self.position.y > -10:
+            self.position.y -= 3
+            self.position.x += random.uniform(-1, 1) # 微微摆动
             yield 0
             
         # 3. 销毁

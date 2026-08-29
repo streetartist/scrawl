@@ -18,18 +18,18 @@ Starting with 2.2, `scrawl` is the only supported package and mainline API. The 
 
 ## Features
 
-- Scratch-like `Game`, `Scene`, and `Sprite` model with clones and broadcasts.
+- Scratch-like `Game`, `Scene`, and `Sprite2D` model with clones and broadcasts.
 - Coroutine tasks where a yielded number is a delay in milliseconds.
 - Decorators for keyboard, mouse, sprite clicks, broadcasts, and collisions.
 - Native Rust/Bevy window, renderer, input, audio, and fixed-step runtime.
 - Shape and PNG/SVG sprites with visibility, scale, explicit dimensions, and `z_index`.
 - Persistent text, speech, pen trails, sound effects, music, and scene switching.
 - Dirty property synchronization so idle sprites do not resend every render property each frame.
-- A unified startup scene tree for `Scene`, `Node`, `Node2D`, and `Sprite` hierarchy mapping.
+- A unified startup scene tree for `Scene`, `Node`, `Node2D`, and `Sprite2D` hierarchy mapping.
 - Runtime tree sync for Node2D transform, layer, and visibility changes plus node add, remove, same-scene reparent, and clone operations through one bridge queue.
 - A visual IDE with scene editing, an inspector, code editing, running, and an AI assistant.
 
-> The generic Node, UI, physics node, TileMap, Particles, and Navigation models are importable, but some are not connected to `NativeGame` yet. Check the [runtime capability table](docs/MANUAL.md#native-runtime-status) before depending on them.
+> `Node`, `Node2D`, `Sprite2D`, and the core physics nodes are connected to `NativeGame`; UI, TileMap, Particles, and Navigation are still being integrated. Check the [runtime capability table](docs/MANUAL.md#native-runtime-status) before depending on them.
 
 ## Installation
 
@@ -58,10 +58,10 @@ python -c "import scrawl; print(scrawl.__version__)"
 ## Quick Start
 
 ```python
-from scrawl import Game, Scene, Sprite, as_main, on_edge_collision, on_key
+from scrawl import Game, Scene, Sprite2D, as_main, on_edge_collision, on_key
 
 
-class Ball(Sprite):
+class Ball(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Ball"
@@ -81,7 +81,7 @@ class Ball(Sprite):
         self.turn_right(180)
 
 
-class Player(Sprite):
+class Player(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Player"
@@ -111,8 +111,8 @@ class MainScene(Scene):
     def __init__(self):
         super().__init__("main")
         self.set_background_color(25, 32, 43)
-        self.add_sprite(Ball())
-        self.add_sprite(Player())
+        self.add_child(Ball())
+        self.add_child(Player())
 
 
 game = Game(width=800, height=600, title="My Scrawl Game")
@@ -138,7 +138,7 @@ The node hierarchy example covers startup hierarchy mapping plus runtime Node2D 
 
 ### Game and Scene
 
-`Game` creates the native window, stores scenes, and starts the Bevy loop. `Scene` manages sprites, its background, and broadcasts.
+`Game` creates the native window, stores scenes, and starts the Bevy loop. `Scene` is the node-tree root and manages child nodes, its background, and broadcasts.
 
 ```python
 game = Game(width=1280, height=720, title="Game title", fps=60)
@@ -147,9 +147,9 @@ game.add_scene(PauseScene("pause"))
 game.run(debug=False, vsync=True)
 ```
 
-### Sprite
+### Sprite2D
 
-`Sprite` is currently the most complete game object in the native runtime.
+`Sprite2D` is currently the most complete visual node in the native runtime.
 
 | Area | API |
 | --- | --- |

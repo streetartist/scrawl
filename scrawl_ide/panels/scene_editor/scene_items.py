@@ -254,7 +254,6 @@ class SpriteItem(QGraphicsItem):
             elif nt in PHYSICS_NODE_TYPES:
                 # Physics body outline
                 physics_colors = {
-                    "PhysicsSprite": QColor(100, 255, 100),
                     "StaticBody2D": QColor(150, 150, 150),
                     "RigidBody2D": QColor(255, 150, 50),
                     "KinematicBody2D": QColor(100, 200, 255),

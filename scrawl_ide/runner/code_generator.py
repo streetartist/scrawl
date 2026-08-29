@@ -38,7 +38,7 @@ class CodeGenerator:
 
         # 2. Imports - use the official scrawl package
         code_parts.append('from scrawl import (')
-        code_parts.append('    Game, Scene, Sprite, PhysicsSprite,')
+        code_parts.append('    Game, Scene, Sprite2D,')
         code_parts.append('    on_key, on_mouse, as_main, as_clones,')
         code_parts.append('    on_sprite_collision, on_edge_collision, on_broadcast, on_sprite_clicked,')
         code_parts.append('    Vector2, Color, Input, InputMap, Timer, Tween,')
@@ -133,7 +133,7 @@ class CodeGenerator:
         """Get the sprite class code, with costume setup injected."""
         code = sprite.code.strip()
         # Determine the base class from node_type
-        target_base = sprite.node_type if sprite.node_type else ("PhysicsSprite" if sprite.is_physics else "Sprite")
+        target_base = self._normalize_node_type(sprite.node_type, sprite.is_physics)
 
         if not code:
             # Generate default code if none exists
@@ -149,29 +149,31 @@ class CodeGenerator:
         # Inject costume loading and physics setup into __init__ if needed
         inject_parts = []
 
-        if sprite.costumes:
+        if sprite.costumes and target_base in ("Sprite2D", "AnimatedSprite2D"):
             inject_parts.append(self._generate_costume_code(sprite))
 
         # Inject collision type if not default
-        if sprite.collision_type != "rect":
+        if sprite.collision_type != "rect" and target_base in ("Sprite2D", "AnimatedSprite2D"):
             inject_parts.append(f'        self.set_collision_type("{sprite.collision_type}")')
 
-        # Inject physics properties if physics sprite
-        if sprite.is_physics or sprite.node_type in PHYSICS_NODE_TYPES:
-            inject_parts.append(f'        self.set_gravity({sprite.gravity_x}, {sprite.gravity_y})')
-            inject_parts.append(f'        self.set_friction({sprite.friction})')
-            inject_parts.append(f'        self.set_elasticity({sprite.elasticity})')
-            if sprite.mass != 1.0:
-                inject_parts.append(f'        self.mass = {sprite.mass}')
-            if sprite.linear_damping != 0.0:
-                inject_parts.append(f'        self.linear_damping = {sprite.linear_damping}')
-            if sprite.angular_damping != 0.0:
-                inject_parts.append(f'        self.angular_damping = {sprite.angular_damping}')
-            # Collision shape
-            if sprite.collision_shape != "rectangle":
-                inject_parts.append(f'        self.set_collision_shape("{sprite.collision_shape}", {sprite.collision_width}, {sprite.collision_height})')
-            elif sprite.collision_shape == "circle":
-                inject_parts.append(f'        self.set_collision_shape("circle", {sprite.collision_radius})')
+        # Physics nodes follow Godot's composition model: the body owns a
+        # CollisionShape2D child, while RigidBody2D exposes Rapier properties.
+        if target_base in PHYSICS_NODE_TYPES:
+            inject_parts.append(self._generate_collision_shape_code(sprite))
+            if target_base == "RigidBody2D":
+                gravity_scale = sprite.gravity_y / 0.2 if sprite.gravity_y != 0.2 else 1.0
+                if sprite.gravity_x != 0.0 or gravity_scale != 1.0:
+                    inject_parts.append(f'        self.gravity_scale = {gravity_scale}')
+                if sprite.friction != 0.02:
+                    inject_parts.append(f'        self.friction = {sprite.friction}')
+                if sprite.elasticity != 0.8:
+                    inject_parts.append(f'        self.bounce = {sprite.elasticity}')
+                if sprite.mass != 1.0:
+                    inject_parts.append(f'        self.mass = {sprite.mass}')
+                if sprite.linear_damping != 0.0:
+                    inject_parts.append(f'        self.linear_damp = {sprite.linear_damping}')
+                if sprite.angular_damping != 0.0:
+                    inject_parts.append(f'        self.angular_damp = {sprite.angular_damping}')
 
         # Camera2D properties
         if sprite.node_type == "Camera2D":
@@ -260,7 +262,7 @@ class CodeGenerator:
     def _replace_base_class(self, code: str, class_name: str, target_base: str) -> str:
         """Replace the base class in a class declaration."""
         known_bases = (
-            "Sprite|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
+            "Sprite2D|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
             "|AnimatedSprite2D|Camera2D|ParticleEmitter2D|AudioPlayer2D"
             "|PointLight2D|DirectionalLight2D|Path2D|PathFollow2D|Line2D"
             "|Label|Button|ProgressBar|Panel|Timer|NavigationAgent2D|TileMap"
@@ -268,6 +270,34 @@ class CodeGenerator:
         pattern = rf'(class\s+{re.escape(class_name)}\s*\(\s*)({known_bases})(\s*\)\s*:)'
         replacement = rf'\g<1>{target_base}\g<3>'
         return re.sub(pattern, replacement, code)
+
+    @staticmethod
+    def _normalize_node_type(node_type: str, is_physics: bool = False) -> str:
+        """Map pre-Godot model values to the canonical node classes."""
+        if node_type == "PhysicsSprite" or (is_physics and not node_type):
+            return "RigidBody2D"
+        return node_type or "Sprite2D"
+
+    def _generate_collision_shape_code(self, sprite: SpriteModel) -> str:
+        """Create a CollisionShape2D child for a physics node."""
+        shape = sprite.collision_shape
+        if shape == "circle":
+            setup = f"        _collision_shape.set_circle({sprite.collision_radius})"
+        elif shape == "capsule":
+            setup = (
+                f"        _collision_shape.set_capsule({sprite.collision_radius}, "
+                f"{sprite.collision_height})"
+            )
+        else:
+            setup = (
+                f"        _collision_shape.set_rect({sprite.collision_width}, "
+                f"{sprite.collision_height})"
+            )
+        return "\n".join((
+            "        _collision_shape = CollisionShape2D()",
+            setup,
+            "        self.add_child(_collision_shape)",
+        ))
 
     def _generate_costume_code(self, sprite: SpriteModel) -> str:
         """Generate costume loading code using the Scrawl API."""
@@ -391,8 +421,7 @@ class CodeGenerator:
         for sprite in scene.sprites:
             var_name = self._to_variable_name(sprite.name)
             lines.append(f'        {var_name} = {sprite.class_name}()')
-            lines.append(f'        {var_name}.pos.x = {sprite.x}')
-            lines.append(f'        {var_name}.pos.y = {sprite.y}')
+            lines.append(f'        {var_name}.position = ({sprite.x}, {sprite.y})')
 
             if sprite.direction != 90.0:
                 lines.append(f'        {var_name}.direction = {sprite.direction}')
@@ -401,7 +430,7 @@ class CodeGenerator:
             if not sprite.visible:
                 lines.append(f'        {var_name}.visible = False')
 
-            lines.append(f'        self.add_sprite({var_name})')
+            lines.append(f'        self.add_child({var_name})')
             lines.append('')
 
         return '\n'.join(lines)
@@ -416,18 +445,17 @@ class CodeGenerator:
             var_name = '_' + var_name
         return var_name or 'sprite'
 
-    def generate_sprite_template(self, sprite_name: str, is_physics: bool = False, node_type: str = "Sprite") -> str:
+    def generate_sprite_template(self, sprite_name: str, is_physics: bool = False, node_type: str = "Sprite2D") -> str:
         """Generate a template script for a sprite."""
         class_name = sprite_name.replace(' ', '')
-        base_class = node_type if node_type else ("PhysicsSprite" if is_physics else "Sprite")
+        base_class = self._normalize_node_type(node_type, is_physics)
 
         type_setup = ""
-        if is_physics or node_type in PHYSICS_NODE_TYPES:
+        if base_class in PHYSICS_NODE_TYPES:
             type_setup = '''
-        # 物理属性
-        self.set_gravity(0, 0.5)
-        self.set_elasticity(0.8)
-        self.set_friction(0.95)
+        shape = CollisionShape2D()
+        shape.set_rect(32, 32)
+        self.add_child(shape)
 '''
         elif node_type == "Camera2D":
             type_setup = '''

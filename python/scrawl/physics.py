@@ -73,7 +73,10 @@ class RectangleShape2D(Shape2D):
     """矩形碰撞形状。"""
 
     def __init__(self, width: float = 32, height: float = 32):
-        self.size = Vector2(width, height)
+        width, height = float(width), float(height)
+        if not math.isfinite(width) or not math.isfinite(height):
+            raise ValueError("rectangle dimensions must be finite")
+        self.size = Vector2(max(0.0, width), max(0.0, height))
 
     def get_rect(self) -> Rect2:
         hw, hh = self.size.x / 2, self.size.y / 2
@@ -84,7 +87,10 @@ class CircleShape2D(Shape2D):
     """圆形碰撞形状。"""
 
     def __init__(self, radius: float = 16):
-        self.radius = radius
+        radius = float(radius)
+        if not math.isfinite(radius):
+            raise ValueError("circle radius must be finite")
+        self.radius = max(0.0, radius)
 
     def get_rect(self) -> Rect2:
         return Rect2(-self.radius, -self.radius, self.radius * 2, self.radius * 2)
@@ -94,15 +100,23 @@ class CapsuleShape2D(Shape2D):
     """胶囊碰撞形状。"""
 
     def __init__(self, radius: float = 16, height: float = 32):
-        self.radius = radius
-        self.height = height
+        radius, height = float(radius), float(height)
+        if not math.isfinite(radius) or not math.isfinite(height):
+            raise ValueError("capsule dimensions must be finite")
+        self.radius = max(0.0, radius)
+        self.height = max(0.0, height)
 
 
 class ConvexPolygonShape2D(Shape2D):
     """凸多边形碰撞形状。"""
 
     def __init__(self, points: List[Vector2] = None):
-        self.points = points or []
+        self.points = list(points or [])
+        if any(
+            not math.isfinite(float(point.x)) or not math.isfinite(float(point.y))
+            for point in self.points
+        ):
+            raise ValueError("polygon points must be finite")
 
 
 class SegmentShape2D(Shape2D):
@@ -111,6 +125,11 @@ class SegmentShape2D(Shape2D):
     def __init__(self, a: Vector2 = None, b: Vector2 = None):
         self.a = a or Vector2()
         self.b = b or Vector2()
+        if any(
+            not math.isfinite(float(point.x)) or not math.isfinite(float(point.y))
+            for point in (self.a, self.b)
+        ):
+            raise ValueError("segment points must be finite")
 
 
 # === 碰撞检测结果 ===
@@ -138,8 +157,21 @@ class PhysicsBody2D(Node2D):
         "angular_velocity", "linear_damp", "angular_damp", "bounce", "friction", "sleeping",
         "can_sleep", "freeze", "mode", "velocity",
     })
+    _scrawl_finite_fields = frozenset({
+        "gravity_scale", "mass", "angular_velocity", "linear_damp",
+        "angular_damp", "bounce", "friction",
+    })
 
     def __setattr__(self, name, value):
+        if name in PhysicsBody2D._scrawl_finite_fields:
+            value = float(value)
+            if not math.isfinite(value):
+                raise ValueError(f"{name} must be finite")
+            if name == "mass" and value <= 0.0:
+                raise ValueError("mass must be greater than zero")
+        elif name in ("linear_velocity", "velocity") and hasattr(value, "x") and hasattr(value, "y"):
+            if not math.isfinite(float(value.x)) or not math.isfinite(float(value.y)):
+                raise ValueError(f"{name} components must be finite")
         object.__setattr__(self, name, value)
         if name in PhysicsBody2D._scrawl_physics_fields and "_scrawl_node_dirty" in self.__dict__:
             self._mark_node_dirty()

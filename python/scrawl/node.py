@@ -6,7 +6,7 @@
 节点类型层级:
     Node (基础节点)
     ├── Node2D (2D 变换节点)
-    │   ├── Sprite (精灵)
+    │   ├── Sprite2D (精灵)
     │   ├── Camera2D (2D 摄像机)
     │   ├── Light2D (2D 光源)
     │   ├── RayCast2D (射线检测)
@@ -22,6 +22,7 @@
 """
 
 from itertools import count
+import math
 from typing import List, Optional, Dict, Any, Callable
 from .math_utils import Vector2, Transform2D
 from .signals import Signal
@@ -41,7 +42,11 @@ class _Node2DVector(Vector2):
         object.__setattr__(self, "_owner", owner)
 
     def __setattr__(self, name, value):
-        object.__setattr__(self, name, float(value) if name in ("x", "y") else value)
+        if name in ("x", "y"):
+            value = float(value)
+            if not math.isfinite(value):
+                raise ValueError("Node2D transform components must be finite")
+        object.__setattr__(self, name, value)
         owner = getattr(self, "_owner", None)
         if owner is not None and name in ("x", "y"):
             owner._mark_node_dirty()
@@ -403,7 +408,7 @@ class Node2D(Node):
     def global_position(self) -> Vector2:
         """全局坐标。"""
         if self._parent and isinstance(self._parent, Node2D):
-            return self._parent.global_position + self._position
+            return self._parent.to_global(self._position)
         return Vector2(self._position.x, self._position.y)
 
     @global_position.setter
@@ -411,7 +416,7 @@ class Node2D(Node):
         if isinstance(value, (tuple, list)):
             value = Vector2(float(value[0]), float(value[1]))
         if self._parent and isinstance(self._parent, Node2D):
-            value = value - self._parent.global_position
+            value = self._parent.to_local(value)
         else:
             value = Vector2(value.x, value.y)
         self._position = _Node2DVector(self, value.x, value.y)
@@ -426,7 +431,10 @@ class Node2D(Node):
 
     @rotation.setter
     def rotation(self, value: float):
-        self._rotation = float(value)
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("Node2D rotation must be finite")
+        self._rotation = value
         self._mark_node_dirty()
 
     @property
@@ -437,7 +445,9 @@ class Node2D(Node):
 
     @rotation_degrees.setter
     def rotation_degrees(self, value: float):
-        import math
+        value = float(value)
+        if not math.isfinite(value):
+            raise ValueError("Node2D rotation must be finite")
         self._rotation = math.radians(value)
         self._mark_node_dirty()
 
@@ -516,7 +526,16 @@ class Node2D(Node):
         return Transform2D(self._rotation, self._position, self._scale)
 
     def get_global_transform(self) -> Transform2D:
-        return Transform2D(self.global_rotation, self.global_position, self.global_scale)
+        if self._parent and isinstance(self._parent, Node2D):
+            parent = self._parent.get_global_transform()
+            # Transform2D applies scale, rotation, then translation. Compose
+            # the local transform so nested Node2D containers match Godot.
+            return Transform2D(
+                parent.rotation + self._rotation,
+                parent.xform(self._position),
+                Vector2(parent.scale.x * self._scale.x, parent.scale.y * self._scale.y),
+            )
+        return Transform2D(self._rotation, self._position, self._scale)
 
     def to_local(self, global_point: Vector2) -> Vector2:
         """将全局坐标转换为局部坐标。"""

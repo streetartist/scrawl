@@ -20,7 +20,7 @@ SCREEN_HEIGHT = 600
 SCORE = 0
 
 
-class Bat1(Sprite):
+class Bat1(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Bat1"
@@ -66,7 +66,7 @@ class Bat1(Sprite):
         self.delete_self()
 
 
-class Dragon(Sprite):
+class Dragon(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Dragon"
@@ -110,7 +110,7 @@ class Dragon(Sprite):
         self.delete_self()
 
 
-class Hippo(Sprite):
+class Hippo(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Hippo"
@@ -156,7 +156,7 @@ class Hippo(Sprite):
         self.delete_self()
 
 
-class FireBall(Sprite):
+class FireBall(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "FireBall"
@@ -176,10 +176,11 @@ class FireBall(Sprite):
         self.delete_self()
 
 
-class Wall(Sprite):
+class Wall(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Wall"
+        self.position = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
         self.add_costume("costume1", asset("wall.png"))
         self.set_size(0.5)
         self.last_use = time.time()
@@ -194,9 +195,10 @@ class Wall(Sprite):
             self.last_use = time.time()
 
 
-class Gameover(Sprite):
+class Gameover(Sprite2D):
     def __init__(self):
         super().__init__()
+        self.position = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
         self.add_costume("costume1", asset("gameover.png"))
         self.visible = False
 
@@ -205,10 +207,11 @@ class Gameover(Sprite):
         self.visible = True
 
 
-class Witch(Sprite):
+class Witch(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "Witch"
+        self.position = (SCREEN_WIDTH / 2, SCREEN_HEIGHT / 2)
         self.add_costume("costume1", asset("witch.svg"))
         self.fireball = FireBall()
         self.set_size(0.7)
@@ -237,7 +240,7 @@ class Witch(Sprite):
         self.broadcast("add_life")
 
 
-class LifeDisplay(Sprite):
+class LifeDisplay(Sprite2D):
     """Displays life count on screen."""
     def __init__(self):
         super().__init__()
@@ -265,7 +268,7 @@ class LifeDisplay(Sprite):
         self.set_text(f"Life: {self.life}", 24, (255, 255, 255))
 
 
-class ScoreDisplay(Sprite):
+class ScoreDisplay(Sprite2D):
     """Displays score on screen."""
     def __init__(self):
         super().__init__()
@@ -290,15 +293,15 @@ class MyScene(Scene):
     def __init__(self):
         super().__init__()
         self.set_background_color(20, 20, 40)
-        self.add_sprite(Bat1())
-        self.add_sprite(Dragon())
-        self.add_sprite(Hippo())
-        self.add_sprite(Witch())
-        self.add_sprite(Wall())
-        self.add_sprite(Gameover())
-        self.add_sprite(FireBall())
-        self.add_sprite(LifeDisplay())
-        self.add_sprite(ScoreDisplay())
+        self.add_child(Bat1())
+        self.add_child(Dragon())
+        self.add_child(Hippo())
+        self.add_child(Witch())
+        self.add_child(Wall())
+        self.add_child(Gameover())
+        self.add_child(FireBall())
+        self.add_child(LifeDisplay())
+        self.add_child(ScoreDisplay())
 
 
 # Run

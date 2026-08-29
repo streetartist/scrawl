@@ -8,6 +8,7 @@ from scrawl import (
     Scene,
     StaticBody2D,
     Vector2,
+    on_key,
 )
 
 
@@ -60,6 +61,12 @@ class PhysicsNodeTests(unittest.TestCase):
         shape.disabled = True
         self.assertTrue(shape._take_node_dirty())
 
+    def test_physics_shapes_and_properties_reject_non_finite_values(self):
+        with self.assertRaises(ValueError):
+            CircleShape2D(float("nan"))
+        with self.assertRaises(ValueError):
+            RigidBody2D("ball").gravity_scale = float("inf")
+
     def test_native_rigidbody_does_not_run_fallback_gravity(self):
         body = RigidBody2D("ball")
         body.position = Vector2(10, 20)
@@ -71,6 +78,17 @@ class PhysicsNodeTests(unittest.TestCase):
         body.game = NativeGame()
         body._physics_process(1.0)
         self.assertEqual((body.position.x, body.position.y), (10, 20))
+
+    def test_native_rigidbody_can_own_input_handlers(self):
+        class PlayerBody(RigidBody2D):
+            @on_key("space", "pressed")
+            def jump(self):
+                self.apply_central_impulse(Vector2(0, 520))
+
+        body = PlayerBody()
+        self.assertEqual(PlayerBody.jump._key_event, ("space", "pressed"))
+        body.jump()
+        self.assertEqual((body.linear_velocity.x, body.linear_velocity.y), (0, 520))
 
     def test_kinematic_motion_marks_native_transform_dirty(self):
         body = KinematicBody2D("player")

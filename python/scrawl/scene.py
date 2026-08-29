@@ -1,11 +1,11 @@
-"""Scene tree root with a background and Sprite convenience methods."""
+"""Scene tree root with a background and Sprite2D convenience methods."""
 
 from .node import Node
 from .sprite import queue_broadcast
 
 
 class Scene(Node):
-    """A game scene that contains sprites.
+    """A game scene that contains Sprite2D nodes.
 
     Subclass this to create your game scenes:
 
@@ -23,9 +23,9 @@ class Scene(Node):
         self._set_scene(self)
 
     def add_sprite(self, sprite):
-        """Add a Sprite as a direct child of this scene."""
-        if getattr(sprite, "_scrawl_node_kind", None) != "sprite":
-            raise TypeError("add_sprite expects a Sprite or PhysicsSprite")
+        """Add a Sprite2D as a direct child of this scene."""
+        if getattr(sprite, "_scrawl_node_kind", None) != "sprite2d":
+            raise TypeError("add_sprite expects a Sprite2D")
         self.add_child(sprite)
 
     def remove_sprite(self, sprite):
@@ -48,9 +48,9 @@ class Scene(Node):
 
     @property
     def sprites(self):
-        """All Sprite descendants in deterministic tree order."""
+        """All Sprite2D descendants in deterministic tree order."""
         return [
             node
             for node in self.iter_tree(include_self=False)
-            if getattr(node, "_scrawl_node_kind", None) == "sprite"
+            if getattr(node, "_scrawl_node_kind", None) == "sprite2d"
         ]

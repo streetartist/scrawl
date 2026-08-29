@@ -1,11 +1,11 @@
 """
 Event decorators for Scrawl.
 
-These decorators mark methods on Sprite subclasses as event handlers that
+These decorators mark methods on scriptable node subclasses as event handlers that
 the engine calls from its fixed update loop.
 
 Usage:
-    class Ball(Sprite):
+    class Ball(Sprite2D):
         @as_main
         def main_loop(self):
             while True:

@@ -110,6 +110,27 @@ pub fn init_rapier_bodies(
 }
 
 fn collider_from_shape(shape: &PhysicsShape) -> Collider {
+    if let Some(points) = shape.points.as_ref() {
+        let points: Vec<Vec2> = points
+            .iter()
+            .copied()
+            .filter(|point| point.is_finite())
+            .collect();
+        if points.len() >= 3 {
+            if let Some(collider) = Collider::convex_hull(&points) {
+                return collider;
+            }
+        }
+    }
+
+    // CapsuleShape2D stores its total size and radius. Rapier's vertical
+    // capsule takes the half-length of the center segment instead.
+    if let (Some(radius), Some(size)) = (shape.radius, shape.size) {
+        let radius = radius.abs();
+        let half_segment = (size.y.abs() / 2.0 - radius).max(0.0);
+        return Collider::capsule_y(half_segment, radius);
+    }
+
     match shape.kind {
         CollisionKind::Circle => Collider::ball(
             shape
@@ -118,9 +139,8 @@ fn collider_from_shape(shape: &PhysicsShape) -> Collider {
                 .unwrap_or(16.0)
                 .abs(),
         ),
-        // Mask and unsupported polygon shapes intentionally use their AABB in
-        // this first native-physics mapping. Pixel masks remain available for
-        // Sprite collision events.
+        // Pixel masks remain available for Sprite collision events. A native
+        // mask without explicit pixels uses its declared AABB for now.
         CollisionKind::Rect | CollisionKind::Mask => {
             let size = shape.size.unwrap_or(Vec2::new(32.0, 32.0));
             Collider::cuboid(size.x.abs() / 2.0, size.y.abs() / 2.0)
@@ -305,6 +325,7 @@ mod tests {
                     kind: CollisionKind::Circle,
                     size: None,
                     radius: Some(8.0),
+                    points: None,
                     disabled: false,
                 },
             ))
@@ -344,6 +365,7 @@ mod tests {
             kind: CollisionKind::Rect,
             size: Some(Vec2::new(20.0, 12.0)),
             radius: None,
+            points: None,
             disabled: false,
         };
         app.world_mut().run_schedule(FixedUpdate);
@@ -392,6 +414,7 @@ mod tests {
                     kind: CollisionKind::Rect,
                     size: Some(Vec2::new(720.0, 24.0)),
                     radius: None,
+                    points: None,
                     disabled: false,
                 },
             ))
@@ -425,6 +448,7 @@ mod tests {
                     kind: CollisionKind::Circle,
                     size: None,
                     radius: Some(18.0),
+                    points: None,
                     disabled: false,
                 },
             ))

@@ -5,7 +5,7 @@ This file tracks gaps between the public Python data model and the Rust NativeGa
 ## P0: unified node bridge
 
 - [x] Make `Scene` the Node tree root and traverse it in parent-first order.
-- [x] Create registered ECS entities for Scene, Node, Node2D and Sprite nodes at startup.
+- [x] Create registered ECS entities for Scene, Node, Node2D and Sprite2D nodes at startup.
 - [x] Map initial Node2D transforms, visibility and hierarchy to Bevy entities.
 - [x] Synchronize Node2D transform, z-index and visibility changes after the game loop starts.
 - [x] Define creation, deletion and same-scene reparenting commands for runtime nodes.
@@ -15,7 +15,7 @@ This file tracks gaps between the public Python data model and the Rust NativeGa
 
 - [x] Map StaticBody2D, RigidBody2D, KinematicBody2D and rectangle/circle CollisionShape2D nodes to Rapier entities.
 - [x] Sync native physics transforms and velocities back to Python, including runtime node additions.
-- Map native capsule, polygon and mask shapes without an AABB fallback.
+- [x] Map native capsule and convex polygon shapes to Rapier. Native pixel masks retain an AABB fallback until mask geometry is available to the physics backend.
 - Map Area2D, RayCast2D, collision signals and query APIs.
 - Map Control, Label, Button and layout containers to `scrawl-ui`.
 - Map TileMap, ParticleEmitter2D and navigation nodes to their plugins.

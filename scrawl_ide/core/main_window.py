@@ -549,7 +549,7 @@ class MainWindow(QMainWindow):
         from PySide6.QtWidgets import QInputDialog
         name, ok = QInputDialog.getText(
             self, tr("dialog.add_sprite_title"), tr("dialog.add_sprite_prompt"),
-            text=f"Sprite{len(self._current_scene.sprites) + 1}"
+            text=f"Sprite2D{len(self._current_scene.sprites) + 1}"
         )
 
         if not ok or not name:
@@ -860,7 +860,7 @@ class MainWindow(QMainWindow):
             return
 
         known_bases = (
-            "Sprite|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
+            "Sprite2D|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D"
             "|AnimatedSprite2D|Camera2D|ParticleEmitter2D|AudioPlayer2D"
             "|PointLight2D|DirectionalLight2D|Path2D|PathFollow2D|Line2D"
             "|Label|Button|ProgressBar|Panel|Timer|NavigationAgent2D|TileMap"
@@ -884,8 +884,10 @@ class MainWindow(QMainWindow):
         if not code:
             return
 
-        target_base = "PhysicsSprite" if is_physics else "Sprite"
-        pattern = rf'(class\s+{re.escape(sprite.class_name)}\s*\(\s*)(Sprite|PhysicsSprite)(\s*\)\s*:)'
+        # The Godot-style equivalent of the removed PhysicsSprite shortcut is
+        # a RigidBody2D with CollisionShape2D/Sprite2D children.
+        target_base = "RigidBody2D" if is_physics else "Sprite2D"
+        pattern = rf'(class\s+{re.escape(sprite.class_name)}\s*\(\s*)(Sprite2D|PhysicsSprite|StaticBody2D|RigidBody2D|KinematicBody2D|Area2D)(\s*\)\s*:)'
         new_code = re.sub(pattern, rf'\g<1>{target_base}\g<3>', code)
 
         if new_code != code:

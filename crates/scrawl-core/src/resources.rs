@@ -1,9 +1,9 @@
 //! Core resources for the Scrawl engine.
 
+use crate::events::InputMode;
 use bevy::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
-use crate::events::InputMode;
 
 /// Global engine configuration.
 #[derive(Resource, Debug, Clone, Serialize, Deserialize)]

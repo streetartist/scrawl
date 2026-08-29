@@ -5,7 +5,7 @@ Default game script template.
 from scrawl import *
 
 
-class Player(Sprite):
+class Player(Sprite2D):
     """Player sprite."""
 
     def __init__(self):

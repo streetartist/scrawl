@@ -344,7 +344,7 @@ TRANSLATIONS_EN = {
 
     # Menu - Scene
     "menu.scene": "&Scene",
-    "menu.scene.add_sprite": "Add &Sprite",
+    "menu.scene.add_sprite": "Add &Sprite2D",
     "menu.scene.add_scene": "Add S&cene",
 
     # Menu - Run
@@ -429,7 +429,7 @@ TRANSLATIONS_EN = {
 
     # Physics
     "inspector.physics": "Physics",
-    "inspector.is_physics": "Physics Sprite:",
+    "inspector.is_physics": "Physics Sprite2D:",
     "inspector.gravity": "Gravity:",
     "inspector.friction": "Friction:",
     "inspector.elasticity": "Elasticity:",
@@ -443,11 +443,11 @@ TRANSLATIONS_EN = {
     # Hierarchy
     "hierarchy.header": "Scene Tree",
     "hierarchy.add_scene": "Add Scene",
-    "hierarchy.add_sprite": "Add Sprite",
+    "hierarchy.add_sprite": "Add Sprite2D",
     "hierarchy.rename": "Rename",
     "hierarchy.duplicate": "Duplicate",
     "hierarchy.delete_scene": "Delete Scene",
-    "hierarchy.delete_sprite": "Delete Sprite",
+    "hierarchy.delete_sprite": "Delete Sprite2D",
     "hierarchy.cannot_delete": "Cannot Delete",
     "hierarchy.cannot_delete_last": "Cannot delete the last scene.",
     "hierarchy.confirm_delete_scene": "Delete scene '{name}'?",
@@ -484,8 +484,8 @@ TRANSLATIONS_EN = {
     "dialog.unsaved_title": "Unsaved Changes",
     "dialog.unsaved_message": "Do you want to save changes before closing?",
     "dialog.error": "Error",
-    "dialog.add_sprite_title": "Add Sprite",
-    "dialog.add_sprite_prompt": "Sprite name:",
+    "dialog.add_sprite_title": "Add Sprite2D",
+    "dialog.add_sprite_prompt": "Sprite2D name:",
     "dialog.add_scene_title": "Add Scene",
     "dialog.add_scene_prompt": "Scene name:",
     "dialog.select_costume": "Add Costume",

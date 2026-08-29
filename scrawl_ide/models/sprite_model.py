@@ -1,5 +1,5 @@
 """
-Sprite / Node Data Model
+Sprite2D / Node Data Model
 
 Represents a node (sprite, physics body, camera, light, etc.) in the Scrawl IDE.
 """
@@ -14,7 +14,7 @@ import uuid
 # ============================================================
 
 NODE_CATEGORIES = {
-    "2D节点": ["Sprite", "PhysicsSprite", "AnimatedSprite2D"],
+    "2D节点": ["Sprite2D", "AnimatedSprite2D"],
     "物理": ["StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"],
     "摄像机": ["Camera2D"],
     "渲染": ["PointLight2D", "DirectionalLight2D", "Line2D"],
@@ -27,8 +27,7 @@ NODE_CATEGORIES = {
 }
 
 NODE_ICONS = {
-    "Sprite": "🎮",
-    "PhysicsSprite": "⚡",
+    "Sprite2D": "🎮",
     "AnimatedSprite2D": "🎞️",
     "StaticBody2D": "🧱",
     "RigidBody2D": "🎱",
@@ -52,17 +51,16 @@ NODE_ICONS = {
 }
 
 # Which node types support costumes/images
-VISUAL_NODE_TYPES = {"Sprite", "PhysicsSprite", "AnimatedSprite2D",
-                     "StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
+VISUAL_NODE_TYPES = {"Sprite2D", "AnimatedSprite2D"}
 
 # Which node types are physics bodies
-PHYSICS_NODE_TYPES = {"PhysicsSprite", "StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
+PHYSICS_NODE_TYPES = {"StaticBody2D", "RigidBody2D", "KinematicBody2D", "Area2D"}
 
 
-def _default_node_code(class_name: str, node_type: str = "Sprite") -> str:
+def _default_node_code(class_name: str, node_type: str = "Sprite2D") -> str:
     """Generate default code for a node based on its type."""
     templates = {
-        "Sprite": f'''class {class_name}(Sprite):
+        "Sprite2D": f'''class {class_name}(Sprite2D):
     def __init__(self):
         super().__init__()
         self.name = "{class_name}"
@@ -72,17 +70,6 @@ def _default_node_code(class_name: str, node_type: str = "Sprite") -> str:
         """主循环"""
         while True:
             # 在这里添加逻辑
-            yield 0
-''',
-        "PhysicsSprite": f'''class {class_name}(PhysicsSprite):
-    def __init__(self):
-        super().__init__()
-        self.name = "{class_name}"
-
-    @as_main
-    def main_loop(self):
-        """主循环"""
-        while True:
             yield 0
 ''',
         "AnimatedSprite2D": f'''class {class_name}(AnimatedSprite2D):
@@ -247,7 +234,7 @@ def _default_node_code(class_name: str, node_type: str = "Sprite") -> str:
         self.max_speed = 200.0
 ''',
     }
-    return templates.get(node_type, templates["Sprite"])
+    return templates.get(node_type, templates["Sprite2D"])
 
 
 @dataclass
@@ -293,8 +280,8 @@ class SpriteModel:
     """Data model for a sprite."""
 
     id: str = field(default_factory=lambda: str(uuid.uuid4()))
-    name: str = "Sprite"
-    class_name: str = "Sprite"
+    name: str = "Sprite2D"
+    class_name: str = "Sprite2D"
 
     # Transform
     x: float = 0.0
@@ -313,7 +300,7 @@ class SpriteModel:
     collision_type: str = "rect"  # "rect", "circle", "mask"
 
     # Scrawl node type
-    node_type: str = "Sprite"  # Sprite, PhysicsSprite, RigidBody2D, KinematicBody2D, etc.
+    node_type: str = "Sprite2D"  # Sprite2D, RigidBody2D, KinematicBody2D, etc.
 
     # Physics properties
     is_physics: bool = False
@@ -398,8 +385,9 @@ class SpriteModel:
     properties: Dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def create_default(cls, name: str = "NewSprite", node_type: str = "Sprite") -> 'SpriteModel':
+    def create_default(cls, name: str = "NewSprite2D", node_type: str = "Sprite2D") -> 'SpriteModel':
         """Create a new node with default values for the given type."""
+        node_type = "RigidBody2D" if node_type == "PhysicsSprite" else node_type
         class_name = name.replace(" ", "")
         is_physics = node_type in PHYSICS_NODE_TYPES
         return cls(
@@ -545,8 +533,14 @@ class SpriteModel:
     def from_dict(cls, data: Dict[str, Any]) -> 'SpriteModel':
         """Create from dictionary."""
         pos = data.get("pos", [0, 0])
-        class_name = data.get("class", "Sprite")
-        node_type = data.get("node_type", "Sprite")
+        class_name = data.get("class", "Sprite2D")
+        node_type = data.get("node_type", "Sprite2D")
+        # PhysicsSprite was the pre-Godot shortcut. Read old scene files
+        # without exposing that type in the editor or generated scripts.
+        if node_type == "PhysicsSprite" or (
+            data.get("is_physics") and node_type == "Sprite2D"
+        ):
+            node_type = "RigidBody2D"
 
         # Handle costumes
         raw_costumes = data.get("costumes", [])
@@ -562,7 +556,7 @@ class SpriteModel:
 
         obj = cls(
             id=data.get("id", str(uuid.uuid4())),
-            name=data.get("name", "Sprite"),
+            name=data.get("name", "Sprite2D"),
             class_name=class_name,
             x=float(pos[0]) if len(pos) > 0 else 0.0,
             y=float(pos[1]) if len(pos) > 1 else 0.0,
@@ -575,7 +569,7 @@ class SpriteModel:
             color=color,
             collision_type=data.get("collision_type", "rect"),
             node_type=node_type,
-            is_physics=data.get("is_physics", False),
+            is_physics=node_type in PHYSICS_NODE_TYPES,
             gravity_x=float(gravity[0]) if len(gravity) > 0 else 0.0,
             gravity_y=float(gravity[1]) if len(gravity) > 1 else 0.2,
             friction=float(data.get("friction", 0.02)),

@@ -14,7 +14,13 @@ use crate::resources::ScrawlConfig;
 /// the game coordinate system fixed regardless of window/fullscreen size.
 pub fn detect_edge_collisions(
     config: Res<ScrawlConfig>,
-    query: Query<(Entity, &Transform2D, &CollisionShape, Option<&Sprite>, Option<&CollisionMask>)>,
+    query: Query<(
+        Entity,
+        &Transform2D,
+        &CollisionShape,
+        Option<&Sprite>,
+        Option<&CollisionMask>,
+    )>,
     mut edge_events: EventWriter<EdgeCollisionEvent>,
 ) {
     let w = config.width as f32;
@@ -27,16 +33,28 @@ pub fn detect_edge_collisions(
             CollisionKind::Circle => {
                 let r = get_circle_radius(t2d, shape, sprite, mask);
                 if pos.x - r <= 0.0 {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Left });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Left,
+                    });
                 }
                 if pos.x + r >= w {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Right });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Right,
+                    });
                 }
                 if pos.y + r >= h {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Top });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Top,
+                    });
                 }
                 if pos.y - r <= 0.0 {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Bottom });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Bottom,
+                    });
                 }
             }
             _ => {
@@ -44,16 +62,28 @@ pub fn detect_edge_collisions(
                 let half = get_half_size(t2d, sprite, mask);
                 let aabb_half = rotated_aabb_half(half, t2d.rotation_degrees);
                 if pos.x - aabb_half.x <= 0.0 {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Left });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Left,
+                    });
                 }
                 if pos.x + aabb_half.x >= w {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Right });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Right,
+                    });
                 }
                 if pos.y + aabb_half.y >= h {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Top });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Top,
+                    });
                 }
                 if pos.y - aabb_half.y <= 0.0 {
-                    edge_events.send(EdgeCollisionEvent { entity, edge: Edge::Bottom });
+                    edge_events.send(EdgeCollisionEvent {
+                        entity,
+                        edge: Edge::Bottom,
+                    });
                 }
             }
         }
@@ -62,7 +92,14 @@ pub fn detect_edge_collisions(
 
 /// System: detect sprite-to-sprite collisions.
 pub fn detect_sprite_collisions(
-    query: Query<(Entity, &Transform2D, &CollisionShape, Option<&Sprite>, &Visible, Option<&CollisionMask>)>,
+    query: Query<(
+        Entity,
+        &Transform2D,
+        &CollisionShape,
+        Option<&Sprite>,
+        &Visible,
+        Option<&CollisionMask>,
+    )>,
     mut collision_events: EventWriter<SpriteCollisionEvent>,
 ) {
     let entities: Vec<_> = query.iter().filter(|(_, _, _, _, vis, _)| vis.0).collect();
@@ -86,15 +123,12 @@ pub fn detect_sprite_collisions(
                         obb_vs_obb(ta, *spa, *ma, tb, *spb, *mb)
                     }
                 }
-                (CollisionKind::Mask, CollisionKind::Rect) | (CollisionKind::Rect, CollisionKind::Mask) => {
+                (CollisionKind::Mask, CollisionKind::Rect)
+                | (CollisionKind::Rect, CollisionKind::Mask) => {
                     obb_vs_obb(ta, *spa, *ma, tb, *spb, *mb)
                 }
-                (CollisionKind::Circle, _) => {
-                    circle_vs_obb(ta, sa, *spa, *ma, tb, *spb, *mb)
-                }
-                (_, CollisionKind::Circle) => {
-                    circle_vs_obb(tb, sb, *spb, *mb, ta, *spa, *ma)
-                }
+                (CollisionKind::Circle, _) => circle_vs_obb(ta, sa, *spa, *ma, tb, *spb, *mb),
+                (_, CollisionKind::Circle) => circle_vs_obb(tb, sb, *spb, *mb, ta, *spa, *ma),
             };
 
             if colliding {
@@ -120,7 +154,12 @@ fn get_half_size(t2d: &Transform2D, sprite: Option<&Sprite>, mask: Option<&Colli
     base * t2d.scale / 2.0
 }
 
-fn get_circle_radius(t2d: &Transform2D, shape: &CollisionShape, sprite: Option<&Sprite>, mask: Option<&CollisionMask>) -> f32 {
+fn get_circle_radius(
+    t2d: &Transform2D,
+    shape: &CollisionShape,
+    sprite: Option<&Sprite>,
+    mask: Option<&CollisionMask>,
+) -> f32 {
     if let Some(r) = shape.radius {
         r * t2d.scale.x
     } else {
@@ -134,10 +173,7 @@ fn rotated_aabb_half(half: Vec2, rotation_degrees: f32) -> Vec2 {
     let rad = (rotation_degrees - 90.0).to_radians();
     let cos = rad.cos().abs();
     let sin = rad.sin().abs();
-    Vec2::new(
-        half.x * cos + half.y * sin,
-        half.x * sin + half.y * cos,
-    )
+    Vec2::new(half.x * cos + half.y * sin, half.x * sin + half.y * cos)
 }
 
 /// Get the two local axes of an OBB from rotation degrees.
@@ -150,8 +186,14 @@ fn obb_axes(rotation_degrees: f32) -> [Vec2; 2] {
 
 /// Circle vs Circle.
 fn circle_vs_circle(
-    ta: &Transform2D, sa: &CollisionShape, spa: Option<&Sprite>, ma: Option<&CollisionMask>,
-    tb: &Transform2D, sb: &CollisionShape, spb: Option<&Sprite>, mb: Option<&CollisionMask>,
+    ta: &Transform2D,
+    sa: &CollisionShape,
+    spa: Option<&Sprite>,
+    ma: Option<&CollisionMask>,
+    tb: &Transform2D,
+    sb: &CollisionShape,
+    spb: Option<&Sprite>,
+    mb: Option<&CollisionMask>,
 ) -> bool {
     let ra = get_circle_radius(ta, sa, spa, ma);
     let rb = get_circle_radius(tb, sb, spb, mb);
@@ -161,8 +203,12 @@ fn circle_vs_circle(
 
 /// OBB vs OBB using Separating Axis Theorem (SAT).
 fn obb_vs_obb(
-    ta: &Transform2D, spa: Option<&Sprite>, ma: Option<&CollisionMask>,
-    tb: &Transform2D, spb: Option<&Sprite>, mb: Option<&CollisionMask>,
+    ta: &Transform2D,
+    spa: Option<&Sprite>,
+    ma: Option<&CollisionMask>,
+    tb: &Transform2D,
+    spb: Option<&Sprite>,
+    mb: Option<&CollisionMask>,
 ) -> bool {
     let ha = get_half_size(ta, spa, ma);
     let hb = get_half_size(tb, spb, mb);
@@ -186,8 +232,13 @@ fn obb_vs_obb(
 
 /// Circle vs OBB.
 fn circle_vs_obb(
-    tc: &Transform2D, sc: &CollisionShape, spc: Option<&Sprite>, mc: Option<&CollisionMask>,
-    tr: &Transform2D, spr: Option<&Sprite>, mr: Option<&CollisionMask>,
+    tc: &Transform2D,
+    sc: &CollisionShape,
+    spc: Option<&Sprite>,
+    mc: Option<&CollisionMask>,
+    tr: &Transform2D,
+    spr: Option<&Sprite>,
+    mr: Option<&CollisionMask>,
 ) -> bool {
     let radius = get_circle_radius(tc, sc, spc, mc);
     let half = get_half_size(tr, spr, mr);

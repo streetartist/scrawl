@@ -1,6 +1,6 @@
 """Scrawl's public Python API, powered by the Rust/Bevy runtime.
 
-``Game``, ``Scene``, ``Sprite`` and their event decorators are the stable
+``Game``, ``Scene``, ``Sprite2D`` and their event decorators are the stable
 native-runtime surface. Other exported node models are experimental until
 their bridge mappings are listed as connected in ``docs/MANUAL.md``.
 """
@@ -10,7 +10,7 @@ __version__ = "2.2.0"
 # === 核心 ===
 from .engine import Game
 from .scene import Scene
-from .sprite import Sprite, PhysicsSprite
+from .sprite import Sprite2D, PhysicsSprite
 from .events import (
     as_main,
     as_clones,
@@ -98,7 +98,7 @@ from .resources import Resource, ImageTexture, AudioResource, FontResource, Reso
 
 __all__ = [
     # 核心
-    "Game", "Scene", "Sprite", "PhysicsSprite",
+    "Game", "Scene", "Sprite2D", "PhysicsSprite",
     # 事件装饰器
     "as_main", "as_clones", "on_key", "on_mouse",
     "on_broadcast", "on_sprite_clicked", "on_edge_collision", "on_sprite_collision",

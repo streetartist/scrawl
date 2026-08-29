@@ -34,6 +34,9 @@ pub struct PythonSpriteInstance {
     pub node_id: u64,
     pub py_object: Py<PyAny>,
     pub entity: Entity,
+    /// Generic nodes can own handlers too, but only Sprite2D needs the
+    /// rendering and pen state synchronization below.
+    pub is_sprite: bool,
     pub coroutines: HashMap<String, Py<PyAny>>,
     pub wake_times: HashMap<String, Instant>,
     pub handlers: Vec<(String, HandlerKind)>,
@@ -350,6 +353,10 @@ fn python_frame_system(world: &mut World) {
                 sprite.wake_times.remove(&name);
             }
 
+            if !sprite.is_sprite {
+                continue;
+            }
+
             // --- 8. Sync Python state → ECS (Y-up: Python matches Bevy, no flip) ---
             let obj = sprite.py_object.bind(py);
             let entity = sprite.entity;
@@ -606,10 +613,7 @@ fn sync_python_nodes(world: &mut World, py: Python<'_>) {
 
         let position = extract_python_vec2(object, "position", Vec2::ZERO);
         let scale = extract_python_vec2(object, "scale", Vec2::ONE);
-        let rotation = object
-            .getattr("rotation")
-            .and_then(|value| value.extract::<f32>())
-            .unwrap_or(0.0);
+        let rotation = extract_finite_f32(object, "rotation").unwrap_or(0.0);
         let z_index = object
             .getattr("z_index")
             .and_then(|value| value.extract::<i32>())
@@ -802,7 +806,7 @@ fn spawn_dynamic_subtree(
                 continue;
             }
 
-            if kind == "sprite" {
+            if kind == "sprite2d" {
                 // Sprite creation already owns costume, handler, and collision setup.
                 spawn_runtime_sprite(py, world, &object, sprites);
                 continue;
@@ -813,13 +817,11 @@ fn spawn_dynamic_subtree(
                 .getattr("name")
                 .and_then(|value| value.extract::<String>())
                 .unwrap_or_else(|_| "Node".to_string());
+            let handler_name = name.clone();
             let entity = if kind == "node2d" {
                 let position = extract_python_vec2(object_bound, "position", Vec2::ZERO);
                 let scale = extract_python_vec2(object_bound, "scale", Vec2::ONE);
-                let rotation = object_bound
-                    .getattr("rotation")
-                    .and_then(|value| value.extract::<f32>())
-                    .unwrap_or(0.0);
+                let rotation = extract_finite_f32(object_bound, "rotation").unwrap_or(0.0);
                 let z_index = object_bound
                     .getattr("z_index")
                     .and_then(|value| value.extract::<i32>())
@@ -848,10 +850,7 @@ fn spawn_dynamic_subtree(
             } else if kind == "collision_shape2d" {
                 let position = extract_python_vec2(object_bound, "position", Vec2::ZERO);
                 let scale = extract_python_vec2(object_bound, "scale", Vec2::ONE);
-                let rotation = object_bound
-                    .getattr("rotation")
-                    .and_then(|value| value.extract::<f32>())
-                    .unwrap_or(0.0);
+                let rotation = extract_finite_f32(object_bound, "rotation").unwrap_or(0.0);
                 let visible = object_bound
                     .getattr("visible")
                     .and_then(|value| value.extract::<bool>())
@@ -880,10 +879,7 @@ fn spawn_dynamic_subtree(
             ) {
                 let position = extract_python_vec2(object_bound, "position", Vec2::ZERO);
                 let scale = extract_python_vec2(object_bound, "scale", Vec2::ONE);
-                let rotation = object_bound
-                    .getattr("rotation")
-                    .and_then(|value| value.extract::<f32>())
-                    .unwrap_or(0.0);
+                let rotation = extract_finite_f32(object_bound, "rotation").unwrap_or(0.0);
                 let z_index = object_bound
                     .getattr("z_index")
                     .and_then(|value| value.extract::<i32>())
@@ -999,6 +995,38 @@ fn spawn_dynamic_subtree(
                 .resource_mut::<PythonRuntime>()
                 .node_objects
                 .insert(node_id, object.clone_ref(py));
+
+            let handlers = scan_python_handlers(py, object_bound);
+            if !handlers.is_empty() {
+                let mut coroutines = HashMap::new();
+                let wake_times = HashMap::new();
+                for (method_name, handler_kind) in &handlers {
+                    if !matches!(handler_kind, HandlerKind::Main) {
+                        continue;
+                    }
+                    match object_bound.call_method0(method_name.as_str()) {
+                        Ok(generator) if generator.hasattr("__next__").unwrap_or(false) => {
+                            coroutines.insert(format!("main_{}", method_name), generator.unbind());
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            eprintln!(
+                                "[Scrawl] Error starting {}.{}: {}",
+                                handler_name, method_name, error
+                            );
+                        }
+                    }
+                }
+                sprites.push(PythonSpriteInstance {
+                    node_id,
+                    py_object: object.clone_ref(py),
+                    entity,
+                    is_sprite: false,
+                    coroutines,
+                    wake_times,
+                    handlers,
+                });
+            }
             let _ = object_bound.call_method0("_take_node_dirty");
 
             let effective_parent_id = record_parent_id.or(parent_id);
@@ -1103,9 +1131,17 @@ fn extract_python_vec2(object: &Bound<'_, PyAny>, attr: &str, fallback: Vec2) ->
         .getattr("y")
         .and_then(|component| component.extract::<f32>());
     match (x, y) {
-        (Ok(x), Ok(y)) => Vec2::new(x, y),
+        (Ok(x), Ok(y)) if x.is_finite() && y.is_finite() => Vec2::new(x, y),
         _ => fallback,
     }
+}
+
+fn extract_finite_f32(object: &Bound<'_, PyAny>, attr: &str) -> Option<f32> {
+    object
+        .getattr(attr)
+        .and_then(|value| value.extract::<f32>())
+        .ok()
+        .filter(|value| value.is_finite())
 }
 
 fn extract_runtime_physics_shape(object: &Bound<'_, PyAny>) -> PhysicsShape {
@@ -1132,21 +1168,63 @@ fn extract_runtime_physics_shape(object: &Bound<'_, PyAny>) -> PhysicsShape {
                 .getattr("radius")
                 .and_then(|value| value.extract::<f32>())
                 .ok(),
+            points: None,
             disabled,
         },
         "RectangleShape2D" => PhysicsShape {
             kind: CollisionKind::Rect,
             size: Some(extract_python_vec2(&shape, "size", Vec2::new(32.0, 32.0))),
             radius: None,
+            points: None,
+            disabled,
+        },
+        "CapsuleShape2D" => {
+            let radius = shape
+                .getattr("radius")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(16.0);
+            let height = shape
+                .getattr("height")
+                .and_then(|value| value.extract::<f32>())
+                .unwrap_or(radius * 2.0);
+            PhysicsShape {
+                kind: CollisionKind::Rect,
+                size: Some(Vec2::new(radius * 2.0, height)),
+                radius: Some(radius),
+                points: None,
+                disabled,
+            }
+        }
+        "ConvexPolygonShape2D" => PhysicsShape {
+            kind: CollisionKind::Rect,
+            size: None,
+            radius: None,
+            points: extract_runtime_shape_points(&shape),
             disabled,
         },
         _ => PhysicsShape {
             kind: CollisionKind::Rect,
             size: Some(Vec2::new(32.0, 32.0)),
             radius: None,
+            points: None,
             disabled,
         },
     }
+}
+
+fn extract_runtime_shape_points(shape: &Bound<'_, PyAny>) -> Option<Vec<Vec2>> {
+    let points = shape.getattr("points").ok()?;
+    let points = points
+        .try_iter()
+        .ok()?
+        .filter_map(|point| {
+            let point = point.ok()?;
+            let x = point.getattr("x").ok()?.extract::<f32>().ok()?;
+            let y = point.getattr("y").ok()?.extract::<f32>().ok()?;
+            Some(Vec2::new(x, y))
+        })
+        .collect::<Vec<_>>();
+    (points.len() >= 3).then_some(points)
 }
 
 fn runtime_physics_body_type(object: &Bound<'_, PyAny>, kind: &str) -> PhysicsBodyType {
@@ -1980,6 +2058,7 @@ fn spawn_runtime_sprite(
         node_id,
         py_object: py_sprite.clone_ref(py),
         entity,
+        is_sprite: true,
         coroutines,
         wake_times,
         handlers,
@@ -2179,6 +2258,11 @@ class TestNode:
         self.dirty = False
         return dirty
 
+    def on_space(self):
+        pass
+
+    on_space._key_event = ("space", "pressed")
+
 node = TestNode()
 "#,
             )
@@ -2237,5 +2321,21 @@ node = TestNode()
         despawn_python_subtree(&mut world, 10, &node, &mut sprites);
         assert!(!world.resource::<PythonRuntime>().nodes.contains_key(&10));
         assert!(world.get_entity(entity).is_err());
+    }
+
+    #[test]
+    fn generic_nodes_keep_decorated_input_handlers() {
+        let node = make_node2d();
+        Python::with_gil(|py| {
+            let handlers = scan_python_handlers(py, node.bind(py));
+            assert!(handlers.iter().any(|(name, kind)| {
+                name == "on_space"
+                    && matches!(
+                        kind,
+                        HandlerKind::Key { key, mode }
+                            if key == "space" && mode == "pressed"
+                    )
+            }));
+        });
     }
 }

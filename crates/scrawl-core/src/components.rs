@@ -267,6 +267,9 @@ pub struct PhysicsShape {
     pub size: Option<Vec2>,
     /// Radius for circular shapes in pixels.
     pub radius: Option<f32>,
+    /// Convex polygon vertices in local pixels. When present, this takes
+    /// precedence over `kind` during native collider construction.
+    pub points: Option<Vec<Vec2>>,
     pub disabled: bool,
 }
 
@@ -276,6 +279,7 @@ impl Default for PhysicsShape {
             kind: CollisionKind::Rect,
             size: Some(Vec2::new(32.0, 32.0)),
             radius: None,
+            points: None,
             disabled: false,
         }
     }
@@ -308,7 +312,11 @@ impl CollisionMask {
             }
         }
 
-        Self { width, height, bits }
+        Self {
+            width,
+            height,
+            bits,
+        }
     }
 
     /// Check if a pixel is solid.
@@ -331,8 +339,14 @@ impl CollisionMask {
         scale_b: Vec2,
     ) -> bool {
         // Compute world-space bounding boxes
-        let a_size = Vec2::new(self.width as f32 * scale_a.x, self.height as f32 * scale_a.y);
-        let b_size = Vec2::new(other.width as f32 * scale_b.x, other.height as f32 * scale_b.y);
+        let a_size = Vec2::new(
+            self.width as f32 * scale_a.x,
+            self.height as f32 * scale_a.y,
+        );
+        let b_size = Vec2::new(
+            other.width as f32 * scale_b.x,
+            other.height as f32 * scale_b.y,
+        );
 
         let a_min = pos_a - a_size / 2.0;
         let a_max = pos_a + a_size / 2.0;
@@ -349,7 +363,12 @@ impl CollisionMask {
         let overlap_max = Vec2::new(a_max.x.min(b_max.x), a_max.y.min(b_max.y));
 
         // Sample at the smaller scale's resolution for accuracy
-        let step = scale_a.x.min(scale_b.x).min(scale_a.y).min(scale_b.y).max(0.5);
+        let step = scale_a
+            .x
+            .min(scale_b.x)
+            .min(scale_a.y)
+            .min(scale_b.y)
+            .max(0.5);
 
         let mut wy = overlap_min.y;
         while wy < overlap_max.y {

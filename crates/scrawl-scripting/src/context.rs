@@ -304,7 +304,7 @@ impl<'w> ScriptContext<'w> {
     // Physics (basic)
     // ========================================================================
 
-    /// Set velocity (for PhysicsSprite).
+    /// Set velocity for a native physics body.
     pub fn set_velocity(&mut self, vx: f32, vy: f32) {
         if let Some(mut vel) = self.world.get_mut::<Velocity2D>(self.entity) {
             vel.linear = Vec2::new(vx, vy);

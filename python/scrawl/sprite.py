@@ -1,11 +1,12 @@
-"""Sprite and PhysicsSprite classes for the Scrawl Python API."""
+"""Sprite2D and PhysicsSprite classes for the Scrawl Python API."""
 
 import math
 import random
 import os
 from typing import Optional, Tuple
 
-from .node import Node, _scrawl_command_queue
+from .node import Node, Node2D, _scrawl_command_queue, _Node2DVector
+from .math_utils import Vector2
 
 
 _DIRTY_TRANSFORM = 1 << 0
@@ -63,50 +64,21 @@ def queue_resume_music():
     _scrawl_command_queue.append(("resume_music",))
 
 
-class _Vec2Proxy:
-    """Mutable view used by ``sprite.position.x`` and ``sprite.position.y``."""
-    def __init__(self, sprite):
-        self._sprite = sprite
+class Sprite2D(Node2D):
+    """A renderable, scriptable 2D node.
 
-    @property
-    def x(self):
-        return self._sprite._x
+    The canonical transform is inherited from :class:`Node2D` using
+    ``position``, ``rotation`` and ``scale``. Scratch-style ``x``, ``y``,
+    ``direction`` and ``size`` aliases remain available for easy scripting.
+    """
 
-    @x.setter
-    def x(self, v):
-        self._sprite.x = float(v)
+    _scrawl_node_kind = "sprite2d"
 
-    @property
-    def y(self):
-        return self._sprite._y
-
-    @y.setter
-    def y(self, v):
-        self._sprite.y = float(v)
-
-    def __iter__(self):
-        return iter((self._sprite._x, self._sprite._y))
-
-    def __repr__(self):
-        return f"Vec2({self._sprite._x}, {self._sprite._y})"
-
-
-class Sprite(Node):
-    """A renderable, scriptable object in a :class:`Scene`."""
-
-    _scrawl_node_kind = "sprite"
-
-    def __init__(self):
-        super().__init__("Sprite")
+    def __init__(self, name: str = "Sprite2D"):
+        super().__init__(name)
         self._scrawl_dirty = _DIRTY_ALL
-        self._x = 400.0
-        self._y = 300.0
-        self._direction = 90.0
-        self._size = 1.0
         self._width = None
         self._height = None
-        self._z_index = 0
-        self._visible = True
         self._color = (255, 100, 100)
         self._costumes = {}
         self._current_costume = None
@@ -115,8 +87,15 @@ class Sprite(Node):
         self._pen_size = 2
         self.collision_type = "mask"
         self.is_clones = False
+        # Match Godot's Node2D defaults.  A scene or parent decides where a
+        # node lives; keeping the local origin at (0, 0) makes child sprites
+        # attach naturally to physics bodies and containers.
+        self.position = Vector2(0.0, 0.0)
 
-        self._position_proxy = _Vec2Proxy(self)
+    def _mark_node_dirty(self):
+        super()._mark_node_dirty()
+        if "_scrawl_dirty" in self.__dict__:
+            self._scrawl_dirty |= _DIRTY_TRANSFORM
 
     def _mark_dirty(self, flag: int):
         self._scrawl_dirty |= flag
@@ -131,24 +110,6 @@ class Sprite(Node):
     # ========================================================================
 
     @property
-    def position(self):
-        """Mutable two-dimensional position view."""
-        return self._position_proxy
-
-    @position.setter
-    def position(self, value):
-        """Accept tuple, list, or Vector2-like"""
-        if hasattr(value, 'x') and hasattr(value, 'y'):
-            self._x = float(value.x)
-            self._y = float(value.y)
-        elif isinstance(value, (tuple, list)) and len(value) >= 2:
-            self._x = float(value[0])
-            self._y = float(value[1])
-        else:
-            raise TypeError("position must be a two-item sequence or Vector2-like object")
-        self._mark_dirty(_DIRTY_TRANSFORM)
-
-    @property
     def name(self) -> str:
         return self._name
 
@@ -158,39 +119,38 @@ class Sprite(Node):
 
     @property
     def x(self) -> float:
-        return self._x
+        return self._position.x
 
     @x.setter
     def x(self, value: float):
-        self._x = float(value)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.position = Vector2(value, self._position.y)
 
     @property
     def y(self) -> float:
-        return self._y
+        return self._position.y
 
     @y.setter
     def y(self, value: float):
-        self._y = float(value)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.position = Vector2(self._position.x, value)
 
     @property
     def direction(self) -> float:
-        return self._direction
+        # Scrawl keeps Scratch-style compass directions as a convenience:
+        # 0 points up and 90 points right.  Node2D rotation remains the
+        # canonical Godot-style transform where an unrotated sprite is 0.
+        return 90.0 - self.rotation_degrees
 
     @direction.setter
     def direction(self, value: float):
-        self._direction = float(value)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.rotation_degrees = 90.0 - float(value)
 
     @property
     def size(self) -> float:
-        return self._size
+        return self._scale.x
 
     @size.setter
     def size(self, value: float):
-        self._size = float(value)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.scale = Vector2(float(value), float(value))
 
     @property
     def width(self) -> Optional[float]:
@@ -199,7 +159,13 @@ class Sprite(Node):
 
     @width.setter
     def width(self, value: Optional[float]):
-        self._width = None if value is None else max(0.0, float(value))
+        if value is None:
+            self._width = None
+        else:
+            value = float(value)
+            if not math.isfinite(value):
+                raise ValueError("sprite width must be finite")
+            self._width = max(0.0, value)
         self._mark_dirty(_DIRTY_DIMENSIONS)
 
     @property
@@ -209,12 +175,18 @@ class Sprite(Node):
 
     @height.setter
     def height(self, value: Optional[float]):
-        self._height = None if value is None else max(0.0, float(value))
+        if value is None:
+            self._height = None
+        else:
+            value = float(value)
+            if not math.isfinite(value):
+                raise ValueError("sprite height must be finite")
+            self._height = max(0.0, value)
         self._mark_dirty(_DIRTY_DIMENSIONS)
 
     @property
     def z_index(self) -> int:
-        return self._z_index
+        return super().z_index
 
     @z_index.setter
     def z_index(self, value: int):
@@ -234,7 +206,7 @@ class Sprite(Node):
 
     @property
     def visible(self) -> bool:
-        return self._visible
+        return super().visible
 
     @visible.setter
     def visible(self, value: bool):
@@ -247,8 +219,8 @@ class Sprite(Node):
 
     def set_dimensions(self, width: Optional[float], height: Optional[float]):
         """Set an explicit render size in pixels."""
-        self._width = None if width is None else max(0.0, float(width))
-        self._height = None if height is None else max(0.0, float(height))
+        self.width = width
+        self.height = height
         self._mark_dirty(_DIRTY_DIMENSIONS)
 
     def set_collision_type(self, mode: str):
@@ -262,47 +234,39 @@ class Sprite(Node):
 
     def move(self, steps: float):
         """Move in current direction (compass: 0=up, 90=right, Y-up)."""
-        d_rad = math.radians(self._direction)
-        self._x += math.sin(d_rad) * steps
-        self._y += math.cos(d_rad) * steps
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        d_rad = math.radians(self.direction)
+        self.position = Vector2(
+            self._position.x + math.sin(d_rad) * steps,
+            self._position.y + math.cos(d_rad) * steps,
+        )
 
     def move_up(self, steps: float):
-        self._y += steps
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.y += steps
 
     def move_down(self, steps: float):
-        self._y -= steps
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.y -= steps
 
     def move_left(self, steps: float):
-        self._x -= steps
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.x -= steps
 
     def move_right(self, steps: float):
-        self._x += steps
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.x += steps
 
     def turn_left(self, degrees: float):
-        self._direction -= degrees
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.direction -= degrees
 
     def turn_right(self, degrees: float):
-        self._direction += degrees
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.direction += degrees
 
     def go_to(self, x: float, y: float):
-        self._x = float(x)
-        self._y = float(y)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.position = Vector2(x, y)
 
     def point_towards(self, x: float, y: float):
         """Point towards a world position (compass: 0=up, 90=right, Y-up)."""
-        dx = x - self._x
-        dy = y - self._y
+        dx = x - self.x
+        dy = y - self.y
         if dx != 0 or dy != 0:
-            self._direction = math.degrees(math.atan2(dx, dy))
-            self._mark_dirty(_DIRTY_TRANSFORM)
+            self.direction = math.degrees(math.atan2(dx, dy))
 
     def face_towards(self, target_name: str):
         """Point towards a named sprite in the current scene."""
@@ -314,8 +278,7 @@ class Sprite(Node):
 
     def face_random_direction(self):
         """Point in a random direction."""
-        self._direction = random.uniform(0, 360)
-        self._mark_dirty(_DIRTY_TRANSFORM)
+        self.direction = random.uniform(0, 360)
 
     # ========================================================================
     # Appearance
@@ -369,14 +332,19 @@ class Sprite(Node):
         new_sprite._scrawl_node_id = next(Node._scrawl_id_source)
         new_sprite._parent = None
         new_sprite._children = []
-        new_sprite._position_proxy = _Vec2Proxy(new_sprite)
+        new_sprite._position = _Node2DVector(
+            new_sprite, target._position.x, target._position.y
+        )
+        new_sprite._scale = _Node2DVector(
+            new_sprite, target._scale.x, target._scale.y
+        )
         new_sprite.is_clones = True
         new_sprite._costumes = dict(target._costumes)
-        new_sprite._x = self._x  # Clone spawns at cloner's position
-        new_sprite._y = self._y
-        new_sprite._direction = target._direction
-        new_sprite._visible = target._visible
+        new_sprite._position = _Node2DVector(
+            new_sprite, self._position.x, self._position.y
+        )  # Clone spawns at cloner's position
         new_sprite._scrawl_dirty = _DIRTY_ALL
+        new_sprite._scrawl_node_dirty = True
         parent = self.get_parent() or self.scene
         if parent:
             parent.add_child(new_sprite)
@@ -425,7 +393,7 @@ class Sprite(Node):
         self._mark_dirty(_DIRTY_PEN)
 
 
-class PhysicsSprite(Sprite):
+class PhysicsSprite(Sprite2D):
     """A sprite with physics (velocity, gravity, friction, elasticity)."""
 
     def __init__(self):
